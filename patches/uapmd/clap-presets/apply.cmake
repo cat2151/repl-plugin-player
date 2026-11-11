@@ -1,0 +1,38 @@
+execute_process(COMMAND git -C "${UAPMD_DIR}" rev-parse HEAD
+    OUTPUT_VARIABLE clap_presets_revision OUTPUT_STRIP_TRAILING_WHITESPACE)
+set(clap_presets_input "${UAPMD_DIR}/source/remidy/src/clap")
+set(clap_presets_output "${REPL_PROJECT_ROOT}/target/shim/clap-presets")
+function(clap_presets_failure reason)
+    message(FATAL_ERROR "clap-presets: ${clap_presets_input}: ${reason}; upstream ${clap_presets_revision}; see ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/README.md")
+endfunction()
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+file(GLOB clap_presets_inputs CONFIGURE_DEPENDS "${clap_presets_input}/*.hpp" "${clap_presets_input}/*.cpp")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${clap_presets_inputs} "${CMAKE_CURRENT_LIST_DIR}/generate.py")
+execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/generate.py"
+    "${UAPMD_DIR}" "${clap_presets_output}" "${script_api_output}"
+    RESULT_VARIABLE clap_presets_result ERROR_VARIABLE clap_presets_error)
+if(NOT clap_presets_result EQUAL 0)
+    clap_presets_failure("generation failed: ${clap_presets_error}")
+endif()
+get_target_property(clap_presets_sources remidy SOURCES)
+set(clap_presets_replaced 0)
+set(clap_presets_new_sources "")
+foreach(source IN LISTS clap_presets_sources)
+    if(source MATCHES "^src/clap/(.+[.]cpp)$")
+        list(APPEND clap_presets_new_sources "${clap_presets_output}/${CMAKE_MATCH_1}")
+        math(EXPR clap_presets_replaced "${clap_presets_replaced}+1")
+    else()
+        list(APPEND clap_presets_new_sources "${source}")
+    endif()
+endforeach()
+if(clap_presets_replaced EQUAL 0)
+    clap_presets_failure("no CLAP target sources found")
+endif()
+set_property(TARGET remidy PROPERTY SOURCES "${clap_presets_new_sources}")
+
+# Explicit, non-default behavioral fixture target. Uses the same generated loader.
+add_executable(clap_presets_regression EXCLUDE_FROM_ALL "${CMAKE_CURRENT_LIST_DIR}/discovery-test.cpp")
+target_include_directories(clap_presets_regression PRIVATE "${clap_presets_output}" "$<TARGET_PROPERTY:remidy,INCLUDE_DIRECTORIES>")
+target_link_libraries(clap_presets_regression PRIVATE remidy)
+set_target_properties(clap_presets_regression PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}/out>")

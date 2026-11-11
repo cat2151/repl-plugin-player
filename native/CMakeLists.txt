@@ -1,0 +1,60 @@
+cmake_minimum_required(VERSION 3.28)
+project(repl_plugin_player LANGUAGES C CXX)
+get_filename_component(REPL_PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(UAPMD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(REMIDY_BUILD_CONFIG Release CACHE STRING "" FORCE)
+set(UAPMD_DIR "${REPL_PROJECT_ROOT}/../uapmd" CACHE PATH "UAPMD checkout")
+if(MSVC)
+    add_compile_options(/utf-8 /EHsc)
+    add_compile_definitions(NOMINMAX)
+endif()
+# Keep dependency acquisition and UAPMD's generated dependency patches local.
+include(FetchContent)
+FetchContent_Declare(stb GIT_REPOSITORY https://github.com/nothings/stb
+    GIT_TAG 2c980bb59875b0d32144a71867fbdebb2f77cd20)
+include("${UAPMD_DIR}/source/cmake/CPM.cmake")
+# UAPMD configures its GUI shell even though this app links only its model.
+# Reuse its already patched local shell dependency on reconfigure. Verify the
+# entire upstream patch first; never update/reapply a moving branch over it.
+set(REPL_TIMELINE_SOURCE "${CMAKE_BINARY_DIR}/_deps/imtimeline-src")
+if(EXISTS "${REPL_TIMELINE_SOURCE}/TimelineCore/TimelineDefines.h")
+    execute_process(COMMAND git -C "${REPL_TIMELINE_SOURCE}" apply --reverse --check
+        "${UAPMD_DIR}/external/patches/imtimeline.patch" RESULT_VARIABLE patch_check)
+    if(NOT patch_check EQUAL 0)
+        message(FATAL_ERROR "App-local ImTimeline does not match UAPMD's patch; preserve and inspect build/_deps/imtimeline-src")
+    endif()
+    CPMDeclarePackage(ImTimeline NAME ImTimeline SOURCE_DIR "${REPL_TIMELINE_SOURCE}" DOWNLOAD_ONLY YES)
+endif()
+add_subdirectory("${UAPMD_DIR}" uapmd EXCLUDE_FROM_ALL)
+include("${REPL_PROJECT_ROOT}/patches/uapmd/note-monitor/apply.cmake")
+include("${REPL_PROJECT_ROOT}/patches/uapmd/script-api/apply.cmake")
+include("${REPL_PROJECT_ROOT}/patches/uapmd/clap-presets/apply.cmake")
+include("${REPL_PROJECT_ROOT}/patches/uapmd/parameter-metadata/apply.cmake")
+include("${REPL_PROJECT_ROOT}/patches/uapmd/loop-playback/apply.cmake")
+add_library(repl_bridge SHARED bridge.cpp)
+target_link_libraries(repl_bridge PRIVATE uapmd-app-model remidy-gui ResEmbed)
+execute_process(COMMAND git -C "${UAPMD_DIR}" rev-parse HEAD
+    OUTPUT_VARIABLE UAPMD_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+target_compile_definitions(repl_bridge PRIVATE REPL_UAPMD_REVISION="${UAPMD_REVISION}")
+set_target_properties(repl_bridge PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}/out>"
+    ARCHIVE_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}/out>")
+
+# UAPMD overwrites the cache and several individual targets with /MD. Apply the
+# Rust-selected runtime after adding every dependency; never edit its checkout.
+if(MSVC AND REPL_MSVC_RUNTIME_LIBRARY)
+    function(repl_set_msvc_runtime directory)
+        get_property(targets DIRECTORY "${directory}" PROPERTY BUILDSYSTEM_TARGETS)
+        foreach(target IN LISTS targets)
+            set_property(TARGET ${target} PROPERTY MSVC_RUNTIME_LIBRARY "${REPL_MSVC_RUNTIME_LIBRARY}")
+        endforeach()
+        get_property(children DIRECTORY "${directory}" PROPERTY SUBDIRECTORIES)
+        foreach(child IN LISTS children)
+            repl_set_msvc_runtime("${child}")
+        endforeach()
+    endfunction()
+    repl_set_msvc_runtime("${CMAKE_CURRENT_SOURCE_DIR}")
+endif()

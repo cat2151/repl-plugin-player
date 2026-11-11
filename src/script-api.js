@@ -1,0 +1,75 @@
+// Thin bindings: original crate/function names, JSON byte arrays, JS exceptions.
+function __replCall(api, args) {
+    var reply = JSON.parse(__repl_host_call(JSON.stringify(Object.assign({api: api}, args))));
+    if (!reply.ok) throw new Error(api + ': ' + reply.error);
+    return reply.value;
+}
+
+// Explicit builtin/... or user/... paths; reread and evaluate on every call.
+// Global evaluation keeps included scripts independent of the caller's locals.
+// Libraries can end in an IIFE returning their public functions.
+globalThis.include = function(name) {
+    try {
+        return (0, eval)(__replCall('snippet.source', {name:name}));
+    } catch (error) {
+        if (!(error instanceof Error)) error = new Error(String(error));
+        error.message = 'include(' + JSON.stringify(name) + '): ' + error.message;
+        throw error;
+    }
+};
+globalThis.cmrt_chord = {
+    resolve_chord_or_mml: function(input) {
+        return __replCall('cmrt_chord.resolve_chord_or_mml', {input: input});
+    }
+};
+globalThis.mmlabc_to_smf = {
+    mml_to_smf_bytes: function(mml) {
+        return __replCall('mmlabc_to_smf.mml_to_smf_bytes', {mml: mml});
+    },
+    mml_preprocessor: {extract_embedded_json: function(mml) {
+        return __replCall('mmlabc_to_smf.mml_preprocessor.extract_embedded_json', {mml:mml});
+    }},
+    pass1_parser: {parse_mml: function(mml) {
+        return __replCall('mmlabc_to_smf.pass1_parser.parse_mml', {mml:mml});
+    }},
+    pass2_ast: {tokens_to_ast: function(tokens) {
+        return __replCall('mmlabc_to_smf.pass2_ast.tokens_to_ast', {tokens:tokens});
+    }},
+    pass3_events: {ast_to_events: function(ast, use_drum_channel_for_128) {
+        return __replCall('mmlabc_to_smf.pass3_events.ast_to_events',
+            {ast:ast, use_drum_channel_for_128:use_drum_channel_for_128});
+    }},
+    pass4_midi: {
+        save_midi_file: function(bytes, filepath) {
+            __replCall('mmlabc_to_smf.pass4_midi.save_midi_file', {bytes: bytes, filepath: filepath});
+        }
+    }
+};
+// Creates only the directory; returns a new path without creating or deleting a file.
+function getGeneratedMidiPath() {
+    return __replCall('generatedMidiPath', {});
+}
+
+globalThis.repl = {text: function(key, values) { return __replCall('text', {key:key, values:values}); }};
+
+repl.processEvents = function() { return __replCall('control.processEvents', {}); };
+repl.audio = {isProcessing: function() { return __replCall('audio.isProcessing', {}); }};
+
+repl.ui = {
+    show: function(definition) { return __replCall('ui.show', {definition:definition}); },
+    close: function(id) { return __replCall('ui.close', {id:id}); }
+};
+
+// Only the missing native timing primitives; composition and part names stay in script.
+repl.timeline = {
+    configureLoop: function(beats, bpm) {
+        return __replCall('timeline.loop.configure', {beats:beats, bpm:bpm});
+    },
+    publishLoopClips: function(parts, beats, bpm) {
+        if (beats !== undefined && !(Number.isFinite(beats) && beats > 0)) throw new Error('Invalid loop length');
+        if (bpm !== undefined && !(Number.isFinite(bpm) && bpm > 0)) throw new Error('Invalid loop tempo');
+        return __replCall('timeline.loop.publish', {parts:parts, beats:beats, bpm:bpm});
+    },
+    loopStatus: function() { return __replCall('timeline.loop.status', {}); },
+    clearLoop: function() { return __replCall('timeline.loop.clear', {}); }
+};

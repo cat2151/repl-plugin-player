@@ -1,0 +1,11 @@
+# 提案: UapmdJSRuntimeへの同期host関数登録
+
+アプリから既存Rust crateのMML/コード進行変換を呼ぶ際に、JS runtimeへhost関数を
+登録する公開入口がありませんでした。アプリ側ではruntimeソースの生成コピーに
+JSON文字列を同期往復するcallbackを1つ登録して対応しています。
+
+上流にhost関数を登録できる公開APIがあると、このソース差し替えを撤去できます。
+音声処理やSMFインポートの仕様変更は不要です。callbackはcontrol thread上で実行し、
+引数・戻り値の所有権と例外境界を明示できる形を希望します。
+
+確認revision: `a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe`。未報告。
