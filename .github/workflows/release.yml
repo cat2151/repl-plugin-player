@@ -21,7 +21,8 @@ permissions:
   contents: read
 
 env:
-  # The uapmd commit that the local build was checked against (ADR 0021).
+  # The uapmd commit that the local build was checked against (ADR 0021). The release
+  # builds exactly this commit: the scripts follow uapmd's JS API at this commit.
   UAPMD_VERIFIED_SHA: a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe
 
 jobs:
@@ -44,7 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           main_sha() { git ls-remote --exit-code "https://github.com/$1" refs/heads/main | cut -f1; }
-          uapmd=$(main_sha atsushieno/uapmd)
+          uapmd=$UAPMD_VERIFIED_SHA
           tui=$(main_sha cat2151/clap-mml-render-tui)
           {
             echo "version=$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['package']['version'])")"
@@ -91,11 +92,9 @@ jobs:
         run: |
           import os, pathlib, string
           env = os.environ
-          verified = '一致' if env['UAPMD'] == env['UAPMD_VERIFIED_SHA'] else '不一致（手元で動作を確認していない uapmd の版でビルドした）'
           commits = [f'- repl-plugin-player: {env["GITHUB_SHA"]}',
                      f'- clap-mml-render-tui: {env["TUI"]}',
-                     f'- uapmd（atsushieno/uapmd の main）: {env["UAPMD"]}',
-                     f'  - 手元で確認した uapmd {env["UAPMD_VERIFIED_SHA"]} と{verified}']
+                     f'- uapmd（atsushieno/uapmd、手元で確認した版）: {env["UAPMD"]}']
           template = string.Template(pathlib.Path('.github/release-notes.md').read_text(encoding='utf-8'))
           notes = template.substitute(name='repl-plugin-player', version=env['VERSION'],
               package_files='第三者ライセンス（bridge DLL と ja/en 翻訳は exe に埋め込み）', commits='\n'.join(commits), build_inputs=env['INPUTS'])

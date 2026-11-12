@@ -159,6 +159,46 @@ impl Capture {
     }
 }
 
+// Called only by the selected plugin's processing thread. Native close waits for
+// processing to finish before Bridge releases this producer. Buffers are planar,
+// remain valid for this call, and contain `frames` f32/f64 samples per channel.
+pub type Callback = unsafe extern "C" fn(
+    *mut Capture,
+    *const std::ffi::c_void,
+    *const std::ffi::c_void,
+    usize,
+    u32,
+    *const u32,
+    usize,
+);
+
+pub unsafe extern "C" fn record_native(
+    capture: *mut Capture,
+    left: *const std::ffi::c_void,
+    right: *const std::ffi::c_void,
+    frames: usize,
+    doubles: u32,
+    events: *const u32,
+    words: usize,
+) {
+    let events = if words == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(events, words) }
+    };
+    let capture = unsafe { &mut *capture };
+    capture.record_samples(frames, events, |i| unsafe {
+        if doubles != 0 {
+            [
+                *left.cast::<f64>().add(i) as f32,
+                *right.cast::<f64>().add(i) as f32,
+            ]
+        } else {
+            [*left.cast::<f32>().add(i), *right.cast::<f32>().add(i)]
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,44 +324,4 @@ mod tests {
         producer.join().unwrap();
         assert_eq!(previous, Some(256 * 256 - 1));
     }
-}
-
-// Called only by the selected plugin's processing thread. Native close waits for
-// processing to finish before Bridge releases this producer. Buffers are planar,
-// remain valid for this call, and contain `frames` f32/f64 samples per channel.
-pub type Callback = unsafe extern "C" fn(
-    *mut Capture,
-    *const std::ffi::c_void,
-    *const std::ffi::c_void,
-    usize,
-    u32,
-    *const u32,
-    usize,
-);
-
-pub unsafe extern "C" fn record_native(
-    capture: *mut Capture,
-    left: *const std::ffi::c_void,
-    right: *const std::ffi::c_void,
-    frames: usize,
-    doubles: u32,
-    events: *const u32,
-    words: usize,
-) {
-    let events = if words == 0 {
-        &[]
-    } else {
-        unsafe { std::slice::from_raw_parts(events, words) }
-    };
-    let capture = unsafe { &mut *capture };
-    capture.record_samples(frames, events, |i| unsafe {
-        if doubles != 0 {
-            [
-                *left.cast::<f64>().add(i) as f32,
-                *right.cast::<f64>().add(i) as f32,
-            ]
-        } else {
-            [*left.cast::<f32>().add(i), *right.cast::<f32>().add(i)]
-        }
-    });
 }

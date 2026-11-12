@@ -13,6 +13,14 @@ MMLからSMFを生成する既存Rust crateを同期呼び出しするため、
 通常の `python scripts/build.py` で再clone・既存キャッシュのどちらにも適用する。
 元ソース変更時にはCMakeが再構成して生成し直す。
 
+同じ生成コピーで、`__remidy_instance_load_state`（`uapmd.instance(i).loadState(file)`）の
+`loadPluginStateSync` 呼出しを、`loadPluginState` を投げて完了まで main thread の queue を回して
+待つ形に置き換える。上流の `loadPluginStateSync` は User origin では `future.get()` で待つだけで、
+完了通知が同じ thread の queue に積まれるため返らない（`__remidy_project_load` は同じ待ち方で
+queue を回している）。戻り値の形（`{success, error, filepath, instanceId}`）と undo 記録は変えない。
+置換対象の呼出しが1つだけ見つからなければ、適用失敗として停止する。
+`saveState` の同じ待ち方は、この app が使わないので置き換えない。
+
 ## 境界と生成ファイル
 
 callbackはDLLをロードしたRustアプリが設定し、control thread上で同期呼び出しする。
@@ -60,7 +68,11 @@ UI定義と言語の保存設定は追加せず、既存のsnippet保存経路�
 `python scripts/e2e.py mml-clip chord-clip snippets partial-run timeline` で、
 2つのsnippetをそれぞれReadyから単独実行し、ノート列、和音の時刻、SMF保持、
 再生信号、パスの一意性、不正引数からの復帰、既存操作の回帰を検証する。
-回帰コードはこのdirectoryの `regression.rs` と既存E2E入口にある。
+回帰のscriptはこのdirectoryの `mml-clip.js`・`chord-clip.js` にあり、生成パスが
+LocalAppDataの `repl-plugin-player/generated-midi` 配下かは `scripts/e2e.py` が見る。
+`python scripts/e2e.py state-load` は、準備済みinstanceのstateをfileに書き、parameterを1つ動かしてから
+`loadState` で読み戻し、10秒以内に `success:true` で返ってparameterが元に戻ること、
+読めないfileが `success:false` で返ることを確かめる（検査は `state_regression.rs`、流すJSは `state-load.js`）。
 `python scripts/e2e.py demo-play tutorials` はtest専用の休符なしMML・コード進行で
 先頭音のプラグイン入力とmaster出力を調べ、別音色へ変更後のplayでパラメーターが保たれること、
 再初期化、再生中の置換、loopからの切替を確認する。ユーザーが編集するsnippet自体には
@@ -74,5 +86,7 @@ UI定義と言語の保存設定は追加せず、既存のsnippet保存経路�
 適用失敗時にはパッチ名、対象、失敗条件、上流revision、本書の場所を表示して停止する。
 上流runtimeの関数登録箇所とtargetのソース一覧を調査し、検査を外して通さない。
 上流にhost callback登録APIが追加されたら、それで同じ検証が通ることを確認して撤去する。
+上流の `loadPluginStateSync` が待つ間に queue を回すようになったら、`loadState` の置き換えだけを外し、
+`python scripts/e2e.py state-load patch-use patch-browse` が通ることを確かめる。
 
 作者への報告状態: 未報告。提案文は `upstream-report.md`。外部送信は行わない。

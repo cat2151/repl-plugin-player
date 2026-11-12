@@ -1,19 +1,38 @@
+// `partial-run`: the editor text that `src/execution_e2e.rs` runs piece by
+// piece, by cell, selection and line, as the GUI does. Only the pieces it
+// picks may run; every other line here throws or would change the counts.
+throw new Error('outside cell');
+// %% setup
+var partialValue = 40;
+// %% edit
+partialValue += 2;
+// %% neighbor
+throw new Error('neighbor');
+// %% selection
+throw new Error('before');
+partialValue += 1;
+throw new Error('after');
+// %% value
+partialValue
+// %% failing
+partialValue = 44; throw new Error('expected fragment error');
+// %% after failing
+partialValue = -1;
+// %% line
+partialValue += 1;
+throw new Error('next line');
 // %% track and reset
-// Test-owned timeline script for the internal E2E cases; built-in snippets may change freely.
-var e2eTrack = uapmd.sequencer.getTrackInfos()
-    .find(t => t.nodes.some(n => n.instanceId === globalThis.surgeId));
+var e2eTrack = uapmd.sequencer.getTrackInfos().find(t => t.trackIndex === 0);
 if (!e2eTrack) throw new Error('E2E: no track holds the target plugin');
 var e2eTrackIndex = e2eTrack.trackIndex;
-// BEGIN RESET
 uapmd.sequencer.stopPlayback();
-uapmd.sequencer.sendNoteOff(globalThis.surgeId, 60);
+uapmd.sequencer.sendNoteOff(include('builtin/lib/plugins.js').instrumentOn(0), 60);
 uapmd.sequencer.jumpPlayback(0);
 uapmd.timeline.setTempo(120);
 for (var e2eClip of uapmd.timeline.getClips(e2eTrackIndex)) {
     if (e2eClip.clipType === 'midi' && !uapmd.timeline.removeClip(e2eTrackIndex, e2eClip.clipId))
         throw new Error('E2E: could not remove clip ' + e2eClip.clipId);
 }
-// END RESET
 
 // %% one note: pitch 60 from beat 1 to beat 3
 var e2eClipId = uapmd.timeline.createEmptyMidiClip(e2eTrackIndex, 0, 480, 120);

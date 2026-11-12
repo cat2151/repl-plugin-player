@@ -1,12 +1,13 @@
 // %% @text name_try_instrument
 // @text demo_reset
-(() => {
-    var demo = include('builtin/lib/tutorial.js');
+{
+    const instrumentTrack = 2;
+    const demo = include('builtin/lib/tutorial.js');
     demo.reset();
-    var synth = demo.prepareInstrument('tutorialInstrument', 'CLAP', 'org.baconpaul.six-sines', false);
-    var mml = 'r c r c r c';
-    var clip = demo.replaceMml(synth.trackIndex, mml, 120);
+    const synth = demo.prepareInstrument(instrumentTrack, 'CLAP', 'Six Sines', false);
+    const mml = 'r c r c r c';
+    const clip = demo.replaceMml(synth.trackIndex, mml, 120);
     uapmd.audio.setEngineEnabled(true);
     uapmd.sequencer.startPlayback();
-    return {...synth, ...clip};
-})();
+    ({...synth, ...clip});
+}

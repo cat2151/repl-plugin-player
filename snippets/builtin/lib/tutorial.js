@@ -54,22 +54,35 @@
         return {...activate(instanceId), presetJobId:presetJob.jobId};
     }
 
-    function prepareInstrument(stateKey, format, pluginId, levelsOnly) {
-        var tracks = uapmd.sequencer.getTrackInfos();
-        var saved = globalThis[stateKey];
-        var fresh = false;
-        if (!saved || !tracks.some(t => t.nodes.some(n => n.instanceId === saved.id))) {
-            fresh = true;
-            var id = uapmd.instancing.create(format, pluginId, -1);
-            if (id < 0) throw new Error(repl.text('snippet_02'));
-            var synth = uapmd.instance(id);
-            saved = globalThis[stateKey] = {id, values:synth.getParameters()
-                .filter(p => !p.isReadonly && (!levelsOnly || /volume|level|gain/i.test(p.name)))
-                .map(p => [p.id, synth.getParameterValue(p.id)])};
+    // The track's instrument becomes the plugin (replacing another one), with
+    // its parameters (or only its levels) back at the plugin's defaults.
+    function prepareInstrument(trackIndex, format, plugin, levelsOnly) {
+        const id = include('builtin/lib/patch.js').use({format, plugin, track:trackIndex}).instanceId;
+        const synth = uapmd.instance(id);
+        for (const p of synth.getParameters().filter(p => !p.isReadonly && (!levelsOnly || /volume|level|gain/i.test(p.name))))
+            synth.setParameterValue(p.id, p.defaultValue);
+        return activate(id);
+    }
+
+    // A track whose connections were edited leaves a new plugin unconnected:
+    // put it between what reached the track's output and the output.
+    function joinBeforeOutput(trackIndex, effectId) {
+        const connections = plugins.connectionsOf(trackIndex);
+        const isEffect = e => e.type === 'plugin' && e.instanceId === effectId;
+        if (connections.some(c => isEffect(c.source) || isEffect(c.target))) return;
+        const check = result => { if (!result.success) throw new Error(result.error); };
+        const buses = new Set();
+        for (const c of connections.filter(c => c.busType === 'audio' && c.target.type === 'graphOutput')) {
+            check(uapmd.timeline.disconnectTrackGraphConnection(trackIndex, c.id));
+            const source = c.source.type === 'plugin' ? plugins.pluginEnd(c.source.instanceId, c.source.busIndex)
+                : {type:c.source.type, instanceId:c.source.instanceId, nodeId:c.source.nodeId || '', busIndex:c.source.busIndex};
+            check(uapmd.timeline.connectTrackGraph(trackIndex, 'audio', source, plugins.pluginEnd(effectId, c.target.busIndex)));
+            buses.add(c.target.busIndex);
         }
-        if (!levelsOnly || !fresh)
-            for (var value of saved.values) uapmd.instance(saved.id).setParameterValue(value[0], value[1]);
-        return activate(saved.id);
+        if (buses.size === 0) buses.add(0);
+        for (const bus of buses)
+            check(uapmd.timeline.connectTrackGraph(trackIndex, 'audio', plugins.pluginEnd(effectId, bus),
+                {type:'graphOutput', instanceId:-1, nodeId:'', busIndex:bus}));
     }
 
     // New effects use plugin defaults; reused effects keep the user's edits.
@@ -81,6 +94,7 @@
         var effect = track.nodes.find(n => n.pluginId === pluginId);
         var effectId = effect ? effect.instanceId : uapmd.instancing.create(format, pluginId, trackIndex);
         if (effectId < 0) throw new Error(repl.text('snippet_17'));
+        if (!effect) joinBeforeOutput(trackIndex, effectId);
         var fx = uapmd.instance(effectId);
         uapmd.sequencer.setPluginBypassed(effectId, false);
         return fx;

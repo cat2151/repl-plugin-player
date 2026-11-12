@@ -25,7 +25,8 @@ WINDOWS = runpy.run_path(str(ROOT / 'scripts/cli-windows-test.py'))
 # Test-owned topology: a clip on the Surge track, an instrument on a new track, an effect after Surge.
 JOBS = {'cliInstrumentId': ('cli-test-instrument', 'CLAP', 'org.baconpaul.six-sines', -1),
         'cliEffectId': ('cli-test-effect', 'CLAP', 'michaelwillis.dragonfly.hall', 'cliTrack')}
-SETUP = """globalThis.cliTrack = include('builtin/lib/plugins.js').trackFor(surgeId).trackIndex;
+INSTRUMENT = 'include("builtin/lib/plugins.js").instrumentOn(0)'
+SETUP = """globalThis.cliTrack = 0;
 if (uapmd.timeline.createEmptyMidiClip(cliTrack, 0, 480, 120) < 0) throw new Error('clip creation failed');
 """ + ''.join(f"uapmd.instancing.startCreateJob('{key}', '{format_}', '{plugin}', {track});\n"
               for key, format_, plugin, track in JOBS.values())
@@ -34,10 +35,10 @@ CREATED = ' && '.join(f"""(() => {{var j = uapmd.instancing.getCreateJob('{job[0
 # Surge and the effect editors are the two windows cli-windows-test.py expects.
 SHOW = ''.join(f"globalThis.{name} = uapmd.instancing.startCreateJob('{key}', '{format_}', '{plugin}', {track}).instanceId;\n"
                for name, (key, format_, plugin, track) in JOBS.items()) + \
-    'uapmd.instance(surgeId).showUI(); uapmd.instance(cliEffectId).showUI();'
+    'uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).showUI(); uapmd.instance(cliEffectId).showUI();'
 # Test-owned preset choice; the preset snippet may select anything.
 PRESET = 'Attacky'
-LOAD = ('globalThis.cliPresetJob = uapmd.instance(surgeId).loadPreset('
+LOAD = ('globalThis.cliPresetJob = uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).loadPreset('
         f'cliPresets.find(p => p.name === {json.dumps(PRESET)}).index)')
 LOADED = ("(() => {var j = uapmd.mutations.getJob(cliPresetJob.jobId);"
           "if (j.state === 'failed') throw new Error(j.error); return j.state === 'completed';})()")
@@ -104,7 +105,7 @@ class Session:
         assert (self.child.returncode != 0) is failure, self.child.returncode
         events = [json.loads(line) for line in self.log.read_text(encoding='utf-8').splitlines()]
         assert any(e['event'] == 'ready' for e in events), 'Normal Ready path was bypassed'
-        assert any(e['event'] == 'init_saw_verified' for e in events)
+        assert any(e['event'] == 'init_evaluated' and 'error' not in e['details']['result'] for e in events)
         assert any(e['event'] == 'cleanup' and e['details']['result']['ok'] for e in events)
         return events
 
@@ -149,7 +150,10 @@ def builtins():
     in the first pass, or when rerun (retrying while jobs settle) after all others have run.
     repl.ui is GUI-only, so its error is the expected CLI outcome.
     """
-    names = sorted(path.stem for path in (ROOT / 'snippets/builtin').glob('*.js'))
+    # try-patch-browse opens the real player's browser and waits for a person to close it;
+    # E2E patch-browse covers that flow with a stand-in player.
+    names = sorted(path.stem for path in (ROOT / 'snippets/builtin').glob('*.js')
+                   if path.stem != 'try-patch-browse')
     assert names
     session = Session(seconds=600)
     failed = False
@@ -189,7 +193,7 @@ def check():
             script = directory / 'generated-check.js'
             script.write_text("""globalThis.cliMarker = '日本語';
 if (typeof cmrt_chord.resolve_chord_or_mml !== 'function') throw new Error('Rust API missing');
-globalThis.cliPresets = uapmd.instance(surgeId).getPresets();
+globalThis.cliPresets = uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).getPresets();
 for (var name of ['µcomputer', 'Sunrise Breakfast at the Digital Café', 'Wavetextures™ Pro Kit'])
     // Provider metadata and its supported filename fallback may differ in case.
     if (!cliPresets.some(p => p.name.toLowerCase() === name.toLowerCase())) throw new Error('Missing Unicode preset: ' + name);
@@ -208,15 +212,15 @@ for (var name of ['µcomputer', 'Sunrise Breakfast at the Digital Café', 'Wavet
             session.request('wait', code='++cliWaitCount > 3')
             assert session.evaluate('cliWaitCount') == 4
             if core_only:
-                assert PRESETS['patch'](bytes(session.request('state')))[0] == 'Init Saw'
+                assert PRESETS['patch'](bytes(session.request('state', instanceId=int(session.evaluate(INSTRUMENT)))))[0] == 'Init Saw'
             if not core_only:
-                before = PRESETS['patch'](bytes(session.request('state')))
+                before = PRESETS['patch'](bytes(session.request('state', instanceId=int(session.evaluate(INSTRUMENT)))))
                 session.evaluate(LOAD)
                 session.request('wait', code=LOADED)
                 factory = PRESETS['patch'](Path(f'C:/ProgramData/Surge XT/patches_factory/Basses/{PRESET}.fxp').read_bytes()[60:])
 
                 def check_state(prior, expected_factory=factory, display_name=None):
-                    state = bytes(session.request('state'))
+                    state = bytes(session.request('state', instanceId=int(session.evaluate(INSTRUMENT))))
                     actual = PRESETS['patch'](state)
                     expected = PRESETS['expected_parameters'](expected_factory, prior)
                     expected_name = expected_factory[0] if display_name is None else display_name
@@ -236,11 +240,11 @@ for (var name of ['µcomputer', 'Sunrise Breakfast at the Digital Café', 'Wavet
                 loaded = check_state(before)
                 # Force an edit that changes an original FXP parameter, then reload
                 # the same preset/name. Job completion must follow actual application.
-                candidates = session.evaluate('uapmd.instance(surgeId).getParameters()')
+                candidates = session.evaluate('uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).getParameters()')
                 cutoff = next(p for p in candidates if 'cutoff' in p['name'].lower())
                 parameter = cutoff['id']
-                session.evaluate(f'uapmd.instance(surgeId).setParameterValue({parameter}, 0.37)')
-                changed = PRESETS['patch'](bytes(session.request('state')))
+                session.evaluate(f'uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).setParameterValue({parameter}, 0.37)')
+                changed = PRESETS['patch'](bytes(session.request('state', instanceId=int(session.evaluate(INSTRUMENT)))))
                 assert changed[1] != loaded[1], 'Reload check did not change a stored parameter'
                 for _ in range(2):
                     session.evaluate(LOAD)
@@ -253,8 +257,8 @@ for (var name of ['µcomputer', 'Sunrise Breakfast at the Digital Café', 'Wavet
                              if p.stem.casefold() == name.casefold()]
                     assert len(files) == 1, (name, files)
                     reference = PRESETS['patch'](files[0].read_bytes()[60:], factory=True)
-                    prior = PRESETS['patch'](bytes(session.request('state')))
-                    job = session.evaluate(f'globalThis.cliUnicodeJob = uapmd.instance(surgeId).loadPreset({selected["index"]})')
+                    prior = PRESETS['patch'](bytes(session.request('state', instanceId=int(session.evaluate(INSTRUMENT)))))
+                    job = session.evaluate(f'globalThis.cliUnicodeJob = uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).loadPreset({selected["index"]})')
                     session.request('wait', code="(() => {var j = uapmd.mutations.getJob(cliUnicodeJob.jobId); if (j.state === 'failed') throw new Error(j.error); return j.state === 'completed';})()")
                     assert job['jobId'] > 0
                     # Surge 1.3.4 loadPatch passes the filesystem-derived patch
@@ -262,11 +266,11 @@ for (var name of ['µcomputer', 'Sunrise Breakfast at the Digital Café', 'Wavet
                     # the FXP XML metadata (e.g. Sunrise ... At The ...).
                     check_state(prior, reference, files[0].stem)
                 for invalid in (-1, 2147483647):
-                    job = session.evaluate(f'uapmd.instance(surgeId).loadPreset({invalid})')
+                    job = session.evaluate(f'uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).loadPreset({invalid})')
                     assert job['state'] == 'failed' and job['error'], job
                     assert session.evaluate('6 * 7') == 42
                 # A valid load after rejected jobs proves mutation/runtime recovery.
-                prior = PRESETS['patch'](bytes(session.request('state')))
+                prior = PRESETS['patch'](bytes(session.request('state', instanceId=int(session.evaluate(INSTRUMENT)))))
                 session.evaluate(LOAD)
                 session.request('wait', code=LOADED)
                 check_state(prior)
@@ -297,11 +301,12 @@ for (var name of ['µcomputer', 'Sunrise Breakfast at the Digital Café', 'Wavet
                 ('script', {'path': str(directory / 'missing.js')}, 'missing.js'),
                 ('state', {'instanceId': 2147483647}, 'missing'),
                 ('state', {'instanceId': -1}, 'nonnegative'),
+                ('state', {}, 'nonnegative'),
                 ('invalid', {}, 'Unknown automation command')]:
                 assert expected in session.request(command, ok=False, **args)
                 assert session.evaluate('6 * 7') == 42
                 if command == 'state':
-                    assert PRESETS['patch'](bytes(session.request('state')))[0] == 'Init Saw'
+                    assert PRESETS['patch'](bytes(session.request('state', instanceId=int(session.evaluate(INSTRUMENT)))))[0] == 'Init Saw'
             session.finish(failure=True, eof=True)
         finally:
             session.kill()

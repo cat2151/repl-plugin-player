@@ -7,12 +7,19 @@ use eframe::egui;
 pub(super) struct Pending {
     request: Option<Request>,
     presented_frame: Option<u64>,
+    evaluated: bool,
 }
 
 impl Pending {
     pub fn queue(&mut self, request: Request) {
         self.request = Some(request);
         self.presented_frame = None;
+    }
+
+    /// Snippets, and the first evaluation of any scope, which loads plugins
+    /// and can block for seconds.
+    pub fn presents(&self, request: &Request) -> bool {
+        request.scope == "snippet" || !self.evaluated
     }
 
     pub fn is_pending(&self) -> bool {
@@ -27,6 +34,7 @@ impl Pending {
             return None;
         }
         self.presented_frame = None;
+        self.evaluated |= self.request.is_some();
         self.request.take()
     }
 
@@ -41,7 +49,7 @@ impl Pending {
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new().size(28.0));
                     ui.add_space(8.0);
-                    ui.heading(crate::i18n::t("snippet_loading"));
+                    ui.heading(crate::i18n::t("execution_running"));
                 });
                 ui.is_visible()
             });

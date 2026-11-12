@@ -26,6 +26,19 @@ impl ScriptEditor {
         code: &mut String,
         snippet: &crate::snippets::Snippet,
     ) -> Request {
+        self.write_cell(ctx, code, |code, caret| {
+            crate::snippet_insert::insert(code, caret, snippet)
+        })
+    }
+
+    /// Applies `write` (given the caret) as one undo step, then selects and
+    /// focuses the code of the returned request.
+    pub fn write_cell(
+        &mut self,
+        ctx: &egui::Context,
+        code: &mut String,
+        write: impl FnOnce(&mut String, usize) -> Request,
+    ) -> Request {
         use egui::text::CCursorRange;
         let id = egui::Id::unique("script_text");
         self.folds.reveal_all();
@@ -37,7 +50,7 @@ impl ScriptEditor {
         };
         let mut undoer = state.undoer();
         undoer.add_undo(&(before, code.clone()));
-        let request = crate::snippet_insert::insert(code, self.primary, snippet);
+        let request = write(code, self.primary);
         let selected = CCursorRange {
             primary: CCursor::new(request.chars.start),
             secondary: CCursor::new(request.chars.end),
@@ -52,6 +65,15 @@ impl ScriptEditor {
         self.flash = None;
         ctx.memory_mut(|memory| memory.request_focus(id));
         request
+    }
+
+    #[cfg(test)]
+    pub(crate) fn snippets(&self) -> &crate::snippets_ui::SnippetsPanel {
+        &self.snippets
+    }
+
+    pub fn snippets_open(&self) -> bool {
+        self.snippets.is_open()
     }
 
     pub fn executed(&mut self, request: Request) {
@@ -92,14 +114,6 @@ impl ScriptEditor {
             }
         });
         ui.small(crate::i18n::t("m015"));
-        egui::CollapsingHeader::new(crate::i18n::t("m016"))
-            .id_salt("m016")
-            .show(ui, |ui| {
-                ui.label(crate::i18n::t("m018"));
-                ui.label(crate::i18n::t("m019"));
-                ui.label(crate::i18n::t("m020"));
-                ui.label(crate::i18n::t("m021"));
-            });
         let size = ui.available_size();
         egui::ScrollArea::both()
             .id_salt("script_scroll")

@@ -1,24 +1,28 @@
-use crate::{bridge::Bridge, log::Log};
+use crate::{bridge::Bridge, log::Log, resources::Source};
 use serde_json::{json, Value};
 use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
 
-pub const TIMELINE_READ: &str = include_str!("timeline-read.js");
-pub const SURGE: &str = "org.surge-synth-team.surge-xt";
+pub static TIMELINE_READ: Source =
+    Source::new("src/timeline-read.js", include_str!("timeline-read.js"));
+static INSTRUMENT: Source = Source::new("src/instrument.js", include_str!("instrument.js"));
+static SCRIPT_API: Source = Source::new("src/script-api.js", include_str!("script-api.js"));
+/// The startup cell: prepares the first instrument before Ready.
+pub const INIT: &str = "include('builtin/init.js')";
 
 pub struct Control {
     bridge: Bridge,
     pub log: Log,
     pub ready: bool,
-    pub message: String,
-    pub instance: i64,
+    /// Every run's result line, oldest first.
+    pub results: Vec<String>,
     full_scan: bool,
     pub missing_surge: bool,
     gui_mode: bool,
-    create_started: bool,
-    target: String,
+    init_started: bool,
+    init: String,
     pub stopping: bool,
     closed: bool,
     prepare_deadline: crate::preparation::Deadline,
@@ -35,7 +39,6 @@ impl Control {
         self.full_scan = true;
         self.missing_surge = false;
         self.prepare_deadline.reset(Instant::now());
-        self.message = crate::i18n::t("m043").into();
         Ok(())
     }
     pub fn parameter_safety(&self, instance: i32, parameter: i32) -> Result<Value, String> {
@@ -45,7 +48,7 @@ impl Control {
         .map_err(|error| crate::i18n::render("ui_target", &[("instance", instance.to_string()), ("parameter", parameter.to_string()), ("error", error)]))
     }
     pub fn creation_requested(&self) -> bool {
-        self.create_started
+        self.init_started
     }
     pub fn pump_cli_messages(&self) -> Result<(), String> {
         let result = self.bridge.call(json!({"command":"cli-pump"}))?;
@@ -54,7 +57,8 @@ impl Control {
         }
         Ok(())
     }
-    pub fn open(mut log: Log, target: &str) -> Result<Self, String> {
+    /// `init` is the cell evaluated once the plugin catalog is scanned.
+    pub fn open(mut log: Log, init: &str) -> Result<Self, String> {
         let dll = crate::resources::bridge()?;
         let mut bridge = Bridge::load(&dll)?;
         let data = PathBuf::from(std::env::var_os("LOCALAPPDATA").ok_or(crate::i18n::t("m064"))?)
@@ -71,19 +75,18 @@ impl Control {
         if opened["bootstrap"] != "\"function\"" {
             return Err(crate::i18n::t("m046").into());
         }
-        bridge.call(json!({"command":"eval","code":include_str!("instrument.js")}))?;
-        bridge.call(json!({"command":"eval","code":include_str!("script-api.js")}))?;
+        bridge.call(json!({"command":"eval","code":INSTRUMENT.text()?}))?;
+        bridge.call(json!({"command":"eval","code":SCRIPT_API.text()?}))?;
         Ok(Self {
             bridge,
             log,
             ready: false,
-            message: crate::i18n::t("m043").into(),
-            instance: -1,
+            results: Vec::new(),
             full_scan: false,
             missing_surge: false,
             gui_mode: false,
-            create_started: false,
-            target: target.into(),
+            init_started: false,
+            init: init.into(),
             stopping: false,
             closed: false,
             prepare_deadline: crate::preparation::Deadline::new(Instant::now()),
@@ -104,10 +107,8 @@ impl Control {
             serde_json::from_str(events["result"].as_str().ok_or(crate::i18n::t("m047"))?)
                 .map_err(|e| e.to_string())?;
         for event in events.as_array().ok_or(crate::i18n::t("m048"))? {
-            self.log.event(
-                "api",
-                json!({"call":event,"reason":reason,"instance":self.instance,"track":0}),
-            )?;
+            self.log
+                .event("api", json!({"call":event,"reason":reason}))?;
         }
         result?
             .get("result")
@@ -117,17 +118,15 @@ impl Control {
     }
     pub fn observe(&mut self, window: &str) -> Result<Value, String> {
         let result = self.bridge.call(json!({"command":"observe"}))?;
-        self.log.event(
-            "observation",
-            json!({"window":window,"instance":self.instance,"track":0,"values":result}),
-        )?;
+        self.log
+            .event("observation", json!({"window":window,"values":result}))?;
         Ok(result)
     }
     pub fn read_timeline(&self) -> Result<Value, String> {
         // Public clip data plus private, read-only playback/display metadata.
         let reply = self
             .bridge
-            .call(json!({"command":"timeline-view", "code":TIMELINE_READ}))?;
+            .call(json!({"command":"timeline-view", "code":TIMELINE_READ.text()?}))?;
         let mut snapshot: Value =
             serde_json::from_str(reply["result"].as_str().ok_or(crate::i18n::t("m050"))?)
                 .map_err(|error| error.to_string())?;
@@ -136,9 +135,6 @@ impl Control {
     }
     pub fn read_notes(&self) -> Result<Vec<u8>, String> {
         let reply = self.bridge.call(json!({"command":"notes"}))?;
-        if reply["available"] != true {
-            return Err(crate::i18n::t("m051").into());
-        }
         reply["notes"]
             .as_array()
             .ok_or(crate::i18n::t("m052"))?
@@ -154,10 +150,6 @@ impl Control {
     }
     pub fn scope(&self) -> Option<&crate::scope::Scope> {
         self.bridge.scope()
-    }
-    pub fn loop_trace(&self, start: bool) -> Result<Value, String> {
-        self.bridge
-            .call(json!({"command":"loop-trace", "start":start}))
     }
     pub fn loop_checks(&self) -> Result<(), String> {
         self.bridge.call(json!({"command":"loop-checks"}))?;
@@ -176,65 +168,48 @@ impl Control {
             if !error.is_empty() {
                 return Err(crate::i18n::render("f015", &[("error", error.to_string())]));
             }
-            if !self.create_started && state["scanned"] == true {
+            if !self.init_started && state["scanned"] == true {
                 let scan_error = state["scanError"].as_str().unwrap_or("");
-                let catalog = self.eval("Array.from({length:uapmd.catalog.getCount()}, (_,i)=>uapmd.catalog.getPluginAt(i))", "catalog selection")?;
-                let catalog: Value = serde_json::from_str(&catalog).map_err(|e| e.to_string())?;
-                let decision =
-                    crate::preparation::decide(&catalog, &self.target, self.full_scan, scan_error)?;
-                if let crate::preparation::ScanDecision::Create(selected) = &decision {
-                    self.log.event(
-                        "catalog_selected",
-                        json!({"api":"uapmd.catalog.getPluginAt","plugin":selected}),
-                    )?;
-                    self.log.event("create_started", json!({"api":"AppModel::createPluginInstanceAsync","format":"CLAP","pluginId":self.target,"track":0}))?;
-                    self.bridge
-                        .call(json!({"command":"create","pluginId":self.target}))?;
-                    self.create_started = true;
-                } else if matches!(decision, crate::preparation::ScanDecision::FullScan) {
-                    self.bridge.call(json!({"command":"scan"}))?;
-                    self.full_scan = true;
-                    self.log.event(
-                        "scan_started",
-                        json!({"api":"AppModel::performPluginScanning","fastOnly":false}),
-                    )?;
-                } else if self.gui_mode && self.target == SURGE {
-                    self.missing_surge = true;
-                    self.prepare_deadline.pause();
-                    self.message = crate::i18n::t("install_missing").into();
-                    return Ok(());
-                } else if self.target == SURGE {
-                    return Err(crate::i18n::t("install_cli_missing").into());
-                } else {
+                if !scan_error.is_empty() {
                     return Err(crate::i18n::render(
-                        "f017",
-                        &[("arg0", self.target.clone())],
+                        "f016",
+                        &[("scan_error", scan_error.into())],
                     ));
                 }
-            }
-            if state["stateReady"] == true
-                && self.readiness_window.is_none()
-                && !self.readiness_draining
-            {
-                self.instance = state["instanceId"].as_i64().ok_or(crate::i18n::t("m056"))?;
-                self.log.event("create_completed", json!({"api":"AppModel::createPluginInstanceAsync / AudioPluginInstanceAPI::requestState","instance":self.instance,"track":0}))?;
-                let bytes = self.bridge.call(json!({"command":"state"}))?;
-                let state = decode_hex(bytes["hex"].as_str().ok_or(crate::i18n::t("m057"))?)?;
-                let info = crate::surge_state::verify(&state)?;
-                self.log.event("init_saw_verified", json!({"api":"AudioPluginInstanceAPI::requestState","instance":self.instance,"source":"actual newly created CLAP state","evidence":info,"bytes":state.len()}))?;
-                // Upstream can leave a stop flush pending while its engine is
-                // inactive. Process silence through the official engine before
-                // Ready, then drain/stop it. Otherwise that flush can discard the
-                // first script's NoteOn in its first active audio block.
-                self.eval(
-                    "uapmd.audio.setEngineEnabled(true)",
-                    "preparation: consume pending graph/stop flush",
-                )?;
-                let observed = self.observe("preparation silent readiness baseline")?;
-                self.readiness_window = Some((
-                    Instant::now(),
-                    observed["blocks"].as_u64().ok_or(crate::i18n::t("m058"))?,
-                ));
+                self.init_started = true;
+                match self.evaluate_init()? {
+                    Init::Prepared => {
+                        // Upstream can leave a stop flush pending while its engine is
+                        // inactive. Process silence through the official engine before
+                        // Ready, then drain/stop it. Otherwise that flush can discard the
+                        // first script's NoteOn in its first active audio block.
+                        self.eval(
+                            "uapmd.audio.setEngineEnabled(true)",
+                            "preparation: consume pending graph/stop flush",
+                        )?;
+                        let observed = self.observe("preparation silent readiness baseline")?;
+                        self.readiness_window = Some((
+                            Instant::now(),
+                            observed["blocks"].as_u64().ok_or(crate::i18n::t("m058"))?,
+                        ));
+                    }
+                    Init::MissingPlugin if !self.full_scan => {
+                        self.bridge.call(json!({"command":"scan"}))?;
+                        self.full_scan = true;
+                        self.init_started = false;
+                        self.log.event(
+                            "scan_started",
+                            json!({"api":"AppModel::performPluginScanning","fastOnly":false}),
+                        )?;
+                    }
+                    Init::MissingPlugin if self.gui_mode => {
+                        self.init_started = false;
+                        self.missing_surge = true;
+                        self.prepare_deadline.pause();
+                        return Ok(());
+                    }
+                    Init::MissingPlugin => return Err(crate::i18n::t("install_cli_missing").into()),
+                }
             }
             if let Some((started, blocks)) = self.readiness_window {
                 let observed = self.observe("preparation silent readiness baseline")?;
@@ -262,27 +237,26 @@ impl Control {
                 if self.readiness_draining {
                     self.readiness_draining = false;
                     self.ready = true;
-                    self.message = crate::i18n::t("m044").into();
-                    self.log.event("ready",json!({"instance":self.instance,"track":0,"readiness":"silent realtime progress and engine drain completed"}))?;
-                } else {
-                    self.message = crate::i18n::t("m037").into();
+                    self.log.event(
+                        "ready",
+                        json!({"readiness":"silent realtime progress and engine drain completed"}),
+                    )?;
                 }
             }
         }
         Ok(())
     }
     pub fn stop_script(&self) -> String {
-        let note_off = if self.instance >= 0 {
-            format!("uapmd.sequencer.sendNoteOff({}, 60);\n", self.instance)
-        } else {
-            String::new()
-        };
-        format!("uapmd.sequencer.stopPlayback();\n{note_off}uapmd.audio.setEngineEnabled(false);")
+        // Stopping a stopped transport leaves its all-notes-off flush pending until the next
+        // engine start, where it discards a Note On at position 0 in the same block.
+        "if (uapmd.timeline.getState().isPlaying) uapmd.sequencer.stopPlayback();\n\
+         for (const id of uapmd.sequencer.getInstanceIds()) uapmd.sequencer.sendNoteOff(id, 60);\n\
+         uapmd.audio.setEngineEnabled(false);"
+            .into()
     }
     pub fn stop(&mut self, reason: &str) -> Result<(), String> {
         self.eval(&self.stop_script(), reason)?;
         self.stopping = true;
-        self.message = crate::i18n::t("m045").into();
         Ok(())
     }
     pub fn run(&mut self, code: &str) -> Result<(), String> {
@@ -311,39 +285,30 @@ impl Control {
                 "sourceStartLine":request.first_line}),
         )?;
         let reason = format!("Run: {}", request.scope);
-        match self.eval(&request.code, &reason) {
-            Ok(result) => {
-                self.message = crate::i18n::render(
-                    "f018",
-                    &[
-                        ("arg0", crate::i18n::scope(request.scope).to_owned()),
-                        ("arg1", format!("{}", request.first_line)),
-                        ("result", result.to_string()),
-                    ],
-                );
-                Ok(result)
-            }
-            Err(error) => {
-                self.message = crate::i18n::render(
-                    "f019",
-                    &[
-                        ("arg0", crate::i18n::scope(request.scope).to_owned()),
-                        ("arg1", format!("{}", request.first_line)),
-                        ("error", error.to_string()),
-                    ],
-                );
-                Err(error)
-            }
-        }
+        let result = self.eval(&request.code, &reason);
+        let (key, name, text) = match &result {
+            Ok(value) => ("f018", "result", value),
+            Err(error) => ("f019", "error", error),
+        };
+        // The console shows a string result as its text, with its own line breaks.
+        let text = serde_json::from_str::<String>(text).unwrap_or_else(|_| text.clone());
+        self.results.push(crate::i18n::render(
+            key,
+            &[
+                ("arg0", crate::i18n::scope(request.scope).to_owned()),
+                ("arg1", format!("{}", request.first_line)),
+                (name, text),
+            ],
+        ));
+        result
     }
     pub fn read_plugin_state(
         &mut self,
-        instance: Option<i64>,
+        instance: i64,
         deadline: Instant,
     ) -> Result<Vec<u8>, String> {
-        self.bridge.call(
-            json!({"command":"request-state", "instanceId":instance.unwrap_or(self.instance)}),
-        )?;
+        self.bridge
+            .call(json!({"command":"request-state", "instanceId":instance}))?;
         loop {
             if Instant::now() >= deadline {
                 return Err(crate::i18n::t("m062").into());
@@ -374,6 +339,32 @@ impl Control {
         }
         self.log.event("cleanup", json!({"api":"unregister listeners / destroy runtime / AppModel::cleanupInstance / restore event loop","result":reply_value(&result)}))?;
         result.map(|_| ())
+    }
+}
+enum Init {
+    Prepared,
+    MissingPlugin,
+}
+impl Control {
+    /// Evaluates the startup cell; a plugin absent from the catalog is told
+    /// apart from other failures by the error the library marks.
+    fn evaluate_init(&mut self) -> Result<Init, String> {
+        let code = format!(
+            "(() => {{ try {{ (0, eval)({}); return JSON.stringify({{}}); }} catch (e) {{ \
+             return JSON.stringify({{error: e instanceof Error ? e.message : String(e), \
+             missing: !!(e && e.missingPlugin)}}); }} }})()",
+            serde_json::to_string(&self.init).map_err(|e| e.to_string())?
+        );
+        let reply: Value = serde_json::from_str::<String>(&self.eval(&code, "startup instrument")?)
+            .and_then(|text| serde_json::from_str(&text))
+            .map_err(|e| e.to_string())?;
+        self.log
+            .event("init_evaluated", json!({"code":self.init,"result":reply}))?;
+        match reply["error"].as_str() {
+            None => Ok(Init::Prepared),
+            Some(_) if reply["missing"] == true => Ok(Init::MissingPlugin),
+            Some(error) => Err(crate::i18n::render("f015", &[("error", error.into())])),
+        }
     }
 }
 impl Drop for Control {

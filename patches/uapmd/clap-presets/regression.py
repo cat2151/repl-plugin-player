@@ -8,7 +8,7 @@ import xml.etree.ElementTree as XML
 
 ROOT = Path(__file__).resolve().parents[3]
 # Test-owned topology and preset choice; built-in snippets may change freely.
-SETUP = """var presetTrack = uapmd.sequencer.getTrackInfos().find(t => t.nodes.some(n => n.instanceId === surgeId)).trackIndex;
+SETUP = """var presetTrack = 0;
 if (uapmd.timeline.createEmptyMidiClip(presetTrack, 0, 480, 120) < 0) throw new Error('clip creation failed');
 if (uapmd.instancing.create('CLAP', 'org.baconpaul.six-sines', -1) < 0) throw new Error('instrument creation failed');"""
 PRESET = 'Attacky'
@@ -57,9 +57,9 @@ def expected_parameters(factory, before):
     return expected
 
 
-def check(call, evaluate, pump, data):
+def check(call, evaluate, pump, data, instrument):
     def state():
-        call('request-state')
+        call('request-state', instanceId=instrument)
         end = time.monotonic() + 20
         while not call('poll')['stateReady']:
             assert time.monotonic() < end, 'State request timed out'
@@ -74,7 +74,7 @@ def check(call, evaluate, pump, data):
             job = evaluate(f"uapmd.mutations.getJob({int(job['jobId'])})")
         return job
 
-    presets = evaluate('uapmd.instance(surgeId).getPresets()')
+    presets = evaluate(f'uapmd.instance({instrument}).getPresets()')
     assert len(presets) > 600, 'Factory discovery did not finish'
     assert not any('\ufffd' in p['name'] for p in presets), 'Invalid UTF-8 metadata escaped'
     for expected in ('µcomputer', 'Sunrise Breakfast at the Digital Café', 'Wavetextures™ Pro Kit'):
@@ -90,7 +90,7 @@ def check(call, evaluate, pump, data):
     clips = evaluate('uapmd.sequencer.getTrackInfos().map(t => uapmd.timeline.getClips(t.trackIndex))')
     chosen = next(p for p in presets if p['name'] == PRESET)
     before = patch(state())
-    result = evaluate(f"uapmd.instance(surgeId).loadPreset({int(chosen['index'])})")
+    result = evaluate(f"uapmd.instance({instrument}).loadPreset({int(chosen['index'])})")
     # Pending MutationJob serializes null safely, without unwinding through QuickJS.
     assert result['state'] in ('running', 'completed')
     job = wait(result)
@@ -103,13 +103,13 @@ def check(call, evaluate, pump, data):
     assert expected.keys() <= loaded[1].keys(), 'Missing original parameters'
     assert all(abs(loaded[1][k] - v) <= 1e-6 * max(1, abs(v)) for k, v in expected.items()), 'Factory parameter mismatch outside documented legacy conversion' 
     for invalid in (-1, 2147483647):
-        failed = wait(evaluate(f'uapmd.instance(surgeId).loadPreset({invalid})'))
+        failed = wait(evaluate(f'uapmd.instance({instrument}).loadPreset({invalid})'))
         assert failed['state'] == 'failed' and failed['error'], failed
         assert evaluate('1 + 1') == 2, 'Runtime failed after rejected load'
     # The UTF-8 load boundary differs from the legacy provider boundary.
     for name in ('µcomputer', 'Sunrise Breakfast at the Digital Café', 'Wavetextures™ Pro Kit'):
         selected = next(p for p in presets if p['name'].casefold() == name.casefold())
-        job = wait(evaluate(f"uapmd.instance(surgeId).loadPreset({int(selected['index'])})"))
+        job = wait(evaluate(f"uapmd.instance({instrument}).loadPreset({int(selected['index'])})"))
         assert job['state'] == 'completed' and job['result']['success'], job
         assert patch(state())[0].casefold() == name.casefold(), name
     assert evaluate('uapmd.sequencer.getTrackInfos()') == topology, 'Preset changed track/node topology'

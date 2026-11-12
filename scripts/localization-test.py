@@ -58,8 +58,15 @@ def main():
             (source / f'{lang}.toml').write_text('\n'.join(line for line in lines if not line.startswith('m000 =')), encoding='utf-8')
         _, error = launch(exe, base, '--help', env=env, ok=False)
         assert 'do not match this executable' in error
-        # Root, debug and standalone layouts all use LocalAppData, even with bad source TOMLs.
-        layouts = [project, project / 'target/debug', base / 'standalone']
+        # Every exe inside the project reads the (here broken) source catalogs.
+        for directory in [project, project / 'target/debug']:
+            directory.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(EXE, directory / EXE.name)
+            _, error = launch(directory / EXE.name, ROOT, '--help', env=env, ok=False)
+            assert 'do not match this executable' in error
+        assert not (base / 'user').exists(), 'project exes must not extract catalogs'
+        # A standalone exe uses LocalAppData.
+        layouts = [base / 'standalone']
         for directory in layouts:
             directory.mkdir(parents=True, exist_ok=True)
             shutil.copy2(EXE, directory / EXE.name)
@@ -99,7 +106,7 @@ def main():
         assert (catalogs / 'ja.toml').read_bytes() == ja
         assert (catalogs / 'en.toml').read_bytes() == en
         assert set(p.name for p in catalogs.iterdir()) == {'en.toml', 'ja.toml'}
-    print('PASS real source-release/embedded-root/debug/standalone, foreign CWD, first/partial extraction, edits/restart/default merge, corrupt catalogs and concurrent startup')
+    print('PASS real source-release/source-root/source-debug/embedded-standalone, foreign CWD, first/partial extraction, edits/restart/default merge, corrupt catalogs and concurrent startup')
 
 
 if __name__ == '__main__':

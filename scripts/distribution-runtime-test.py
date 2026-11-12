@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
@@ -42,7 +43,7 @@ def main(package):
         replies = session(exe, elsewhere, [
             # Test-owned scripts: the embedded lib is reachable, and repl.ui is GUI-only.
             {'id': 1, 'command': 'eval', 'code': "uapmd.timeline.createEmptyMidiClip("
-             "include('builtin/lib/plugins.js').trackFor(surgeId).trackIndex, 0, 480, 120)"},
+             "0, 0, 480, 120)"},
             {'id': 2, 'command': 'eval', 'code': '({clips:uapmd.timeline.getClips(0).length,audio:uapmd.audio.isEngineEnabled()})'},
             {'id': 3, 'command': 'eval', 'code': "repl.ui.show({id:'package-probe', title:'probe', widgets:[]})"},
             {'id': 4, 'command': 'eval', 'code': "repl.ui.close('package-probe')"},
@@ -56,7 +57,11 @@ def main(package):
         # An adjacent external builtin directory must override the embedded set,
         # proving that a packaged exe does not reach back into its build source.
         builtin = app / 'snippets/builtin'
-        builtin.mkdir(parents=True)
+        (builtin / 'lib').mkdir(parents=True)
+        # Startup evaluates builtin/init.js, so an authoritative catalog carries it.
+        source = Path(__file__).resolve().parents[1] / 'snippets/builtin'
+        shutil.copy2(source / 'init.js', builtin / 'init.js')
+        shutil.copy2(source / 'lib/plugins.js', builtin / 'lib/plugins.js')
         (builtin / 'package-probe.js').write_text('({packagedOverride:42})', encoding='utf-8')
         replies = session(exe, elsewhere, [
             {'id': 1, 'command': 'snippet', 'group': 'Built-in', 'name': 'package-probe'},

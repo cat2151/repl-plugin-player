@@ -24,6 +24,26 @@ string(REPLACE "${script_api_anchor}" "${script_api_anchor}
         return choc::value::createString(std::string(repl_script_api(request.c_str())));
     });" script_api_source "${script_api_source}")
 string(PREPEND script_api_source "extern \"C\" const char* repl_script_api(const char*);\n")
+# loadPluginStateSync waits for a completion queued to this same thread; drain the queue
+# while waiting, as __remidy_project_load does.
+set(script_api_load_state "auto result = uapmd_app::AppModel::instance().loadPluginStateSync (instanceId, filepath);")
+string(REGEX MATCHALL "loadPluginStateSync \\(instanceId, filepath\\)" script_api_load_matches "${script_api_source}")
+list(LENGTH script_api_load_matches script_api_load_count)
+string(FIND "${script_api_source}" "${script_api_load_state}" script_api_load_position)
+if(NOT script_api_load_count EQUAL 1 OR script_api_load_position EQUAL -1)
+    script_api_failure("expected unique loadPluginStateSync call in __remidy_instance_load_state missing")
+endif()
+string(REPLACE "${script_api_load_state}" "auto loadPromise = std::make_shared<std::promise<uapmd_app::AppModel::PluginStateResult>>();
+        auto loadFuture = loadPromise->get_future();
+        uapmd_app::AppModel::instance().loadPluginState (instanceId, filepath,
+            [loadPromise] (uapmd_app::AppModel::PluginStateResult r) { loadPromise->set_value (std::move (r)); });
+        while (loadFuture.wait_for (std::chrono::seconds (0)) != std::future_status::ready)
+        {
+            if (remidy::EventLoop::runningOnMainThread())
+                remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
+        auto result = loadFuture.get();" script_api_source "${script_api_source}")
 get_target_property(script_api_sources uapmd-app-model SOURCES)
 list(FIND script_api_sources "src/UapmdJSRuntime.cpp" script_api_source_index)
 if(script_api_source_index EQUAL -1)

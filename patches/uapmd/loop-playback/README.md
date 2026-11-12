@@ -29,7 +29,7 @@ SMF 読込と sample 時刻変換は既存 MidiClipReader / MidiClipSourceNode �
 組立例は配布される `try-loop-mml` snippet。通常起動後にその snippet を実行し、
 `cegb` を編集して再実行する。同名 `main` は script の map 内で置き換わる。
 MML を `cegbdf` にすれば3拍、`crr` なら末尾の休符も含む1.5拍になる。
-両 loop snippet は `include('builtin/lib/loop.js')` から共通関数を読み込む。
+loop を鳴らす snippet は `include('builtin/lib/loop.js')` から共通関数を読み込む。
 `prepareLoopPart(trackIndex, input)` は別々の演奏用SMFと長さを準備し、
 SMF 保存は `lib/midi.js` と共有する。lib の読み込み自体では再生状態を変えない。
 `loopPhraseBeats` は cat-smf-editor の phrase_end と同じ parser → AST → channel末尾の
@@ -42,9 +42,15 @@ marker は計算用ASTだけに置き、演奏用SMFやpluginへ渡さない。�
 ```js
 var next = Object.assign({}, loopParts);
 next.second = prepareLoopPart(otherTrackIndex, 'drr');
-publishLoopParts(next, 120);
+playLoopParts(next, 120);
 ```
 
+`playLoopParts` は tutorial の `play()` と対になる入口で、loop だけが鳴る状態にする。
+全 track に通常 clip があるか loop が未確立なら、再生と音声エンジンを止め、確立済みの loop を
+`clearLoop()` で破棄し、全 track の通常 clip を消してから公開する。通常 clip が無く loop が
+確立済みなら停止せず、下の境界交換で更新する。公開後は各パートの track の instrument（先頭
+node）だけ bypass を解除し、音声エンジンを有効にして、止まっていれば再生を始める。
+`publishLoopParts` はその下請けで、通常 clip に触れない。
 `publishLoopParts` が最長パートを共通周期に選び、公開成功後だけ `loopParts` を交換する。
 短いパートは先頭から一度演奏して残りを休み、独立反復・伸縮・LCMを使わない。
 ファイル生成、パート名、map、長さの決定、再生開始は script 所有で、native は抱き合わせない。
@@ -101,7 +107,9 @@ MML 変換器から求め、音高・音長の意味は MML ライブラリ側�
 `python scripts/loop-entry-test.py` は各 loop snippet を新しい session で検証し、
 通常再生からの初回導入で1回だけ停止すること、再実行・更新・不正更新で追加停止しないこと、
 既存clipと公開済みmapを保全することを確認する。
-`regression.rs` の先頭も通常再生中から開始し、最初のノートを含む順序・sample間隔・master信号を検証する。
+`python scripts/e2e.py loop-replaces-clips` は通常再生の後に `playLoopParts` を呼び、
+plugin の無い track を含む全 track の通常 clip が消え、以後の Note On が loop の音高だけになることを確認する。
+`loop.js`・`loop-update.js`（`--e2e` の case。build 不要）の先頭も通常再生中から開始し、最初のノートを含む順序・sample間隔・master信号を検証する。
 既存 note-monitor に、検証時だけ有効な 16384 件のプラグイン入力 trace を接続する。
 sample frame と Note On/Off を atomic 配列へ記録し、control thread が読む。
 容量超過は検証失敗とする。master 出力の信号検証も併用する。
@@ -114,7 +122,7 @@ native_regression.hppではproductionの選択・配送処理を使い、境界�
 Stop で予約が取り消された後の表示を検証する。
 `python scripts/e2e.py timeline-view` は未使用 track の非表示、明示的な空 track の保持と reindex、
 開始位置を持つ和音 clip、通常 clip と loop の共存、停止・clear 後の表示を実モデルで確認する。
-`dynamic.rs` は2→3→1.5拍、休符、不正入力時のmap・音列・周期保全、
+`loop-update.js` は2→3→1.5拍、休符、不正入力時のmap・音列・周期保全、
 先読み差のある2trackの最長選択と短縮、transport範囲を実配送とmaster信号で確認する。
 trace は Program Change も別のatomic counterで数え、検出markerの不配送を検証する。
 既存の `timeline note-monitor mml-clip chord-clip snippets partial-run stop-run` も実行する。

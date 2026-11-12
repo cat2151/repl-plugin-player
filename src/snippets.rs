@@ -21,8 +21,12 @@ const BUILTIN_ORDER: &[&str] = &[
     "try-loop-mml-multi-track",
     "try-instrument",
     "try-parameter-ui",
+    "try-patch-browse",
     "play",
     "stop-playback",
+    "show-instrument-ui",
+    "show-effect-ui",
+    "set-track-volume",
     "close-parameter-ui",
     "add-midi-clip",
 ];

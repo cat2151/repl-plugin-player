@@ -68,8 +68,7 @@ pub fn arguments(args: &[String], default: &str) -> Result<(Vec<String>, String)
 
 pub fn initialize(args: &[String]) -> Result<Vec<String>, String> {
     let (args, language) = arguments(args, os_language())?;
-    let start = crate::resources::executable_directory()?;
-    let catalog = if let Some(root) = crate::resources::release_root(&start) {
+    let catalog = if let Some(root) = crate::resources::source_root() {
         Catalog::load(&root.join("locales"), &language)?
     } else {
         let directory = crate::resources::user_directory()?.join("locales");
@@ -219,10 +218,15 @@ pub fn snippet_name(name: &str) -> &str {
         "try-loop-mml-multi-track" => t("name_try_loop_mml_multi_track"),
         "try-instrument" => t("name_try_instrument"),
         "try-parameter-ui" => t("name_try_parameter_ui"),
+        "try-patch-browse" => t("name_try_patch_browse"),
         "close-parameter-ui" => t("name_close_parameter_ui"),
         "add-midi-clip" => t("name_add_midi_clip"),
         "play" => t("name_play"),
         "stop-playback" => t("name_stop_playback"),
+        "show-instrument-ui" => t("name_show_instrument_ui"),
+        "show-effect-ui" => t("name_show_effect_ui"),
+        "set-track-volume" => t("name_set_track_volume"),
+        "api-list" => t("name_api_list"),
         _ => name,
     }
 }

@@ -78,6 +78,9 @@ def main():
         # An external builtin catalog overrides embedded files and is reread in-session.
         builtin = standalone.parent / 'snippets/builtin/lib'
         builtin.mkdir(parents=True)
+        # Startup evaluates builtin/init.js, so an authoritative catalog carries it.
+        shutil.copy2(ROOT / 'snippets/builtin/init.js', builtin.parent / 'init.js')
+        shutil.copy2(ROOT / 'snippets/builtin/lib/plugins.js', builtin / 'plugins.js')
         probe = builtin / 'probe.js'
         probe.write_text('41', encoding='utf-8')
         session = launch(standalone)

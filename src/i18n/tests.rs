@@ -34,12 +34,13 @@ fn catalogs_and_resource_layouts_fail_closed() {
     for (lang, source) in catalog::EMBEDDED {
         std::fs::write(root.join(format!("locales/{lang}.toml")), source).unwrap();
     }
-    assert_eq!(
-        crate::resources::release_root(&root.join("target/release")).unwrap(),
-        root
-    );
-    assert!(crate::resources::release_root(&root).is_none());
-    assert!(crate::resources::release_root(&root.join("target/debug")).is_none());
+    for start in [
+        root.clone(),
+        root.join("target/release"),
+        root.join("target/debug"),
+    ] {
+        assert_eq!(crate::resources::project_root(&start).unwrap(), root);
+    }
     assert!(Catalog::load(&root.join("locales"), "ja").is_ok());
     std::fs::write(root.join("locales/ja.toml"), "m000 = 'custom'").unwrap();
     assert!(Catalog::load(&root.join("locales"), "ja").is_err());
@@ -59,7 +60,7 @@ fn catalogs_and_resource_layouts_fail_closed() {
     assert_eq!(std::fs::read(&path).unwrap(), before);
     assert!(crate::resources::project_root(&root).is_some());
     std::fs::write(root.join("Cargo.toml"), "[package]\nname = 'other-project'").unwrap();
-    assert!(crate::resources::release_root(&root.join("target/release")).is_none());
+    assert!(crate::resources::project_root(&root.join("target/release")).is_none());
     let resolved = root.canonicalize().unwrap();
     let temporary = std::env::temp_dir().canonicalize().unwrap();
     assert!(resolved.starts_with(&temporary) && resolved != temporary);

@@ -10,7 +10,7 @@ EXE = ROOT / "target/release/repl-plugin-player.exe"
 LOGS = Path(os.environ["LOCALAPPDATA"]) / "repl-plugin-player/logs"
 CASES = ["cold", "sample", "rerun", "stop", "close", "syntax", "missing",
          "close-preparing", "close-creating", "mutation-close",
-         "syntax-sustain", "runtime-error", "stop-run", "timeline", "timeline-view", "note-monitor", "scope", "partial-run", "snippets", "tutorials", "demo-play", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update"]
+         "syntax-sustain", "runtime-error", "stop-run", "timeline", "timeline-view", "note-monitor", "scope", "partial-run", "snippets", "tutorials", "demo-play", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-browse", "state-load", "track-use", "reset-first-note"]
 
 
 def main():
@@ -25,7 +25,7 @@ def main():
                 child.kill()
                 child.communicate()
                 raise RuntimeError(f"{case}: process {child.pid} timed out")
-            paths = [path for path in LOGS.glob(f"*-{child.pid}.jsonl") if path not in existing]
+            paths = [path for path in LOGS.glob(f"*_{child.pid}.jsonl") if path not in existing]
             if child.returncode or len(paths) != 1:
                 raise RuntimeError(f"{case}: exit {child.returncode}, logs {paths}; "
                                    f"{stdout[-1000:]!r} {stderr[-1000:]!r}")
@@ -34,17 +34,17 @@ def main():
             assert any(e["event"] == "cleanup" and e["details"]["result"]["ok"] for e in events), paths[0]
             calls = [e for e in events if e["event"] == "api"]
             note_on = [e for e in calls if e["details"]["call"]["api"] == "uapmd.sequencer.sendNoteOn"]
-            if case in ("syntax", "missing", "close-preparing", "close-creating", "mutation-close", "timeline", "timeline-view", "partial-run", "snippets", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update"):
+            if case in ("syntax", "missing", "close-preparing", "close-creating", "mutation-close", "timeline", "timeline-view", "partial-run", "snippets", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-browse", "state-load", "track-use", "reset-first-note"):
                 assert not note_on, f"{case}: unexpected NoteOn"
             elif case in ("tutorials", "demo-play"):
                 pass  # Built-in snippets may play notes however the user writes them.
             elif case == "stop-run":
                 assert len(note_on) == 2, paths[0]
             elif case == "note-monitor":
-                assert len(note_on) == 5, paths[0]
+                assert len(note_on) == 7, paths[0]
             elif case == "scope":
-                assert len(note_on) == 3, paths[0]
-                assert [e["details"]["note"] for e in events if e["event"] == "scope_verified"] == [60, 72, 67], paths[0]
+                assert len(note_on) == 4, paths[0]
+                assert [e["details"]["note"] for e in events if e["event"] == "scope_verified"] == [60, 72, 67, 64], paths[0]
             else:
                 assert len(note_on) == 1, paths[0]
             # Run/error must never inject audio calls. Explicit test scripts
@@ -66,7 +66,14 @@ def main():
                                     and e["details"]["reason"] not in
                                     ("E2E Stop before new Run", "E2E complete", "normal exit")]
                 assert not implicit_disable, paths[0]
-            summary = next((e["details"] for e in events if e["event"] == "signal_check"), {})
+            if case in ("mml-clip", "chord-clip"):
+                generated = LOGS.parent / "generated-midi"
+                found = [e["details"]["value"] for e in events if e["event"] == "e2e_cell"
+                         and e["details"]["title"].startswith("generated paths")]
+                assert len(found) == 1 and all(Path(p).parent == generated for p in found[0]), found
+            cells = [e["details"]["value"] for e in events if e["event"] == "e2e_cell"]
+            summary = next((e["details"] for e in events if e["event"] == "signal_check"),
+                           cells[-1] if cells else {})
             print(f"PASS {case}: {json.dumps(summary)} | {paths[0]}", flush=True)
 
 

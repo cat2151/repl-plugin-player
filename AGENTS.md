@@ -12,6 +12,7 @@
 - 完了報告前に試行用設定と失敗残骸を確認し、不要なものを除去する。報告では実際に成功した方法、検証範囲、未解決の原因を区別し、既存キャッシュでの成功を新規環境での再現性確認として扱わない。
 
 # 依存ライブラリへのローカル補修
+- 次をすべて満たす補修は、撤去すれば戻せるので合意済みとして扱い、自走中でも導入してよい（説明書・回帰テスト・報告文は下の規則どおり揃える）: `patches/uapmd/<補修名>/` と `native/CMakeLists.txt` の `include` 1行（と下の補修一覧）だけで済み、依存checkout・既存の補修・ビルド方式・依存バージョンを変えない。これを外れる補修だけ、先に合意を得る。理由: 戻せる補修で止まると自走が止まり、合意を避けるために設計も曲がる。
 - 補修の導入前に、目的、適用場所、依存checkoutを書き換えるか、再clone・既存キャッシュ・上流更新時の挙動と再現性への影響をuserへ説明する。変更範囲の合意が必要な場合は先に得る。合意済みの範囲は聞き直さない。
 - UAPMDへの補修は `patches/uapmd/<補修名>/` に処理、回帰テスト、説明書、作者向け報告文をまとめる。生成ソースは既定の `target/shim` 内に置き、依存checkoutを直接書き換えない。
 - 説明書には原因、適用条件、検証した上流リビジョン、再適用の仕組み、適用失敗時の調査手順、上流対応後の撤去条件、作者への報告状態（未報告／報告済み・リンク）を残す。報告文の作成を外部送信の許可として扱わない。
@@ -23,6 +24,10 @@
 - cargoのclippyとfmtを使うこと
 - リリースビルド（ cargo build --release ）をすること
 
+# build の境界
+- repo の中の exe（`target/release` など）は `.js`・`.toml` を disk から読むので（判定は `src/resources.rs` の `source_root` 1本）、それだけを変えたときは build しない。build が要るのは `.rs`・`native/` を変えたときだけ。理由: JS を調べたり直したりするたびに release build を回すのが一番の無駄。
+- JS は `.js` ファイルに書き、Rust の文字列に JS のシナリオを書かない。E2E の JS は `tests/e2e/<case>.js`・`patches/uapmd/*/<case>.js` の cell に書き、検査が Rust の case も cell を title で引く（`src/e2e_script.rs`）。理由: Rust に書いた JS は、直すたびに build が要る。
+
 # Codexへ
 - Computer useを使う前に、「scriptを生成してCLI実行可能か？」を検討し、可能ならCLIを選ぶこと
 
@@ -33,6 +38,7 @@
 - `snippets/builtin/` の snippet は全部、user が常に手直しする前提の内容（音符・plugin・preset・parameter値・名前・並び）である。AIが書いた内容を正としてテストで固定しない。snippet を使うテストが見るのは「実行してエラーにならないか」だけにし、音高・音長・音色・名前などを期待値にしない。理由: AIが選ぶ内容は美的に使えず、user が直すたびにテストが落ちると改善の邪魔になる。
 - テストが特定の内容を必要とするときは、snippet を読まずにテスト専用の script を持つ。理由: snippet を書き換えてもテストが壊れないようにする。
 - `snippets/builtin/lib/` には plugin・preset・effect・parameter値・tempo・音符などの決め打ちを置かず、呼出し側の snippet が引数で渡す。理由: lib は snippet から再利用される部品であり、内容の選択は snippet 側に属する。
+- snippet の cell は `{ ... }` で包み、中の宣言は `const`/`let` にする。track 番号は `const loopTrack = 0;` のような役割の分かる説明変数を経由して渡し、関数の引数に `0` や `1` を直接書かない。理由: cell は1つずつ別の global script として評価されるので、トップレベルの `const`/`let` は再実行で `redeclaration` エラーになり、`var` は global に漏れて cell 同士を暗黙につなぐ。
 
 # API追加
 - 追加するuapmd APIや、repl APIは、極力薄いwrapを小さく作るだけ（どうしてもそれがないと動かない or 遅すぎて音が途切れてしまう というときだけ作る）にして、基本的にはscript側の記述で組み立てる。
@@ -41,3 +47,7 @@
 - MMLやコード進行は基本的に `>cg<cg` や `Isus4-I` を書く。これらはloopで使っても適切である
 - デフォルトのt120 l8 o5 はMMLに書かない。長い音符が必要なときだけl4等を書く。octave upしたいときだけ `<` を書く、octave downしたいときだけ `>` を書く
 - show UIやパラメーター変更UIのsnippetsを書くときは、演奏をloopさせる
+
+# ADR
+- 複数の「どれも採用する価値がある」アーキテクチャからcontextに応じて1つ選んだときはADRに残すこと。書くトリガーとformatは、../cat-smf-editor ../cat-plugin-player を参照
+  - 「これは誰でもこれ1つに決めるだろう」というものはADRに書かない

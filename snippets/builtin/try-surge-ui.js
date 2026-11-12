@@ -1,19 +1,17 @@
 // %% @text name_try_surge_ui
 // @text demo_reset
-(() => {
-    var demo = include('builtin/lib/tutorial.js');
+{
+    const loopTrack = 0;
+    const demo = include('builtin/lib/tutorial.js');
     demo.reset();
 
-    var loopTrack = include('builtin/lib/plugins.js').trackFor(globalThis.surgeId, 'snippet_00');
-    var loopNext = Object.assign({}, globalThis.loopParts || {});
-    var {loopPhraseBeats, prepareLoopPart, publishLoopParts} = include('builtin/lib/loop.js');
-    loopNext.main = prepareLoopPart(loopTrack.trackIndex, ">cg<cg");
-    publishLoopParts(loopNext, 120);
-    uapmd.audio.setEngineEnabled(true);
-    if (!uapmd.timeline.getState().isPlaying) uapmd.sequencer.startPlayback();
+    const loopNext = Object.assign({}, globalThis.loopParts || {});
+    const {prepareLoopPart, playLoopParts} = include('builtin/lib/loop.js');
+    loopNext.main = prepareLoopPart(loopTrack, ">cg<cg");
+    playLoopParts(loopNext, 120);
 
     // @text demo_levels
-    var synth = demo.preparePreset(globalThis.surgeId, 'Init Saw');
+    const synth = demo.preparePreset(include('builtin/lib/patch.js').use({format:'CLAP', plugin:'Surge XT', track:loopTrack}).instanceId, 'Init Saw');
     uapmd.instance(synth.instanceId).showUI();
-    return synth;
-})();
+    synth;
+}

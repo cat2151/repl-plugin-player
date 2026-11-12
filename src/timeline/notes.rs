@@ -21,10 +21,6 @@ fn integer(value: &Value) -> Option<u64> {
     })
 }
 
-pub fn notes(events: &Value) -> Vec<Note> {
-    notes_at(events, "tick")
-}
-
 pub(super) fn notes_at(events: &Value, time_key: &str) -> Vec<Note> {
     let mut notes: Vec<Note> = Vec::new();
     let mut held: HashMap<(u8, u8, u8), VecDeque<usize>> = HashMap::new();
@@ -92,7 +88,7 @@ mod tests {
             {"tick": 60, "words": [0x40903c00u32, 0]},
             {"tick": 70, "words": [0x40903e00u32]}
         ]);
-        let result = notes(&events);
+        let result = notes_at(&events, "tick");
         assert_eq!(result.len(), 4);
         assert_eq!(result[0].end, Some(30));
         assert_eq!(result[1].end, Some(60));

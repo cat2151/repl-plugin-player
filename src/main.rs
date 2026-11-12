@@ -1,16 +1,24 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod bridge;
 mod cli;
+mod config;
 mod control;
-mod demo_play_e2e;
 mod e2e;
+mod e2e_script;
 mod execution;
 mod execution_e2e;
+mod external_editor;
 mod gui;
+mod host;
 mod i18n;
 mod install;
 mod keyboard;
 mod log;
+mod patch_browse;
+mod patch_browse_e2e;
+mod patch_browser;
+mod patch_cell;
+mod patch_state;
 mod preparation;
 mod resources;
 mod scope;
@@ -28,10 +36,23 @@ mod snippet_insert;
 mod snippets;
 mod snippets_e2e;
 mod snippets_ui;
-mod surge_state;
 mod syntax_highlight;
 mod timeline;
 mod tutorials_e2e;
+
+// cat-plugin-player's resident protocol and the types it names, from its source
+// of truth. This app uses only part of them.
+#[path = "../../cat-plugin-player/shared/drum_kit.rs"]
+#[allow(dead_code)]
+mod drum_kit;
+#[path = "../../cat-plugin-player/shared/patch_identity.rs"]
+mod patch_identity;
+#[path = "../../cat-plugin-player/shared/patch_reference.rs"]
+#[allow(dead_code)]
+mod patch_reference;
+#[path = "../../cat-plugin-player/shared/resident_ipc.rs"]
+#[allow(dead_code)]
+mod resident_ipc;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

@@ -9,7 +9,7 @@ import runpy
 
 ROOT = Path(__file__).resolve().parents[1]
 LIBS = """var {loopPhraseBeats, prepareLoopPart, publishLoopParts} = include('builtin/lib/loop.js');
-var entryTrack = include('builtin/lib/plugins.js').trackFor(globalThis.surgeId);
+var entryTrack = uapmd.sequencer.getTrackInfos().find(t => t.trackIndex === 0);
 """
 PLAY = LIBS + """var midi = include('builtin/lib/midi.js');
 midi.addFile(entryTrack.trackIndex, midi.writeMml(cmrt_chord.resolve_chord_or_mml('cde').mml));

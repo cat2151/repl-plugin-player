@@ -15,7 +15,7 @@ user32.PostMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
 user32.PostThreadMessageW.argtypes = [w.DWORD, w.UINT, w.WPARAM, w.LPARAM]
 user32.SendMessageTimeoutW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM, w.UINT, w.UINT, c.POINTER(c.c_size_t)]
 user32.SendMessageTimeoutW.restype = c.c_ssize_t
-SHOW_SURGE = 'uapmd.instance(surgeId).showUI()'
+SHOW_SURGE = 'uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).showUI()'
 
 
 def windows(pid):

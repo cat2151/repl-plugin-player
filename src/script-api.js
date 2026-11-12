@@ -54,6 +54,54 @@ globalThis.repl = {text: function(key, values) { return __replCall('text', {key:
 
 repl.processEvents = function() { return __replCall('control.processEvents', {}); };
 repl.audio = {isProcessing: function() { return __replCall('audio.isProcessing', {}); }};
+// The track's volume as a linear gain (1 keeps the level, 0 silences it), as uapmd's track slider sets it.
+// setVolume also takes decibels as a string such as '-3dB'.
+// Both return the volume the track now has, as a linear gain.
+repl.track = {
+    volume: function(trackIndex) { return __replCall('track.volume', {trackIndex:trackIndex}); },
+    setVolume: function(trackIndex, volume) {
+        if (typeof volume === 'string') {
+            const decibels = /^\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*dB\s*$/i.exec(volume);
+            if (!decibels) throw new Error('Invalid track volume: ' + volume);
+            volume = Math.pow(10, Number(decibels[1]) / 20);
+        }
+        if (!(Number.isFinite(volume) && volume >= 0)) throw new Error('Invalid track volume');
+        return __replCall('track.setVolume', {trackIndex:trackIndex, volume:volume});
+    }
+};
+// The instance whose output the player's scope shows; -1 for none.
+repl.scope = {
+    target: function() { return __replCall('scope.target', {}); },
+    setTarget: function(instanceId) { return __replCall('scope.setTarget', {instanceId:instanceId}); }
+};
+// Native observations for test scripts. observe(): the master output's latest
+// 256 samples as {finite, peak, rms} with {blocks, engineEnabled, dispatcherPlaying}.
+// notes(): pitches the scope target's plugin input holds now.
+// loopTrace(start): {events:[{frame, note, on, instance}], overflow, programChanges, timing}
+// of plugin input since the last loopTrace(true); start needs a stopped device.
+// loopChecks(): the native loop-playback regression; throws on a failure.
+// pluginState(instanceId): the instance's whole state as a hex string, within five seconds.
+repl.test = {
+    observe: function() { return __replCall('test.observe', {}); },
+    notes: function() { return __replCall('test.notes', {}); },
+    loopTrace: function(start) { return __replCall('test.loopTrace', {start:start === true}); },
+    loopChecks: function() { return __replCall('test.loopChecks', {}); },
+    pluginState: function(instanceId) { return __replCall('test.pluginState', {instanceId:instanceId}); }
+};
+// The player's catalog patch `patch` (its display path) as a state file for `pluginId`.
+repl.patchState = function(options) {
+    return __replCall('patchState', {format:options.format, pluginId:options.pluginId, patch:options.patch});
+};
+
+// cat-plugin-player's patch browser. poll() returns what arrived since the last call:
+// {kind:'selected', format, pluginId, plugin, patch, stateFile} or {kind:'closed', error}.
+// answer(error) replies to the last selected; the player offers the next one after it.
+// open({track}) names the browsed track, which the cell of the chosen patch sets.
+repl.patchBrowser = {
+    open: function(options) { return __replCall('patchBrowser.open', {track:options.track}); },
+    poll: function() { return __replCall('patchBrowser.poll', {}); },
+    answer: function(error) { return __replCall('patchBrowser.answer', {error:error === undefined ? null : error}); }
+};
 
 repl.ui = {
     show: function(definition) { return __replCall('ui.show', {definition:definition}); },

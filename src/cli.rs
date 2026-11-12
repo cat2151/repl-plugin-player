@@ -1,5 +1,5 @@
 use crate::{
-    control::{Control, SURGE},
+    control::{Control, INIT},
     execution,
     log::Log,
     snippets::Library,
@@ -95,15 +95,12 @@ fn session(options: &Options, deadline: Instant, output: &mut File) -> Result<()
     };
     let log = Log::new()?;
     let log_path = log.path.clone();
-    let mut app = Control::open(log, SURGE)?;
+    let mut app = Control::open(log, INIT)?;
     let execution = (|| {
         while !app.ready {
             pump(&mut app, deadline)?;
         }
-        output::emit(
-            output,
-            json!({"event":"ready", "ok":true, "log":log_path, "instanceId":app.instance}),
-        )?;
+        output::emit(output, json!({"event":"ready", "ok":true, "log":log_path}))?;
         if let Some(path) = &options.script {
             let result = command(
                 &mut app,
@@ -190,15 +187,10 @@ fn command(app: &mut Control, request: &Value, deadline: Instant) -> Result<Valu
             }
         }
         "state" => {
-            let instance = request
-                .get("instanceId")
-                .map(|value| {
-                    value
-                        .as_i64()
-                        .filter(|id| (0..=i64::from(i32::MAX)).contains(id))
-                        .ok_or_else(|| crate::i18n::t("m081").to_owned())
-                })
-                .transpose()?;
+            let instance = request["instanceId"]
+                .as_i64()
+                .filter(|id| (0..=i64::from(i32::MAX)).contains(id))
+                .ok_or_else(|| crate::i18n::t("m081").to_owned())?;
             Ok(json!(app.read_plugin_state(instance, deadline)?))
         }
         "eval" | "script" | "snippet" => {

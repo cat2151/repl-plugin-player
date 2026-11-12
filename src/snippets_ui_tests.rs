@@ -177,3 +177,220 @@ fn window_and_preview_follow_viewport_height() {
         previous_preview_height = preview.height();
     }
 }
+
+fn editor_frame(
+    ctx: &egui::Context,
+    editor: &mut crate::script_editor::ScriptEditor,
+    code: &mut String,
+    events: Vec<Event>,
+) -> Vec<egui::epaint::ClippedShape> {
+    let output = ctx.run_ui(
+        RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(1000.0, 500.0))),
+            events,
+            ..Default::default()
+        },
+        |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
+                assert!(editor.show(ui, code, true).is_none());
+            });
+        },
+    );
+    let shapes = output.shapes.clone();
+    output.drop_without_applying_deltas();
+    shapes
+}
+
+fn click(pos: Pos2, pressed: bool) -> Event {
+    Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    }
+}
+
+/// Opens the snippets window with a real button click, as the user does.
+fn open_snippets(ctx: &egui::Context) -> (crate::script_editor::ScriptEditor, String) {
+    let mut editor = crate::script_editor::ScriptEditor::default();
+    let mut code = "let a = 1;
+"
+    .to_string();
+    let shapes = editor_frame(ctx, &mut editor, &mut code, vec![]);
+    let button = text_rect(&shapes, crate::i18n::t("m022")).0.center();
+    ctx.memory_mut(|memory| memory.request_focus(egui::Id::unique("script_text")));
+    editor_frame(ctx, &mut editor, &mut code, vec![]);
+    editor_frame(
+        ctx,
+        &mut editor,
+        &mut code,
+        vec![Event::PointerMoved(button), click(button, true)],
+    );
+    editor_frame(ctx, &mut editor, &mut code, vec![click(button, false)]);
+    editor_frame(ctx, &mut editor, &mut code, vec![]);
+    assert!(editor.snippets().open, "snippets window must be open");
+    assert!(
+        ctx.memory(|memory| memory.has_focus(egui::Id::unique("snippet_filter"))),
+        "opening must focus the filter"
+    );
+    (editor, code)
+}
+
+fn assert_slash_focuses_filter(
+    ctx: &egui::Context,
+    editor: &mut crate::script_editor::ScriptEditor,
+    code: &mut String,
+) {
+    let original = code.clone();
+    editor_frame(ctx, editor, code, vec![Event::Text("/".into())]);
+    editor_frame(ctx, editor, code, vec![]);
+    let focused = ctx.memory(|memory| memory.focused());
+    let filter = egui::Id::unique("snippet_filter");
+    assert!(
+        focused == Some(filter) && *code == original && editor.snippets().filter.is_empty(),
+        "focus={focused:?} (want {filter:?}) code={code:?} filter={:?}",
+        editor.snippets().filter
+    );
+}
+
+#[test]
+fn slash_moves_focus_from_code_to_open_snippets_filter() {
+    let ctx = egui::Context::default();
+    let (mut editor, mut code) = open_snippets(&ctx);
+    let script = egui::Id::unique("script_text");
+    ctx.memory_mut(|memory| memory.request_focus(script));
+    editor_frame(&ctx, &mut editor, &mut code, vec![]);
+    assert!(ctx.memory(|memory| memory.has_focus(script)));
+    assert_slash_focuses_filter(&ctx, &mut editor, &mut code);
+}
+
+#[test]
+fn slash_is_text_inside_snippets_filter() {
+    let ctx = egui::Context::default();
+    let (mut editor, mut code) = open_snippets(&ctx);
+    let original = code.clone();
+    editor_frame(
+        &ctx,
+        &mut editor,
+        &mut code,
+        vec![Event::Text("a/b".into())],
+    );
+    editor_frame(&ctx, &mut editor, &mut code, vec![Event::Text("/".into())]);
+    assert_eq!(editor.snippets().filter, "a/b/");
+    assert_eq!(code, original);
+}
+
+#[test]
+fn slash_is_text_inside_snippet_name() {
+    let ctx = egui::Context::default();
+    let (mut editor, mut code) = open_snippets(&ctx);
+    let name = egui::Id::unique("snippet_name");
+    ctx.memory_mut(|memory| memory.request_focus(name));
+    editor_frame(&ctx, &mut editor, &mut code, vec![]);
+    assert!(ctx.memory(|memory| memory.has_focus(name)));
+    let original = code.clone();
+    editor_frame(&ctx, &mut editor, &mut code, vec![Event::Text("/".into())]);
+    editor_frame(&ctx, &mut editor, &mut code, vec![]);
+    assert_eq!(editor.snippets().name, "/");
+    assert!(editor.snippets().filter.is_empty());
+    assert_eq!(code, original);
+    assert!(ctx.memory(|memory| memory.has_focus(name)));
+}
+
+fn key(key: egui::Key, modifiers: egui::Modifiers) -> Event {
+    Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers,
+    }
+}
+
+#[test]
+fn ctrl_shift_p_opens_snippets_with_filter_focused() {
+    let ctx = egui::Context::default();
+    let mut editor = crate::script_editor::ScriptEditor::default();
+    let mut code = "let a = 1;\n".to_string();
+    let script = egui::Id::unique("script_text");
+    editor_frame(&ctx, &mut editor, &mut code, vec![]);
+    ctx.memory_mut(|memory| memory.request_focus(script));
+    editor_frame(&ctx, &mut editor, &mut code, vec![]);
+    let shortcut = egui::Modifiers::CTRL | egui::Modifiers::SHIFT;
+    editor_frame(
+        &ctx,
+        &mut editor,
+        &mut code,
+        vec![key(egui::Key::P, shortcut)],
+    );
+    editor_frame(&ctx, &mut editor, &mut code, vec![]);
+    assert!(editor.snippets().open);
+    assert_eq!(code, "let a = 1;\n");
+    assert!(ctx.memory(|memory| memory.has_focus(egui::Id::unique("snippet_filter"))));
+    // Typing goes straight into the filter.
+    editor_frame(&ctx, &mut editor, &mut code, vec![Event::Text("ab".into())]);
+    assert_eq!(editor.snippets().filter, "ab");
+}
+
+#[test]
+fn arrows_in_filter_select_matching_rows_and_enter_runs() {
+    let ctx = egui::Context::default();
+    let snippet = |name: &str| Snippet {
+        name: name.into(),
+        group: "User",
+        code: format!("{name}();"),
+    };
+    let mut panel = SnippetsPanel {
+        open: true,
+        filter: "keep".into(),
+        entries: vec![snippet("keep-a"), snippet("drop"), snippet("keep-b")],
+        ..Default::default()
+    };
+    let run = |panel: &mut SnippetsPanel, events: Vec<Event>| {
+        let mut chosen = None;
+        let output = ctx.run_ui(
+            RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(1000.0, 500.0))),
+                events,
+                ..Default::default()
+            },
+            |ui| {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    chosen = panel.show(ui, "", 0, true);
+                });
+            },
+        );
+        output.drop_without_applying_deltas();
+        chosen
+    };
+    run(&mut panel, vec![]);
+    ctx.memory_mut(|memory| memory.request_focus(egui::Id::unique("snippet_filter")));
+    run(&mut panel, vec![]);
+    let none = egui::Modifiers::NONE;
+    assert!(run(&mut panel, vec![key(egui::Key::ArrowDown, none)]).is_none());
+    assert_eq!(panel.preview, Some(0));
+    run(&mut panel, vec![key(egui::Key::ArrowDown, none)]);
+    assert_eq!(panel.preview, Some(2), "filtered-out rows are skipped");
+    run(&mut panel, vec![key(egui::Key::ArrowDown, none)]);
+    assert_eq!(panel.preview, Some(2), "selection stops at the last row");
+    run(&mut panel, vec![key(egui::Key::ArrowUp, none)]);
+    assert_eq!(panel.preview, Some(0));
+    assert_eq!(panel.filter, "keep", "arrows must not edit the filter");
+    let chosen = run(&mut panel, vec![key(egui::Key::Enter, none)]);
+    assert_eq!(chosen.unwrap().name, "keep-a");
+    assert!(!panel.open);
+}
+
+#[test]
+fn slash_goes_to_code_while_snippets_closed() {
+    let ctx = egui::Context::default();
+    let mut editor = crate::script_editor::ScriptEditor::default();
+    let mut code = String::new();
+    let script = egui::Id::unique("script_text");
+    editor_frame(&ctx, &mut editor, &mut code, vec![]);
+    ctx.memory_mut(|memory| memory.request_focus(script));
+    editor_frame(&ctx, &mut editor, &mut code, vec![]);
+    editor_frame(&ctx, &mut editor, &mut code, vec![Event::Text("/".into())]);
+    assert!(!editor.snippets().open);
+    assert_eq!(code, "/");
+}

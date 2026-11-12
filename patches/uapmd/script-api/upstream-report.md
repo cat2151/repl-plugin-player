@@ -8,4 +8,11 @@ JSON文字列を同期往復するcallbackを1つ登録して対応していま�
 音声処理やSMFインポートの仕様変更は不要です。callbackはcontrol thread上で実行し、
 引数・戻り値の所有権と例外境界を明示できる形を希望します。
 
+`instance.loadState(filepath)` も返りません。`AppModel::loadPluginStateSync` の User origin の
+経路が `loadPluginState` の完了を `future.get()` で待つだけで、完了通知（`setPluginState` の前の
+`requestState` の callback を含む）が同じ main thread の queue に積まれるためです。Internal origin の
+経路や `__remidy_project_load` と同じく、待つ間 `remidy::EventLoop::processQueuedTasks()` を回すと
+返ります。アプリ側では生成コピーの `__remidy_instance_load_state` をその形に置き換えています。
+`savePluginStateSync` も同じ待ち方です。
+
 確認revision: `a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe`。未報告。

@@ -2,7 +2,7 @@
 
 ## 目的と適用範囲
 
-右paneのミニ鍵盤で、準備済みSurge XTへ渡されたNote On/Offを表示する。
+右paneのミニ鍵盤で、全プラグインへ渡されたNote On/Offの和集合を表示する。
 公開Timeline APIで読める保存イベントやスクリプトの呼び出し履歴だけでは、
 エンジン停止中のキュー、Stop時のflush、実際の再生時点を判別できない。
 確認したUAPMDにはプラグイン入力ノートの公開観測APIがないため、入力直前へ
@@ -23,16 +23,18 @@ callbackは音源作成前に登録し、エンジンの停止・破棄後まで
 
 ## 表示とスレッド境界
 
-60〜71の鍵盤をTimelineのスクロール領域の上に固定する。Note Onは緑色で点灯し、
-Note Offで消灯する。全アクティブノートの番号と範囲外ノートの番号も表示する。
-鍵盤は表示専用。準備中、観測失敗、対象インスタンスの削除はunknownとして表示する。
+Timelineの全ノートを含む音域の鍵盤を、Timelineのスクロール領域の上に固定する。Note Onは緑色で点灯し、
+Note Offで消灯する。ノート番号は文字で表示しない。
+鍵盤は表示専用。準備中と観測失敗は全消灯になる。
 
-各ノードが固定長配列でgroup/channel/pitchを追跡し、対象インスタンスの状態だけを
-lock-free atomicで公開する。GUIはフレームごとに読み、ノート状態が変わった場合だけ
-audio threadが公開値を更新する。audio threadにはロック・動的確保・JS実行を追加しない。
+各ノードが固定長配列でgroup/channel/pitchを追跡し、構築時に確保した自分のslotへ
+lock-free atomicで公開する。GUIはフレームごとに全slotの和集合を読み、ノート状態が変わった場合だけ
+audio threadが公開値を更新する。slotは64個で、それを超えたノードは鍵盤に出ない。
+準備済みSurge XTだけを対象にすると、他の音源を鳴らすsnippetで鍵盤が点かない。
+audio threadにはロック・動的確保・JS実行を追加しない。
 MIDI 1/2、velocity-zero Note On、CC120/123を扱う。複数チャネルの同音は合成し、
 一方の解除で他方の点灯を消さない。同じgroup/channel/pitchの再Note Onは次のNote Off
-まで点灯する。エンジン停止後は空表示とし、削除されたインスタンスの値は表示しない。
+まで点灯する。エンジン停止後は空表示とし、ノード破棄時にslotを空にするので削除されたインスタンスの値は表示しない。
 
 リリース音やサステインの残響を表すメーターではない。MIDI 2のvelocity-zeroは
 既存UAPMDノート追跡と同じ解除扱い。フレーム間にOn/Off両方が来る短音は見えない場合がある。
@@ -66,7 +68,8 @@ Zero crossや他の周期数の処理も削除した。
 
 ## 回帰検証
 
-このdirectoryの `regression.rs` を既存E2E入口から呼び出す。
+このdirectoryの `note-monitor.js` を E2E 入口（`--e2e note-monitor`）が disk から読んで cell ごとに流す。
+観測は `repl.test.notes()`（bridge の `notes` command と同じ `held_notes`）。
 
 共通周期loopの時刻検証では、同じ入力点にある有界traceを明示的に有効にする。
 各instanceのsample frame、Note On/Offとrender leadをcontrol threadから読み、
@@ -88,9 +91,10 @@ python scripts/e2e.py note-monitor timeline cold stop-run
 実GUIで演奏中の4周期波形と配置を確認し、userの表示合格後に設定処理を除去した。
 
 `note-monitor` は実機Surgeで、停止中キューと実際の配送の区別、和音、範囲外72、
+2台目の音源（Six Sines）との和集合と片方だけの解除、
 例外後の入力、Stop/restart、通常サンプルのNote On/Off、MIDI 1/2、チャネル別解除、
 velocity-zero、CC120/123を検証する。他の3ケースは既存再生動作の回帰検証。
-画面では60/61/64同時点灯と72の文字表示、Stop消灯、標準サンプルの60点灯・消灯、
+画面では60/61/64同時点灯、Stop消灯、標準サンプルの60点灯・消灯、
 スクロール時の鍵盤固定を確認した。既存キャッシュ上のWindows Releaseビルドで検証済み。
 新規環境での全依存取得は今回の検証範囲に含めない。
 

@@ -59,7 +59,7 @@ pub fn show(ui: &mut egui::Ui, view: &View) {
             .sum::<f32>();
     egui::ScrollArea::both()
         .id_salt("piano_rolls")
-        .max_height(380.0)
+        .max_height(ui.available_height())
         .auto_shrink([false, true])
         .show(ui, |ui| {
             let (rect, response) =

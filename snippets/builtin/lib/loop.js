@@ -38,5 +38,38 @@
         globalThis.loopParts = next;
     }
 
-    return {loopPhraseBeats, prepareLoopPart, publishLoopParts};
+    // Counterpart of tutorial play(): only the loop sounds afterwards.
+    function playLoopParts(next, bpm) {
+        var clips = [];
+        for (var track of uapmd.sequencer.getTrackInfos()) {
+            for (var clip of uapmd.timeline.getClips(track.trackIndex)) clips.push([track.trackIndex, clip.clipId]);
+        }
+        // A running loop is updated at its boundary; ordinary clips force a fresh entry instead.
+        if (clips.length > 0 || !globalThis.loopParts) {
+            if (uapmd.timeline.getState().isPlaying) {
+                uapmd.sequencer.stopPlayback();
+                uapmd.audio.setEngineEnabled(false);
+            }
+            if (globalThis.loopParts) {
+                repl.timeline.clearLoop();
+                delete globalThis.loopParts;
+            }
+            for (var c of clips) {
+                if (!uapmd.timeline.removeClip(c[0], c[1]))
+                    throw new Error(repl.text('snippet_14', {clipId:c[1]}));
+            }
+        }
+        publishLoopParts(next, bpm);
+        var tracks = Object.keys(next).map(k => next[k].trackIndex);
+        // Only the instrument, as play() does; effects keep their bypass state.
+        const plugins = include('builtin/lib/plugins.js');
+        for (var info of uapmd.sequencer.getTrackInfos().filter(t => tracks.indexOf(t.trackIndex) >= 0)) {
+            const instrument = plugins.instrumentOn(info.trackIndex);
+            if (instrument >= 0) uapmd.sequencer.setPluginBypassed(instrument, false);
+        }
+        uapmd.audio.setEngineEnabled(true);
+        if (!uapmd.timeline.getState().isPlaying) uapmd.sequencer.startPlayback();
+    }
+
+    return {loopPhraseBeats, prepareLoopPart, publishLoopParts, playLoopParts};
 })();

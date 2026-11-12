@@ -1,17 +1,18 @@
-use crate::control::Control;
+//! What the piano rolls show for tracks, clips and a loop; the cells are
+//! `tests/e2e/timeline-view.js`.
+use crate::{control::Control, e2e_script::Script};
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 
-fn mutate(app: &mut Control, expression: &str) -> Result<(), String> {
-    app.run(&format!("globalThis.timelineViewJob = {expression};"))?;
+/// Runs the mutation cell `title` and waits for its job.
+fn mutate(app: &mut Control, script: &Script, title: &str) -> Result<(), String> {
+    app.run(script.cell(title)?)?;
     let until = Instant::now() + Duration::from_secs(10);
     loop {
         app.poll()?;
-        let job: Value = serde_json::from_str(&app.eval(
-            "uapmd.mutations.getJob(timelineViewJob.jobId)",
-            "timeline view mutation",
-        )?)
-        .map_err(|e| e.to_string())?;
+        let job: Value =
+            serde_json::from_str(&app.eval(script.cell("job")?, "timeline view mutation")?)
+                .map_err(|e| e.to_string())?;
         match job["state"].as_str() {
             Some("completed") => return Ok(()),
             Some("failed") => return Err(format!("Timeline view mutation failed: {job}")),
@@ -21,31 +22,27 @@ fn mutate(app: &mut Control, expression: &str) -> Result<(), String> {
     }
 }
 
-pub fn run(app: &mut Control) -> Result<(), String> {
+pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
     app.loop_checks()?;
     let initial = app.read_timeline()?;
     let view = super::projection::project(&initial);
     if view.tracks.len() != 1 || view.tracks[0].plugins.is_empty() {
         return Err("Unused bootstrap tracks leaked into the piano rolls".into());
     }
-    mutate(app, "uapmd.sequencer.addTrack()")?;
+    mutate(app, script, "add a track")?;
     let added = app.read_timeline()?;
     let view = super::projection::project(&added);
     if view.tracks.len() != 2 {
         return Err("Explicit empty track was hidden".into());
     }
     let added_id = view.tracks[1].id.clone();
-    mutate(app, "uapmd.sequencer.removeTrack(1)")?;
+    mutate(app, script, "remove track 1")?;
     let moved = app.read_timeline()?;
     let view = super::projection::project(&moved);
     if view.tracks.len() != 2 || view.tracks[1].id != added_id || view.tracks[1].index != 2 {
         return Err("Explicit empty track lost its identity after reindexing".into());
     }
-    app.run("var tvClip = uapmd.timeline.createEmptyMidiClip(0, uapmd.sequencer.getSampleRate()/2, 480, 120);
-        uapmd.timeline.addUmpEvent(0,tvClip,0,[0x20903c64]);
-        uapmd.timeline.addUmpEvent(0,tvClip,0,[0x20904064]);
-        uapmd.timeline.addUmpEvent(0,tvClip,960,[0x20803c00]);
-        uapmd.timeline.addUmpEvent(0,tvClip,960,[0x20804000]);")?;
+    app.run(script.cell("chord at beat one")?)?;
     let clips = app.read_timeline()?;
     let view = super::projection::project(&clips);
     let clip = &view.tracks[0].clips[0];
@@ -58,13 +55,7 @@ pub fn run(app: &mut Control) -> Result<(), String> {
     {
         return Err("Native clip timing did not produce an aligned chord at beat one".into());
     }
-    // A test-owned phrase, independent of the user's editable built-in snippets.
-    app.run(
-        "var tvPath = getGeneratedMidiPath();
-        mmlabc_to_smf.pass4_midi.save_midi_file(mmlabc_to_smf.mml_to_smf_bytes('l4 >cg<cg'),tvPath);
-        repl.timeline.publishLoopClips([{trackIndex:0,filepath:tvPath}],4,120);
-        uapmd.audio.setEngineEnabled(true); uapmd.sequencer.startPlayback();",
-    )?;
+    app.run(script.cell("loop on track 0")?)?;
     let until = Instant::now() + Duration::from_millis(1100);
     let mut observed = 0;
     while Instant::now() < until {
@@ -106,7 +97,7 @@ pub fn run(app: &mut Control) -> Result<(), String> {
     if stopped.tracks[0].clips.len() != 2 || stopped.playing {
         return Err("Stopped loop disappeared from the display".into());
     }
-    app.run("repl.timeline.clearLoop()")?;
+    app.run(script.cell("clear the loop")?)?;
     if super::projection::project(&app.read_timeline()?).tracks[0]
         .clips
         .len()
@@ -114,8 +105,7 @@ pub fn run(app: &mut Control) -> Result<(), String> {
     {
         return Err("Cleared loop remained visible".into());
     }
-    // Using an initially empty track for a loop also makes it a user-used track.
-    app.run("repl.timeline.publishLoopClips([{trackIndex:1,filepath:tvPath}],4,120)")?;
+    app.run(script.cell("loop on track 1")?)?;
     if super::projection::project(&app.read_timeline()?)
         .tracks
         .len()
@@ -123,7 +113,7 @@ pub fn run(app: &mut Control) -> Result<(), String> {
     {
         return Err("Loop-only track was hidden".into());
     }
-    app.run("repl.timeline.clearLoop()")?;
+    app.run(script.cell("clear the loop")?)?;
     if super::projection::project(&app.read_timeline()?)
         .tracks
         .len()

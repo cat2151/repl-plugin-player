@@ -4,7 +4,10 @@ use std::{
     hash::{Hash, Hasher},
     io::Write,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        OnceLock,
+    },
 };
 
 const BRIDGE: &[u8] = include_bytes!("../build/out/repl_bridge.dll");
@@ -27,11 +30,42 @@ pub fn project_root(start: &Path) -> Option<PathBuf> {
     })
 }
 
-/// Only the repository's exact target/release directory uses source catalogs.
-pub fn release_root(start: &Path) -> Option<PathBuf> {
-    let root = start.parent()?.parent()?;
-    (start == root.join("target/release") && project_root(root).as_deref() == Some(root))
-        .then(|| root.to_owned())
+/// The repository that built this exe; its `.js` and `.toml` files replace the embedded copies.
+pub fn source_root() -> Option<PathBuf> {
+    static ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
+    ROOT.get_or_init(|| project_root(&executable_directory().ok()?))
+        .clone()
+}
+
+/// A text resource read from [`source_root`] when present, otherwise the embedded copy.
+pub struct Source {
+    relative: &'static str,
+    embedded: &'static str,
+    text: OnceLock<Result<String, String>>,
+}
+
+impl Source {
+    pub const fn new(relative: &'static str, embedded: &'static str) -> Self {
+        Self {
+            relative,
+            embedded,
+            text: OnceLock::new(),
+        }
+    }
+
+    /// A present source tree is authoritative, so a missing file is an error.
+    pub fn text(&self) -> Result<&str, String> {
+        self.text
+            .get_or_init(|| match source_root() {
+                Some(root) => {
+                    let path = root.join(self.relative);
+                    std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
+                }
+                None => Ok(self.embedded.to_owned()),
+            })
+            .as_deref()
+            .map_err(Clone::clone)
+    }
 }
 
 pub fn user_directory() -> Result<PathBuf, String> {
@@ -74,8 +108,7 @@ pub fn write_missing(path: &Path, bytes: &[u8]) -> Result<(), String> {
 }
 
 pub fn bridge() -> Result<PathBuf, String> {
-    let start = executable_directory()?;
-    if let Some(root) = project_root(&start) {
+    if let Some(root) = source_root() {
         return Ok(root.join("build/out/repl_bridge.dll"));
     }
     let mut hash = DefaultHasher::new();

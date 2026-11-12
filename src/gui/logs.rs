@@ -20,7 +20,6 @@ pub(super) fn show(ui: &mut egui::Ui, path: &Path) -> Result<(), ()> {
     });
     if let Some(filename) = path.file_name() {
         ui.label(filename.to_string_lossy());
-        ui.label(crate::i18n::t("m009"));
         let native = Path::new(filename).with_extension("native");
         ui.label(format!("{}.stdout.log", native.display()));
         ui.label(format!("{}.stderr.log", native.display()));

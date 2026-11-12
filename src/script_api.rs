@@ -46,6 +46,7 @@ fn dispatch(input: &Value) -> Result<Value, String> {
             crate::snippets::Library::default().source(argument(input, "name")?)?
         )),
         api @ ("ui.show" | "ui.close") => crate::script_ui::dispatch(api, input),
+        api if api.starts_with("patchBrowser.") => crate::patch_browse::dispatch(api, input),
         "text" => {
             let key = argument(input, "key")?;
             if let Some(values) = input.get("values") {
@@ -96,6 +97,11 @@ fn dispatch(input: &Value) -> Result<Value, String> {
             Ok(Value::Null)
         }
         "generatedMidiPath" => Ok(json!(generated_midi_path()?)),
+        "patchState" => Ok(json!(crate::patch_state::file(
+            argument(input, "format")?,
+            argument(input, "pluginId")?,
+            argument(input, "patch")?,
+        )?)),
         other => Err(crate::i18n::render("f027", &[("other", other.to_string())])),
     }
 }

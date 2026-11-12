@@ -97,8 +97,6 @@ struct Session {
     bool model_created{};
     bool scanning_done{};
     std::string scan_error;
-    int32_t instance_id{-1};
-    bool creating{};
     bool state_pending{};
     bool state_ready{};
     std::string preparation_error;
@@ -130,9 +128,9 @@ struct Session {
         model.notifyUiReady();
         model.notifyPersistentStorageReady();
     }
-    void requestState(int32_t target = -1) {
+    void requestState(int32_t target) {
         if (state_pending) throw std::runtime_error(repl_localized("native_00"));
-        auto* instance = uapmd_app::AppModel::instance().sequencer().engine()->getPluginInstance(target < 0 ? instance_id : target);
+        auto* instance = uapmd_app::AppModel::instance().sequencer().engine()->getPluginInstance(target);
         if (!instance) throw std::runtime_error(repl_localized("native_01"));
         state_ready = false;
         state_pending = true;
@@ -146,11 +144,29 @@ struct Session {
                 });
             });
     }
+    std::string stateHex() const {
+        std::string hex;
+        constexpr char digits[] = "0123456789abcdef";
+        for (auto byte : state) { hex += digits[byte >> 4]; hex += digits[byte & 15]; }
+        return hex;
+    }
+    // requestState, with this thread's queue serviced for up to five seconds.
+    std::string readState(int32_t target) {
+        requestState(target);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (state_pending && std::chrono::steady_clock::now() < deadline) {
+            remidy::EventLoop::processQueuedTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        if (!state_pending && !preparation_error.empty()) throw std::runtime_error(preparation_error);
+        if (!state_ready) throw std::runtime_error(repl_localized("native_06"));
+        return stateHex();
+    }
     ~Session() {
         if (model_created) {
             auto& model = uapmd_app::AppModel::instance();
             model.stopPluginScanning();
-            while (creating || state_pending || model.historyState().busy) {
+            while (state_pending || model.historyState().busy) {
                 remidy::EventLoop::processQueuedTasks();
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
             }
@@ -178,18 +194,127 @@ std::unique_ptr<Session> session;
 std::string reply;
 }
 
-// Only the existing event queue and dispatcher state; waiting policy stays in JS.
+// The master output's latest 256 samples (before soft clip / device mute) and the engine counters.
+static void observe_into(choc::value::Value& result) {
+    auto& model = uapmd_app::AppModel::instance();
+    auto* engine = model.sequencer().engine();
+    engine->audioPerformanceCounter().setEnabled(true);
+    const auto counters = engine->audioPerformanceCounter().counters();
+    uapmd::AudioProcessingTiming timing;
+    while (engine->audioPerformanceCounter().tryDequeue(timing)) {}
+    std::array<float, 256> samples{};
+    auto* analyser = engine->outputAnalyser();
+    if (!analyser) throw std::runtime_error(repl_localized("native_08"));
+    analyser->getFloatTimeDomainData(samples.data(), static_cast<uint32_t>(samples.size()));
+    double peak{}, energy{};
+    bool finite = true;
+    for (float value : samples) {
+        finite &= std::isfinite(value);
+        peak = std::max(peak, std::abs(static_cast<double>(value)));
+        energy += static_cast<double>(value) * value;
+    }
+    result.setMember("finite", finite);
+    result.setMember("peak", finite ? peak : 0.0);
+    result.setMember("rms", finite ? std::sqrt(energy / samples.size()) : 0.0);
+    result.setMember("blocks", static_cast<int64_t>(counters.realtime_blocks));
+    result.setMember("engineEnabled", model.isAudioEngineEnabled());
+    result.setMember("dispatcherPlaying", model.sequencer().isAudioPlaying() != 0);
+    result.setMember("observationPoint", "master graph before soft clip / device mute; history snapshot");
+    result.setMember("samples", static_cast<int64_t>(samples.size()));
+}
+
+// Pitches the scope target's plugin input holds; a stopped device has no live input.
+static choc::value::Value held_notes() {
+    auto notes = choc::value::createEmptyArray();
+    if (uapmd_app::AppModel::instance().sequencer().isAudioPlaying()) {
+        const auto bits = repl_notes::read();
+        for (int pitch = 0; pitch < 128; ++pitch)
+            if (bits[pitch / 64] & (uint64_t{1} << (pitch % 64)))
+                notes.addArrayElement(pitch);
+    }
+    return notes;
+}
+
+// Plugin-input Note On/Off records since the last start, and each track's render lead.
+// `start` clears the records; the device must be stopped.
+static void loop_trace_into(choc::value::Value& result, bool start) {
+    if (start) {
+        if (uapmd_app::AppModel::instance().sequencer().isAudioPlaying())
+            throw std::runtime_error("Stop audio before starting input trace");
+        repl_trace::count.store(0);
+        repl_trace::overflow.store(0);
+        repl_trace::programChanges.store(0);
+        repl_trace::generation.fetch_add(1, std::memory_order_release);
+    }
+    auto events = choc::value::createEmptyArray();
+    const auto count = std::min<uint32_t>(repl_trace::count.load(), static_cast<uint32_t>(repl_trace::records.size()));
+    for (uint32_t i = 0; i < count; ++i) {
+        if (repl_trace::records[i].ready.load(std::memory_order_acquire) != repl_trace::generation.load()) continue;
+        const auto message = repl_trace::records[i].message.load();
+        events.addArrayElement(choc::value::createObject("", "frame", static_cast<int64_t>(repl_trace::records[i].frame.load()),
+            "note", static_cast<int32_t>(message & 127), "on", (message & 128) != 0,
+            "instance", repl_trace::records[i].instance.load()));
+    }
+    result.setMember("events", events);
+    result.setMember("overflow", static_cast<int64_t>(repl_trace::overflow.load()));
+    result.setMember("programChanges", static_cast<int64_t>(repl_trace::programChanges.load()));
+    auto timing = choc::value::createEmptyArray();
+    auto& engine = *uapmd_app::AppModel::instance().sequencer().engine();
+    for (size_t i = 0; i < engine.tracks().size(); ++i) {
+        auto instances = choc::value::createEmptyArray();
+        for (auto id : engine.tracks()[i]->orderedInstanceIds()) instances.addArrayElement(id);
+        timing.addArrayElement(choc::value::createObject("", "trackIndex", static_cast<int32_t>(i),
+            "lead", static_cast<int64_t>(engine.trackRenderLeadInSamples(static_cast<int32_t>(i)) + engine.masterTrackRenderLeadInSamples()),
+            "instances", instances));
+    }
+    result.setMember("timing", timing);
+}
+
+// The existing event queue and dispatcher state.
 static const char* control_api(const char* request) {
     static thread_local std::string result;
     try {
         const auto args = choc::json::parse(request);
         const auto api = args["api"].get<std::string>();
-        if (api != "control.processEvents" && api != "audio.isProcessing") return nullptr;
+        if (api != "control.processEvents" && api != "audio.isProcessing" &&
+            api != "scope.target" && api != "scope.setTarget" &&
+            api != "test.observe" && api != "test.notes" &&
+            api != "test.loopTrace" && api != "test.loopChecks" &&
+            api != "test.pluginState" && api != "track.volume" &&
+            api != "track.setVolume") return nullptr;
         if (!session) throw std::runtime_error("No session");
         auto value = choc::value::Value();
-        if (api == "control.processEvents") {
+        if (api == "test.observe") {
+            value = choc::value::createObject("");
+            observe_into(value);
+        } else if (api == "test.notes") {
+            value = held_notes();
+        } else if (api == "test.loopTrace") {
+            value = choc::value::createObject("");
+            loop_trace_into(value, args["start"].getWithDefault<bool>(false));
+        } else if (api == "test.loopChecks") {
+            repl_loop::Regression::run();
+        } else if (api == "test.pluginState") {
+            value = choc::value::createString(session->readState(args["instanceId"].get<int32_t>()));
+        } else if (api == "track.volume" || api == "track.setVolume") {
+            // The same track gain as uapmd's track volume slider.
+            auto& engine = *uapmd_app::AppModel::instance().sequencer().engine();
+            const auto trackIndex = args["trackIndex"].get<int32_t>();
+            if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= engine.tracks().size())
+                throw std::runtime_error("Invalid track index");
+            if (api == "track.setVolume") {
+                if (!engine.commands().setTrackGain(trackIndex, args["volume"].get<double>()))
+                    throw std::runtime_error("Track volume was not changed");
+                engine.markTrackDirty(trackIndex);
+            }
+            value = choc::value::createFloat64(engine.tracks()[static_cast<size_t>(trackIndex)]->trackGain());
+        } else if (api == "control.processEvents") {
             remidy::EventLoop::processQueuedTasks();
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        } else if (api == "scope.target") {
+            value = choc::value::createInt32(repl_notes::target.load(std::memory_order_relaxed));
+        } else if (api == "scope.setTarget") {
+            repl_notes::target.store(args["instanceId"].get<int32_t>(), std::memory_order_relaxed);
         } else {
             value = choc::value::createBool(uapmd_app::AppModel::instance().sequencer().isAudioPlaying() != 0);
         }
@@ -270,43 +395,10 @@ extern "C" __declspec(dllexport) const char* repl_request(const char* request) n
                     DispatchMessageW(&message);
                 }
                 result.setMember("quit", quit);
-            } else if (command == "loop-trace") {
-                if (args["start"].getWithDefault<bool>(false)) {
-                    if (uapmd_app::AppModel::instance().sequencer().isAudioPlaying())
-                        throw std::runtime_error("Stop audio before starting input trace");
-                    repl_trace::count.store(0);
-                    repl_trace::overflow.store(0);
-                    repl_trace::programChanges.store(0);
-                    repl_trace::generation.fetch_add(1, std::memory_order_release);
-                }
-                auto events = choc::value::createEmptyArray();
-                const auto count = std::min<uint32_t>(repl_trace::count.load(), static_cast<uint32_t>(repl_trace::records.size()));
-                for (uint32_t i = 0; i < count; ++i) {
-                    if (repl_trace::records[i].ready.load(std::memory_order_acquire) != repl_trace::generation.load()) continue;
-                    const auto message = repl_trace::records[i].message.load();
-                    events.addArrayElement(choc::value::createObject("", "frame", static_cast<int64_t>(repl_trace::records[i].frame.load()),
-                        "note", static_cast<int32_t>(message & 127), "on", (message & 128) != 0,
-                        "instance", repl_trace::records[i].instance.load()));
-                }
-                result.setMember("events", events);
-                result.setMember("overflow", static_cast<int64_t>(repl_trace::overflow.load()));
-                result.setMember("programChanges", static_cast<int64_t>(repl_trace::programChanges.load()));
-                auto timing = choc::value::createEmptyArray();
-                auto& engine = *uapmd_app::AppModel::instance().sequencer().engine();
-                for (size_t i = 0; i < engine.tracks().size(); ++i) {
-                    auto instances = choc::value::createEmptyArray();
-                    for (auto id : engine.tracks()[i]->orderedInstanceIds()) instances.addArrayElement(id);
-                    timing.addArrayElement(choc::value::createObject("", "trackIndex", static_cast<int32_t>(i),
-                        "lead", static_cast<int64_t>(engine.trackRenderLeadInSamples(static_cast<int32_t>(i)) + engine.masterTrackRenderLeadInSamples()),
-                        "instances", instances));
-                }
-                result.setMember("timing", timing);
             } else if (command == "poll") {
                 result.setMember("scanned", session->scanning_done);
                 result.setMember("scanError", session->scan_error);
                 result.setMember("catalogCount", session->runtime->evaluateScript("uapmd.catalog.getCount()"));
-                result.setMember("instanceId", session->instance_id);
-                result.setMember("creating", session->creating);
                 result.setMember("stateReady", session->state_ready);
                 result.setMember("preparationError", session->preparation_error);
             } else if (command == "scan") {
@@ -315,78 +407,15 @@ extern "C" __declspec(dllexport) const char* repl_request(const char* request) n
                 session->scanning_done = false;
                 session->scan_error.clear();
                 model.performPluginScanning(false, uapmd_app::AppModel::PluginScanRequest::InProcess, 0.0, false);
-            } else if (command == "create") {
-                if (session->creating || session->instance_id >= 0)
-                    throw std::runtime_error(repl_localized("native_05"));
-                session->creating = true;
-                uapmd_app::AppModel::instance().createPluginInstanceAsync("CLAP", args["pluginId"].get<std::string>(), 0, {},
-                    [owner = session.get()](const uapmd_app::AppModel::PluginInstanceResult& completed) {
-                        auto id = completed.instanceId;
-                        auto error = completed.error;
-                        remidy::EventLoop::enqueueTaskOnMainThread([owner, id, error] {
-                            owner->creating = false;
-                            owner->instance_id = id;
-                            repl_notes::target.store(id);
-                            repl_notes::publish(0, 0);
-                            owner->preparation_error = error;
-                            if (id < 0 || !error.empty()) return;
-                            owner->runtime->evaluateScript("globalThis.surgeId = " + std::to_string(id));
-                            owner->runtime->registerAllParameterListeners();
-                            owner->runtime->registerAllMetadataListeners();
-                            owner->requestState();
-                        });
-                    });
             } else if (command == "request-state") {
-                session->requestState(args["instanceId"].getWithDefault<int32_t>(session->instance_id));
+                session->requestState(args["instanceId"].get<int32_t>());
             } else if (command == "state") {
                 if (!session->state_ready) throw std::runtime_error(repl_localized("native_06"));
-                std::string hex;
-                constexpr char digits[] = "0123456789abcdef";
-                for (auto byte : session->state) { hex += digits[byte >> 4]; hex += digits[byte & 15]; }
-                result.setMember("hex", hex);
+                result.setMember("hex", session->stateHex());
             } else if (command == "notes") {
-                auto& model = uapmd_app::AppModel::instance();
-                const auto id = session->instance_id;
-                auto* instance = id >= 0 ? model.sequencer().engine()->getPluginInstance(id) : nullptr;
-                auto notes = choc::value::createEmptyArray();
-                std::array<uint64_t, 2> bits{};
-                if (!repl_notes::read(bits)) throw std::runtime_error(repl_localized("native_07"));
-                // A stopped device has no live input. Also avoid retaining a
-                // destroyed instrument's last snapshot.
-                if (instance && model.sequencer().isAudioPlaying()) {
-                    for (int pitch = 0; pitch < 128; ++pitch)
-                        if (bits[pitch / 64] & (uint64_t{1} << (pitch % 64)))
-                            notes.addArrayElement(pitch);
-                }
-                result.setMember("available", instance != nullptr);
-                result.setMember("instanceId", id);
-                result.setMember("notes", notes);
+                result.setMember("notes", held_notes());
             } else if (command == "observe") {
-                auto& model = uapmd_app::AppModel::instance();
-                auto* engine = model.sequencer().engine();
-                engine->audioPerformanceCounter().setEnabled(true);
-                const auto counters = engine->audioPerformanceCounter().counters();
-                uapmd::AudioProcessingTiming timing;
-                while (engine->audioPerformanceCounter().tryDequeue(timing)) {}
-                std::array<float, 256> samples{};
-                auto* analyser = engine->outputAnalyser();
-                if (!analyser) throw std::runtime_error(repl_localized("native_08"));
-                analyser->getFloatTimeDomainData(samples.data(), static_cast<uint32_t>(samples.size()));
-                double peak{}, energy{};
-                bool finite = true;
-                for (float value : samples) {
-                    finite &= std::isfinite(value);
-                    peak = std::max(peak, std::abs(static_cast<double>(value)));
-                    energy += static_cast<double>(value) * value;
-                }
-                result.setMember("finite", finite);
-                result.setMember("peak", finite ? peak : 0.0);
-                result.setMember("rms", finite ? std::sqrt(energy / samples.size()) : 0.0);
-                result.setMember("blocks", static_cast<int64_t>(counters.realtime_blocks));
-                result.setMember("engineEnabled", model.isAudioEngineEnabled());
-                result.setMember("dispatcherPlaying", model.sequencer().isAudioPlaying() != 0);
-                result.setMember("observationPoint", "master graph before soft clip / device mute; history snapshot");
-                result.setMember("samples", static_cast<int64_t>(samples.size()));
+                observe_into(result);
             } else if (command == "parameter-safety") {
                 result = parameter_safety(args["instanceId"].get<int32_t>(), args["parameterId"].get<int32_t>());
                 result.setMember("ok", true);

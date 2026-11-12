@@ -1,11 +1,12 @@
 //! Silent real-plugin acceptance through the same egui/control path as the GUI.
+//! The test-owned cells are `tests/e2e/script-ui.js`.
 use super::*;
-use crate::{control::Control, script_editor::ScriptEditor, snippets::Snippet};
+use crate::{control::Control, e2e_script::Script, script_editor::ScriptEditor, snippets::Snippet};
 use eframe::egui::{self, Event, Modifiers, PointerButton, Pos2, Rect};
 
-pub fn run(app: &mut Control) -> Result<(), String> {
+pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
     enable(true);
-    let result = run_enabled(app);
+    let result = run_enabled(app, script);
     enable(false);
     result
 }
@@ -33,28 +34,15 @@ pub(super) fn frame(
     rect
 }
 
-// Test-owned scripts: one slider bound to a writable continuous parameter, and its close.
-const OPEN: &str = "(() => {
-    var id = globalThis.surgeId;
-    var parameter = uapmd.instance(id).getParameters().find(p => !p.isReadonly && !p.isDiscrete &&
-        Number.isInteger(p.id) && p.id >= 0 && Number.isFinite(p.minValue) && Number.isFinite(p.maxValue) &&
-        p.minValue < p.maxValue);
-    if (!parameter) throw new Error('E2E: no writable continuous parameter');
-    repl.ui.show({id:'e2e-parameters', title:'E2E', widgets:[
-        {id:'parameter', type:'slider', label:parameter.name, binding:{instanceId:id, parameterId:parameter.id}}
-    ]});
-})();";
-const CLOSE: &str = "repl.ui.close('e2e-parameters');";
-
-fn run_enabled(app: &mut Control) -> Result<(), String> {
+fn run_enabled(app: &mut Control, script: &Script) -> Result<(), String> {
     let open = &Snippet {
         name: "open".into(),
         group: "User",
-        code: OPEN.into(),
+        code: script.cell("open")?.into(),
     };
     let ctx = egui::Context::default();
     let mut editor = ScriptEditor::default();
-    let mut document = "throw new Error('unrelated cell');".to_owned();
+    let mut document = script.cell("unrelated")?.to_owned();
     let request = editor.insert_snippet(&ctx, &mut document, open);
     app.run_request(&request)?;
     let window = snapshot()
@@ -109,11 +97,10 @@ fn run_enabled(app: &mut Control) -> Result<(), String> {
             return Err("egui pointer did not change actual Surge parameter".into());
         }
         let external = original.min + (original.max - original.min) * 0.23;
+        let set = serde_json::json!({"instance":binding.instance,
+            "parameter":binding.parameter, "value":external});
         app.eval(
-            &format!(
-                "uapmd.instance({}).setParameterValue({}, {})",
-                binding.instance, binding.parameter, external
-            ),
+            &script.call("set parameter", &set)?,
             "external parameter change",
         )?;
         frame(&ctx, &mut renderer, app, vec![]);
@@ -134,7 +121,7 @@ fn run_enabled(app: &mut Control) -> Result<(), String> {
         if snapshot().len() != 1 {
             return Err("Stop closed script window".into());
         }
-        app.run(CLOSE)?;
+        app.run(script.cell("close")?)?;
         if !snapshot().is_empty() {
             return Err("close snippet failed".into());
         }

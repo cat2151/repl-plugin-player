@@ -1,0 +1,33 @@
+// `timeline-view`: what the piano rolls show for tracks, clips and a loop.
+// The checks are Rust (`src/timeline/regression.rs`, the projection and the
+// native view); it runs these cells by title.
+
+// %% add a track
+globalThis.timelineViewJob = uapmd.sequencer.addTrack();
+
+// %% remove track 1
+globalThis.timelineViewJob = uapmd.sequencer.removeTrack(1);
+
+// %% job
+uapmd.mutations.getJob(timelineViewJob.jobId)
+
+// %% chord at beat one
+var tvClip = uapmd.timeline.createEmptyMidiClip(0, uapmd.sequencer.getSampleRate()/2, 480, 120);
+uapmd.timeline.addUmpEvent(0,tvClip,0,[0x20903c64]);
+uapmd.timeline.addUmpEvent(0,tvClip,0,[0x20904064]);
+uapmd.timeline.addUmpEvent(0,tvClip,960,[0x20803c00]);
+uapmd.timeline.addUmpEvent(0,tvClip,960,[0x20804000]);
+
+// %% loop on track 0
+// A test-owned phrase, independent of the user's editable built-in snippets.
+var tvPath = getGeneratedMidiPath();
+mmlabc_to_smf.pass4_midi.save_midi_file(mmlabc_to_smf.mml_to_smf_bytes('l4 >cg<cg'),tvPath);
+repl.timeline.publishLoopClips([{trackIndex:0,filepath:tvPath}],4,120);
+uapmd.audio.setEngineEnabled(true); uapmd.sequencer.startPlayback();
+
+// %% clear the loop
+repl.timeline.clearLoop()
+
+// %% loop on track 1
+// Using an initially empty track for a loop also makes it a user-used track.
+repl.timeline.publishLoopClips([{trackIndex:1,filepath:tvPath}],4,120)

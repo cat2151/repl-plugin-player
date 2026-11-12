@@ -1,22 +1,7 @@
 use eframe::egui::{self, Color32, Rect, Sense, Stroke, StrokeKind};
 
 /// `range` is the lowest and highest pitch in the timeline; the keyboard spans exactly that.
-pub fn show(ui: &mut egui::Ui, notes: Result<&[u8], &str>, range: Option<(u8, u8)>) {
-    ui.heading(crate::i18n::t("m033"));
-    match notes {
-        Ok(pitches) => {
-            ui.label(crate::i18n::render(
-                "f004",
-                &[("arg0", numbers(pitches).to_string())],
-            ));
-        }
-        Err(message) => {
-            ui.weak(crate::i18n::render(
-                "f006",
-                &[("message", message.to_string())],
-            ));
-        }
-    }
+pub fn show(ui: &mut egui::Ui, active: &[u8], range: Option<(u8, u8)>) {
     // The height never depends on the notes, so nothing below the keyboard moves.
     let (row, response) = ui.allocate_exact_size(
         egui::vec2(ui.available_width().min(350.0), 82.0),
@@ -26,7 +11,6 @@ pub fn show(ui: &mut egui::Ui, notes: Result<&[u8], &str>, range: Option<(u8, u8
     let Some((first, last)) = range.map(widen) else {
         return;
     };
-    let active = notes.unwrap_or_default();
     let left = span(first).0;
     let units = span(last).1 - left;
     // Narrow ranges keep piano-like key proportions instead of stretching to the full row.
@@ -96,18 +80,6 @@ fn span(pitch: u8) -> (f32, f32) {
         (x + 0.7, x + 1.3)
     } else {
         (x, x + 1.0)
-    }
-}
-
-fn numbers(notes: &[u8]) -> String {
-    if notes.is_empty() {
-        "—".into()
-    } else {
-        notes
-            .iter()
-            .map(u8::to_string)
-            .collect::<Vec<_>>()
-            .join(", ")
     }
 }
 

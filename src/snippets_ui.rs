@@ -15,6 +15,9 @@ pub struct SnippetsPanel {
     notice: String,
     highlight: crate::syntax_highlight::JavaScriptHighlight,
     preview: Option<usize>,
+    scroll_to_preview: bool,
+    pointer: Option<egui::Pos2>,
+    focus_filter: bool,
 }
 
 #[cfg(test)]
@@ -22,6 +25,10 @@ pub struct SnippetsPanel {
 mod tests;
 
 impl SnippetsPanel {
+    pub fn is_open(&self) -> bool {
+        self.open
+    }
+
     pub fn initial(&mut self) -> String {
         match self.library.initial() {
             Ok(code) => code,
@@ -53,15 +60,28 @@ impl SnippetsPanel {
         caret: usize,
         ready: bool,
     ) -> Option<Snippet> {
-        if ui.button(crate::i18n::t("m022")).clicked() {
-            self.open = true;
-            self.refresh();
+        let shortcut = ui.input_mut(|input| {
+            input.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::P)
+        });
+        let filter_id = egui::Id::unique("snippet_filter");
+        if ui.button(crate::i18n::t("m022")).clicked() || shortcut {
+            if !self.open {
+                self.open = true;
+                self.refresh();
+            }
+            self.focus_filter = true;
         }
         if !self.error.is_empty() && !self.open {
             ui.colored_label(ui.visuals().error_fg_color, &self.error);
         }
-        let mut open = self.open;
+        if self.open && Self::take_slash(ui.ctx()) {
+            ui.memory_mut(|memory| memory.request_focus(filter_id));
+        }
         let mut chosen = None;
+        if self.open && ui.memory(|memory| memory.has_focus(filter_id)) {
+            chosen = self.keyboard(ui.ctx(), ready);
+        }
+        let mut open = self.open;
         let viewport = ui.ctx().content_rect();
         let width = viewport.width().min(960.0);
         egui::Window::new(crate::i18n::t("m022"))
@@ -75,7 +95,15 @@ impl SnippetsPanel {
             .show(ui.ctx(), |ui| {
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("m024"));
-                    ui.text_edit_singleline(&mut self.filter);
+                    let filter = ui.add(egui::TextEdit::singleline(&mut self.filter).id(filter_id));
+                    // A window's first frame drops focus requests, so keep asking until it holds.
+                    if self.focus_filter {
+                        if filter.has_focus() {
+                            self.focus_filter = false;
+                        } else {
+                            filter.request_focus();
+                        }
+                    }
                     if ui.button(crate::i18n::t("m025")).clicked() {
                         self.refresh();
                     }
@@ -90,11 +118,63 @@ impl SnippetsPanel {
                 egui::CentralPanel::default()
                     .frame(egui::Frame::NONE)
                     .show(ui, |ui| {
-                        chosen = self.browser(ui, ready);
+                        chosen = chosen.take().or(self.browser(ui, ready));
                     });
             });
         self.open = open && chosen.is_none();
         chosen
+    }
+
+    /// Arrow keys in the focused filter move the preview through the matching
+    /// rows; Enter inserts and runs it. Consumed before the filter's TextEdit
+    /// would move its cursor or drop focus.
+    fn keyboard(&mut self, ctx: &egui::Context, ready: bool) -> Option<Snippet> {
+        let (up, down, enter) = ctx.input_mut(|input| {
+            (
+                input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
+                input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
+                input.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
+            )
+        });
+        let filter = self.filter.to_lowercase();
+        let visible: Vec<usize> = (0..self.entries.len())
+            .filter(|&i| Self::matches_filter(&self.entries[i], &filter))
+            .collect();
+        if up || down {
+            let position = self
+                .preview
+                .and_then(|index| visible.iter().position(|&i| i == index));
+            let next = match (position, down) {
+                (None, true) => visible.first(),
+                (None, false) => visible.last(),
+                (Some(p), true) => visible.get(p + 1).or(visible.get(p)),
+                (Some(p), false) => visible.get(p.saturating_sub(1)),
+            };
+            if let Some(&index) = next {
+                self.preview = Some(index);
+                self.scroll_to_preview = true;
+            }
+        }
+        let snippet = self.preview.and_then(|index| self.entries.get(index))?;
+        (enter && ready && !snippet.code.trim().is_empty()).then(|| snippet.clone())
+    }
+
+    /// Consumes a typed `/` unless another text field (not the code editor)
+    /// has focus, where `/` is ordinary text.
+    fn take_slash(ctx: &egui::Context) -> bool {
+        let typing = ctx.memory(|memory| memory.focused()).is_some_and(|id| {
+            id != egui::Id::unique("script_text") && egui::TextEdit::load_state(ctx, id).is_some()
+        });
+        if typing {
+            return false;
+        }
+        ctx.input_mut(|input| {
+            let before = input.events.len();
+            input
+                .events
+                .retain(|event| !matches!(event, egui::Event::Text(text) if text == "/"));
+            input.events.len() != before
+        })
     }
 
     fn footer(&mut self, ui: &mut egui::Ui, code: &str, caret: usize) {
@@ -102,7 +182,7 @@ impl SnippetsPanel {
         ui.label(crate::i18n::t("m027"));
         ui.horizontal(|ui| {
             ui.label(crate::i18n::t("m028"));
-            ui.text_edit_singleline(&mut self.name);
+            ui.add(egui::TextEdit::singleline(&mut self.name).id(egui::Id::unique("snippet_name")));
             if ui.button(crate::i18n::t("m029")).clicked() {
                 let cell = execution::request(code, caret, caret, Scope::Cell);
                 match self.library.save(&self.name, &cell.code) {
@@ -165,6 +245,9 @@ impl SnippetsPanel {
         }) {
             self.preview = None;
         }
+        // A resting pointer must not take the preview back from the arrow keys.
+        let pointer = ui.input(|input| input.pointer.latest_pos());
+        let moved = std::mem::replace(&mut self.pointer, pointer) != pointer;
         let mut chosen = None;
         let height = ui.available_height();
         ui.columns(2, |columns| {
@@ -196,7 +279,12 @@ impl SnippetsPanel {
                             .wrap()
                             .selected(self.preview == Some(index)),
                         );
-                        if response.contains_pointer() && self.preview != Some(index) {
+                        if self.preview == Some(index)
+                            && std::mem::take(&mut self.scroll_to_preview)
+                        {
+                            response.scroll_to_me(None);
+                        }
+                        if moved && response.contains_pointer() && self.preview != Some(index) {
                             self.preview = Some(index);
                             ui.ctx().request_repaint();
                         }

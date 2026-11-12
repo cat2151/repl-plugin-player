@@ -30,9 +30,10 @@ user32.DispatchMessageW.argtypes = [c.POINTER(w.MSG)]
 user32.DispatchMessageW.restype = c.c_ssize_t
 user32.PostMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
 # Test-owned scripts; built-in snippets may change freely.
-SHOW_SURGE = 'uapmd.instance(surgeId).showUI()'
+CREATE_SURGE = "globalThis.uiInstrumentId = uapmd.instancing.create('CLAP', 'org.surge-synth-team.surge-xt', 0)"
+SHOW_SURGE = 'uapmd.instance(uiInstrumentId).showUI()'
 EFFECT = ("globalThis.uiEffectId = uapmd.instancing.create('CLAP', 'michaelwillis.dragonfly.hall', "
-          "uapmd.sequencer.getTrackInfos().find(t => t.nodes.some(n => n.instanceId === surgeId)).trackIndex);"
+          "uapmd.sequencer.getTrackInfos().find(t => t.trackIndex === 0).trackIndex);"
           "if (uiEffectId < 0) throw new Error('effect creation failed')")
 SHOW_EFFECT = 'uapmd.instance(uiEffectId).showUI()'
 
@@ -94,11 +95,8 @@ def main():
         while not call('poll')['scanned']:
             assert time.monotonic() < deadline, 'Scan timed out'
             pump()
-        call('create', pluginId='org.surge-synth-team.surge-xt')
-        while not call('poll')['stateReady']:
-            assert time.monotonic() < deadline, 'Creation timed out'
-            pump()
-        instance_id = call('poll')['instanceId']
+        instance_id = evaluate(CREATE_SURGE)
+        assert instance_id >= 0, 'Creation failed'
         parameters = evaluate(f'uapmd.instance({instance_id}).getParameters()')
         parameter = next(p for p in parameters if not p['isReadonly'] and not p['isDiscrete'])
         safety = call('parameter-safety', instanceId=instance_id, parameterId=parameter['id'])
@@ -133,7 +131,7 @@ def main():
             assert 'Plugin instance not found' in str(error)
         evaluate(snippet)
         assert windows() == [hwnd], 'Repeated show recreated the container'
-        evaluate('uapmd.instance(surgeId).hideUI()')
+        evaluate('uapmd.instance(uiInstrumentId).hideUI()')
         assert not user32.IsWindowVisible(hwnd)
         evaluate(snippet)
         assert windows() == [hwnd] and user32.IsWindowVisible(hwnd)
@@ -153,13 +151,13 @@ def main():
         # Share the real-plugin process/message loop with the preset regression.
         import runpy
         preset_checks = runpy.run_path(str(ROOT / 'patches/uapmd/clap-presets/regression.py'))
-        preset_result = preset_checks['check'](call, evaluate, pump, data)
+        preset_result = preset_checks['check'](call, evaluate, pump, data, instance_id)
         os.write(report, (preset_result + '\n').encode('utf-8'))
         evaluate('uapmd.instance(uiEffectId).dispose()')
         pump()
         assert windows() == [hwnd], 'Effect disposal affected the instrument window'
         assert evaluate('uapmd.audio.isEngineEnabled()') is False
-        evaluate('uapmd.instance(surgeId).dispose()')
+        evaluate('uapmd.instance(uiInstrumentId).dispose()')
         pump()
         assert not windows(), 'Disposed instance retained its container'
         try:
@@ -168,7 +166,7 @@ def main():
         except RuntimeError as error:
             assert 'Plugin instance not found' in str(error)
         # Exit with a visible editor as well as testing explicit disposal.
-        evaluate("globalThis.surgeId = uapmd.instancing.create('CLAP', 'org.surge-synth-team.surge-xt', 0)")
+        evaluate(CREATE_SURGE)
         evaluate(snippet)
         assert len(windows()) == 1
     finally:

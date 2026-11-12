@@ -37,3 +37,23 @@ fn presents_before_evaluation_and_clears_for_silent_or_failed_scripts() {
         assert!(ctx.memory(|m| m.top_modal_layer().is_none()));
     }
 }
+
+#[test]
+fn presents_the_first_evaluation_of_any_scope_and_every_snippet() {
+    let ctx = egui::Context::default();
+    let mut pending = Pending::default();
+    let cell = crate::execution::request("1", 0, 0, crate::execution::Scope::Cell);
+    let mut snippet = cell.clone();
+    snippet.scope = "snippet";
+    assert!(pending.presents(&cell));
+    pending.queue(cell.clone());
+    for _ in 0..3 {
+        frame(&ctx, &mut pending);
+        if pending.presented_frame.is_some() {
+            break;
+        }
+    }
+    assert!(pending.take_ready(&ctx).is_some());
+    assert!(!pending.presents(&cell));
+    assert!(pending.presents(&snippet));
+}
