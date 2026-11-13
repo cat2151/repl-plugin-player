@@ -21,7 +21,8 @@ pub(super) enum Pane {
     Editor,
     Main,
     Console,
-    Keyboard,
+    /// An extension enabled in `config.toml`, by its `<dll>/<pane>` name.
+    Extension(String),
     Scope,
     Log,
     Reference,
@@ -36,7 +37,7 @@ impl Pane {
             Pane::Editor => "JavaScript",
             Pane::Main => crate::i18n::t("m001"),
             Pane::Console => "Console",
-            Pane::Keyboard => crate::i18n::t("pane_keyboard"),
+            Pane::Extension(name) => crate::extension::title(name),
             Pane::Scope => crate::i18n::t("pane_scope"),
             Pane::Log => crate::i18n::t("m008"),
             Pane::Reference => crate::i18n::t("pane_reference"),
@@ -80,6 +81,8 @@ pub(super) struct Layout {
     /// Frames left before the main window's place is taken as the user's again; until
     /// then it can still be where the other source put it.
     main_hold: u8,
+    /// The extensions enabled in `config.toml`, in its order; each has a pane.
+    pub extensions: Vec<String>,
 }
 
 /// An OS window outside the main window, with a tree of its own.
@@ -179,31 +182,36 @@ impl Default for Layout {
             main: crate::config::Config::default().window,
             switched: false,
             main_hold: 0,
+            extensions: vec![],
         }
     }
 }
 
 /// Editor on the left; the right column stacks main over the fixed-height sections, with
 /// the console at the bottom right.
-/// Shares are pixels (tab bar included) at the default 1250×800 window. Keyboard and
-/// scope get their whole drawing; log and reference start scrolled.
-pub(super) fn initial() -> Layout {
+/// Shares are pixels (tab bar included) at the default 1250×800 window. The enabled
+/// `extensions`, in order under main, and scope get their whole drawing; log and
+/// reference start scrolled.
+pub(super) fn initial(extensions: &[String]) -> Layout {
     let mut tiles = Tiles::default();
     let tab = |tiles: &mut Tiles<Pane>, pane| {
         let pane = tiles.insert_pane(pane);
         tiles.insert_tab_tile(vec![pane])
     };
-    let column: Vec<_> = [
-        (Pane::Main, 250.0),
-        (Pane::Keyboard, 126.0),
-        (Pane::Scope, 144.0),
-        (Pane::Log, 96.0),
-        (Pane::Reference, 84.0),
-        (Pane::Console, 98.0),
-    ]
-    .into_iter()
-    .map(|(pane, share)| (tab(&mut tiles, pane), share))
-    .collect();
+    let sections = extensions
+        .iter()
+        .map(|name| (Pane::Extension(name.clone()), 126.0));
+    let column: Vec<_> = [(Pane::Main, 250.0)]
+        .into_iter()
+        .chain(sections)
+        .chain([
+            (Pane::Scope, 144.0),
+            (Pane::Log, 96.0),
+            (Pane::Reference, 84.0),
+            (Pane::Console, 98.0),
+        ])
+        .map(|(pane, share)| (tab(&mut tiles, pane), share))
+        .collect();
     let editor = tab(&mut tiles, Pane::Editor);
     let right = tiles.insert_vertical_tile(column.iter().map(|(id, _)| *id).collect());
     share(&mut tiles, right, &column);
@@ -211,6 +219,7 @@ pub(super) fn initial() -> Layout {
     share(&mut tiles, root, &[(editor, 630.0), (right, 620.0)]);
     Layout {
         tree: Tree::new(egui::Id::unique("dock"), root, tiles),
+        extensions: extensions.to_vec(),
         ..Layout::default()
     }
 }
@@ -329,11 +338,14 @@ impl Panes<'_> {
 
     fn section(&mut self, ui: &mut egui::Ui, pane: &Pane) {
         match pane {
-            Pane::Keyboard => crate::keyboard::show(
-                ui,
-                &self.notes,
-                self.projected.as_ref().and_then(View::pitch_range),
-            ),
+            Pane::Extension(name) => {
+                let frame = repl_extension_api::Frame {
+                    active_notes: &self.notes,
+                    range: self.projected.as_ref().and_then(View::pitch_range),
+                    language: crate::i18n::language(),
+                };
+                self.editor.extensions.show(name, ui, &frame);
+            }
             Pane::Scope => self.editor.scope_pane(ui),
             Pane::Log => self.editor.log_pane(ui),
             Pane::Reference => self.editor.reference_pane(ui),

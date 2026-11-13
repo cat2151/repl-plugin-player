@@ -1,4 +1,9 @@
+use super::super::harness::{keyboard, with_keyboard};
 use super::*;
+
+fn read(text: &str) -> Result<Layout, String> {
+    super::read(text, &with_keyboard())
+}
 
 fn panes(layout: &Layout) -> Vec<Pane> {
     let mut panes: Vec<_> = (layout.tree.tiles.iter())
@@ -13,7 +18,7 @@ fn panes(layout: &Layout) -> Vec<Pane> {
 
 #[test]
 fn the_first_layout_reads_back_as_written() {
-    let first = super::super::initial();
+    let first = super::super::initial(&with_keyboard());
     let text = write(&first);
     println!("{text}");
     let read = read(&text).unwrap();
@@ -42,10 +47,10 @@ width = 500
 height = 180
 
 [[window]]
-view = "keyboard"
+view = "builtin/keyboard"
 "#;
     let layout = read(text).unwrap();
-    assert_eq!(layout.floating_panes(), [Pane::Console, Pane::Keyboard]);
+    assert_eq!(layout.floating_panes(), [Pane::Console, keyboard()]);
     let console = layout.placed[&Pane::Console.viewport()];
     assert_eq!((console.min.x, console.min.y), (-1200.0, 40.0));
     assert_eq!(console.size(), egui::vec2(500.0, 180.0));
@@ -125,7 +130,7 @@ height_percent = 100
 
 #[test]
 fn script_windows_are_not_written() {
-    let mut layout = super::super::initial();
+    let mut layout = super::super::initial(&with_keyboard());
     layout
         .floating
         .push(Float::single(Pane::Script("w".into())));
@@ -141,7 +146,7 @@ fn a_window_tree_is_kept_and_named_by_its_first_view() {
 [[window]]
 row = [
   { width = 2, tabs = [{ view = "scope" }, { active = true, view = "log" }] },
-  { width = 1, view = "keyboard" },
+  { width = 1, view = "builtin/keyboard" },
 ]
 x = 10
 y = 20
@@ -151,7 +156,7 @@ height = 400
     let layout = read(text).unwrap();
     assert_eq!(
         layout.floating_panes(),
-        [Pane::Scope, Pane::Log, Pane::Keyboard]
+        [Pane::Scope, Pane::Log, keyboard()]
     );
     let id = layout.floating[0].id;
     assert_eq!(id, Pane::Scope.viewport());
@@ -160,6 +165,47 @@ height = 400
     let again = write(&layout);
     println!("{again}");
     assert!(again.contains("active = true, view = \"log\""), "{again}");
-    assert!(again.contains("width = 1, view = \"keyboard\""), "{again}");
+    assert!(
+        again.contains("width = 1, view = \"builtin/keyboard\""),
+        "{again}"
+    );
     assert_eq!(write(&read(&again).unwrap()), again);
+}
+
+#[test]
+fn the_view_line_names_the_enabled_extensions() {
+    let text = write(&super::super::initial(&with_keyboard()));
+    let line = text.lines().next().unwrap();
+    assert!(line.contains("keyboard"), "{line}");
+    let text = write(&super::super::initial(&[]));
+    let line = text.lines().next().unwrap();
+    assert!(!line.contains("keyboard"), "{line}");
+}
+
+/// The author's layout keeps reading after keyboard is turned off in `config.toml`.
+#[test]
+fn a_disabled_extension_is_left_out_and_its_emptied_window_with_it() {
+    let text = "[[window]]\ncolumn = [{ view = \"builtin/keyboard\" }, { view = \"scope\" }]\n\
+                [[window]]\ntabs = [{ view = \"builtin/keyboard\" }]\nx = 0\ny = 0\nwidth = 600\nheight = 500\n";
+    let layout = super::read(text, &[]).unwrap();
+    assert_eq!(layout.floating_panes(), [Pane::Scope]);
+    assert!(!panes(&layout).contains(&keyboard()));
+    let again = write(&layout);
+    println!("{again}");
+    assert!(!again.contains("keyboard"), "{again}");
+}
+
+#[test]
+fn an_unknown_view_is_refused_with_or_without_extensions() {
+    for extensions in [vec![], with_keyboard()] {
+        let Err(error) = super::read(
+            "[root]
+view = \"nothing\"
+",
+            &extensions,
+        ) else {
+            panic!("an unknown view is read");
+        };
+        assert!(error.contains("nothing"), "{error}");
+    }
 }

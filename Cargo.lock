@@ -527,6 +527,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "builtin"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "repl-extension-api",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2939,7 +2947,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
-name = "repl-keyboard"
+name = "repl-extension-api"
 version = "0.1.0"
 dependencies = [
  "eframe",
@@ -2954,6 +2962,7 @@ dependencies = [
  "egui_tiles",
  "libloading",
  "mmlabc-to-smf",
+ "repl-extension-api",
  "serde",
  "serde_json",
  "sha2",

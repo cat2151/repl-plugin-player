@@ -1,17 +1,19 @@
 //! Headless frames of `Editor::dock` without native code: the first layout,
 //! a window resize, a border drag and a pane's trip to its own window and back.
-use super::harness::{Harness, DEFAULT};
+use super::harness::{keyboard, with_keyboard, Harness, DEFAULT};
 use super::*;
 use egui::{Event, Modifiers, PointerButton, Pos2, Rect};
 
-const COLUMN: [Pane; 6] = [
-    Pane::Main,
-    Pane::Keyboard,
-    Pane::Scope,
-    Pane::Log,
-    Pane::Reference,
-    Pane::Console,
-];
+fn column() -> [Pane; 6] {
+    [
+        Pane::Main,
+        keyboard(),
+        Pane::Scope,
+        Pane::Log,
+        Pane::Reference,
+        Pane::Console,
+    ]
+}
 
 impl Harness {
     fn rect(&self, pane: &Pane) -> Rect {
@@ -20,8 +22,18 @@ impl Harness {
         rect.unwrap_or_else(|| panic!("{pane:?} has no rect"))
     }
 
+    fn report_panes(&self, label: &str) {
+        let panes: Vec<_> = (self.editor.layout.tree.tiles.iter())
+            .filter_map(|(_, tile)| match tile {
+                egui_tiles::Tile::Pane(pane) => Some(pane),
+                _ => None,
+            })
+            .collect();
+        println!("{label}: {panes:?}");
+    }
+
     fn report(&self, label: &str) {
-        for pane in [Pane::Editor].into_iter().chain(COLUMN) {
+        for pane in [Pane::Editor].into_iter().chain(column()) {
             println!("{label}: {pane:?} {:?}", self.rect(&pane));
         }
     }
@@ -45,7 +57,7 @@ fn first_layout_puts_editor_left_sections_under_main_and_console_bottom_right() 
     let main = harness.rect(&Pane::Main);
     assert!(editor.right() <= main.left(), "{editor:?} {main:?}");
     assert!((editor.width() - 630.0).abs() < 20.0, "{editor:?}");
-    for pair in COLUMN.windows(2) {
+    for pair in column().windows(2) {
         let (upper, lower) = (harness.rect(&pair[0]), harness.rect(&pair[1]));
         assert!(
             upper.bottom() <= lower.top(),
@@ -55,7 +67,7 @@ fn first_layout_puts_editor_left_sections_under_main_and_console_bottom_right() 
     }
     // The keyboard and scope drawings (82 and 100 high plus the frame margin) are not
     // cut.
-    assert!(harness.rect(&Pane::Keyboard).height() >= 98.0);
+    assert!(harness.rect(&keyboard()).height() >= 98.0);
     assert!(harness.rect(&Pane::Scope).height() >= 116.0);
     assert!(harness.editor.layout.floating.is_empty());
     let console = harness.rect(&Pane::Console);
@@ -68,7 +80,7 @@ fn shrinking_the_window_keeps_every_pane() {
     harness.settle(DEFAULT);
     harness.settle(egui::vec2(800.0, 600.0));
     harness.report("800x600");
-    for pane in [Pane::Editor].into_iter().chain(COLUMN) {
+    for pane in [Pane::Editor].into_iter().chain(column()) {
         let rect = harness.rect(&pane);
         assert!(
             rect.width() > 0.0 && rect.height() > 0.0,
@@ -103,11 +115,11 @@ fn keyboard_goes_to_its_own_window_and_back_into_the_clicked_tabs() {
     harness.settle(DEFAULT);
     let scope = harness.text("Scope").expect("scope tab");
     harness.click(scope.center(), PointerButton::Primary);
-    harness.float(&Pane::Keyboard).unwrap();
-    assert!(!harness.in_tree(&Pane::Keyboard));
-    assert_eq!(harness.editor.layout.floating_panes(), [Pane::Keyboard]);
+    harness.float(&keyboard()).unwrap();
+    assert!(!harness.in_tree(&keyboard()));
+    assert_eq!(harness.editor.layout.floating_panes(), [keyboard()]);
     // Headless, the immediate viewport is an embedded window with the viewport's id.
-    let window = egui::Id::unique(Pane::Keyboard.viewport());
+    let window = egui::Id::unique(keyboard().viewport());
     let window = harness.ctx.memory(|memory| memory.area_rect(window));
     println!("keyboard window {window:?}");
     assert!(window.is_some_and(|rect| rect.width() > 0.0 && rect.height() > 0.0));
@@ -115,8 +127,8 @@ fn keyboard_goes_to_its_own_window_and_back_into_the_clicked_tabs() {
     assert!(harness.editor.layout.floating.is_empty());
     let tiles = &harness.editor.layout.tree.tiles;
     let parent = |pane| tiles.find_pane(&pane).and_then(|id| tiles.parent_of(id));
-    assert!(parent(Pane::Keyboard).is_some());
-    assert_eq!(parent(Pane::Keyboard), parent(Pane::Scope));
+    assert!(parent(keyboard()).is_some());
+    assert_eq!(parent(keyboard()), parent(Pane::Scope));
     assert!(harness.text(crate::i18n::t("pane_dock")).is_none());
 }
 
@@ -193,17 +205,17 @@ fn a_pane_window_is_brought_to_the_front_once_when_it_opens() {
     harness.settle(DEFAULT);
     harness.settle(DEFAULT);
     assert_eq!(focused(&harness, &pane), 1);
-    let keyboard = harness.text("Keyboard").expect("keyboard tab");
-    harness.click(keyboard.center(), PointerButton::Secondary);
+    let tab = harness.text("keyboard").expect("keyboard tab");
+    harness.click(tab.center(), PointerButton::Secondary);
     harness
         .click_text(crate::i18n::t("pane_float"), PointerButton::Primary)
         .unwrap();
     harness.settle(DEFAULT);
     assert_eq!(
         harness.editor.layout.floating_panes(),
-        [pane.clone(), Pane::Keyboard]
+        [pane.clone(), keyboard()]
     );
-    assert_eq!(focused(&harness, &Pane::Keyboard), 1);
+    assert_eq!(focused(&harness, &keyboard()), 1);
     assert_eq!(focused(&harness, &pane), 1);
     crate::script_ui::dispatch("ui.close", &serde_json::json!({"id": "front"})).unwrap();
     harness.settle(DEFAULT);
@@ -212,28 +224,25 @@ fn a_pane_window_is_brought_to_the_front_once_when_it_opens() {
 
 #[test]
 fn a_window_from_the_file_holds_a_tree_whose_border_drags_and_goes_back_whole() {
-    let text = "[[window]]\ncolumn = [{ view = \"keyboard\" }, { view = \"scope\" }]\nx = 0\ny = 0\nwidth = 600\nheight = 500\n";
+    let text = "[[window]]\ncolumn = [{ view = \"builtin/keyboard\" }, { view = \"scope\" }]\nx = 0\ny = 0\nwidth = 600\nheight = 500\n";
     let mut harness = Harness::new();
-    harness.editor.layout = super::file::read(text).unwrap();
+    harness.editor.layout = super::file::read(text, &with_keyboard()).unwrap();
     harness.settle(DEFAULT);
     assert_eq!(
         harness.editor.layout.floating_panes(),
-        [Pane::Keyboard, Pane::Scope]
+        [keyboard(), Pane::Scope]
     );
     let rect = |harness: &Harness, pane: &Pane| {
         let tiles = &harness.editor.layout.floating[0].tree.tiles;
         let rect = tiles.find_pane(pane).and_then(|id| tiles.rect(id));
         rect.unwrap_or_else(|| panic!("{pane:?} has no rect in the window"))
     };
-    let (keyboard, scope) = (
-        rect(&harness, &Pane::Keyboard),
-        rect(&harness, &Pane::Scope),
-    );
-    println!("window: keyboard {keyboard:?} scope {scope:?}");
-    assert!(keyboard.bottom() <= scope.top(), "{keyboard:?} {scope:?}");
+    let (upper, scope) = (rect(&harness, &keyboard()), rect(&harness, &Pane::Scope));
+    println!("window: keyboard {upper:?} scope {scope:?}");
+    assert!(upper.bottom() <= scope.top(), "{upper:?} {scope:?}");
     // The border is at keyboard's bottom; scope's tab bar is under it.
-    let y = keyboard.bottom() + 1.0;
-    let from = egui::pos2(keyboard.center().x, y);
+    let y = upper.bottom() + 1.0;
+    let from = egui::pos2(upper.center().x, y);
     harness.frame(DEFAULT, vec![Event::PointerMoved(from)]);
     harness.frame(DEFAULT, vec![press(from, true)]);
     for step in 1..=4 {
@@ -242,16 +251,40 @@ fn a_window_from_the_file_holds_a_tree_whose_border_drags_and_goes_back_whole() 
     }
     harness.frame(DEFAULT, vec![press(egui::pos2(from.x, y + 80.0), false)]);
     harness.settle(DEFAULT);
-    let after = rect(&harness, &Pane::Keyboard).height();
-    println!("keyboard height {} -> {after}", keyboard.height());
-    assert!((after - keyboard.height() - 80.0).abs() < 20.0);
+    let after = rect(&harness, &keyboard()).height();
+    println!("keyboard height {} -> {after}", upper.height());
+    assert!((after - upper.height() - 80.0).abs() < 20.0);
     // Clicks in the window are not the main tree's: the main tree keeps its target.
     let target = harness.editor.layout.target();
     harness.dock().unwrap();
     assert!(harness.editor.layout.floating.is_empty());
-    assert!(harness.in_tree(&Pane::Keyboard) && harness.in_tree(&Pane::Scope));
+    assert!(harness.in_tree(&keyboard()) && harness.in_tree(&Pane::Scope));
     let tiles = &harness.editor.layout.tree.tiles;
     let parent = |pane| tiles.find_pane(&pane).and_then(|id| tiles.parent_of(id));
-    assert_eq!(parent(Pane::Keyboard), target);
+    assert_eq!(parent(keyboard()), target);
     assert_eq!(parent(Pane::Scope), target);
+}
+
+#[test]
+fn an_enabled_extension_has_a_tab_whose_dll_is_drawn() {
+    let mut harness = Harness::new();
+    harness.settle(DEFAULT);
+    assert!(harness.in_tree(&keyboard()));
+    assert!(harness.text("keyboard").is_some(), "keyboard tab");
+    assert_eq!(harness.editor.extensions.loaded(), [("builtin", Ok(()))]);
+}
+
+#[test]
+fn without_extensions_no_tab_has_one_and_no_dll_is_loaded() {
+    let mut harness = Harness::with_extensions(&[]);
+    harness.settle(DEFAULT);
+    harness.report_panes("no extensions");
+    let tiles = &harness.editor.layout.tree.tiles;
+    let extension = tiles
+        .iter()
+        .any(|(_, tile)| matches!(tile, egui_tiles::Tile::Pane(Pane::Extension(_))));
+    assert!(!extension);
+    assert!(harness.editor.layout.floating.is_empty());
+    assert!(harness.text("keyboard").is_none());
+    assert!(harness.editor.extensions.loaded().is_empty());
 }

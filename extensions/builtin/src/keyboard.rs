@@ -1,17 +1,23 @@
-//! The keyboard display, loaded by the app as a DLL. The app and this DLL are built in
-//! one workspace, so both sides share the same `egui` and pass `egui::Ui` directly.
+//! The keyboard display.
 use eframe::egui::{self, Color32, Rect, Sense, Stroke, StrokeKind};
+use repl_extension_api::Frame;
 
-/// `range` is the lowest and highest pitch in the timeline; the keyboard spans exactly that.
-/// `hover` is the tooltip text, in the app's language.
-#[no_mangle]
-pub fn repl_keyboard_show(ui: &mut egui::Ui, active: &[u8], range: Option<(u8, u8)>, hover: &str) {
+fn hover(language: &str) -> &'static str {
+    match language {
+        "ja" => "全プラグインへの入力です。リリース音やサステインは表示しません。表示専用です。",
+        _ => "Input to every plugin · Release tails and sustain are not shown. Display only.",
+    }
+}
+
+/// The keyboard spans exactly `frame.range`, the lowest and highest pitch in the timeline.
+pub(crate) fn show(ui: &mut egui::Ui, frame: &Frame) {
+    let (active, range) = (frame.active_notes, frame.range);
     // The height never depends on the notes, so nothing below the keyboard moves.
     let (row, response) = ui.allocate_exact_size(
         egui::vec2(ui.available_width().min(350.0), 82.0),
         Sense::hover(),
     );
-    response.on_hover_text(hover);
+    response.on_hover_text(hover(frame.language));
     let Some((first, last)) = range.map(widen) else {
         return;
     };
@@ -85,18 +91,4 @@ fn span(pitch: u8) -> (f32, f32) {
     } else {
         (x, x + 1.0)
     }
-}
-
-/// A tall list in a `ScrollArea` with the id salt `"repl_keyboard_probe"`. Only the app's
-/// tests draw it, to see that the app reads the scroll state this DLL stores.
-#[no_mangle]
-pub fn repl_keyboard_probe_scroll(ui: &mut egui::Ui) {
-    egui::ScrollArea::vertical()
-        .id_salt("repl_keyboard_probe")
-        .max_height(100.0)
-        .show(ui, |ui| {
-            for row in 0..100 {
-                ui.label(row.to_string());
-            }
-        });
 }

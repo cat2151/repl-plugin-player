@@ -1,30 +1,37 @@
 //! `layout-auto.toml` and the `[layout]` of `config.toml`: the main tree and each OS
 //! window's tree as text, in the `row`/`column`/`tabs`/`view` form of
 //! `../cat-smf-editor`'s `layout.toml`. Script windows are not written; a fixed pane
-//! the text leaves out joins the active tabs.
+//! or an enabled extension the text leaves out joins the active tabs, and the view of
+//! an extension that is not enabled is left out.
 use super::monitor::{MonitorPlacement, KEY as MONITOR_KEY};
 use super::{Float, Layout, Pane};
 use eframe::egui;
 use egui_tiles::{Container, LinearDir, Tile, TileId, Tiles, Tree};
 
-const VIEWS: [(&str, Pane); 7] = [
+/// The panes every layout has; an extension's view is its `<dll>/<pane>` name.
+const VIEWS: [(&str, Pane); 6] = [
     ("editor", Pane::Editor),
     ("main", Pane::Main),
     ("console", Pane::Console),
-    ("keyboard", Pane::Keyboard),
     ("scope", Pane::Scope),
     ("log", Pane::Log),
     ("reference", Pane::Reference),
 ];
 
-fn name(pane: &Pane) -> Option<&'static str> {
-    VIEWS.iter().find(|(_, p)| p == pane).map(|(name, _)| *name)
+fn name(pane: &Pane) -> Option<&str> {
+    match pane {
+        Pane::Extension(name) => Some(name),
+        _ => VIEWS.iter().find(|(_, p)| p == pane).map(|(name, _)| *name),
+    }
 }
 
 /// The layout as the file's text; `[main]` is the main window, which only
 /// `layout-auto.toml` has (`config.toml` has it in `[window]`).
 pub(super) fn write(layout: &Layout) -> String {
-    let views: Vec<_> = VIEWS.iter().map(|(name, _)| *name).collect();
+    let fixed = VIEWS.iter().map(|(name, _)| *name);
+    let views: Vec<_> = fixed
+        .chain(layout.extensions.iter().map(String::as_str))
+        .collect();
     let mut text = format!("# view: {}\n", views.join(", "));
     let main = layout
         .seen
@@ -147,8 +154,8 @@ fn list(children: &[String]) -> String {
     format!("[\n{}]", lines.concat())
 }
 
-/// The layout the text describes, script panes aside.
-pub(super) fn read(text: &str) -> Result<Layout, String> {
+/// The layout the text describes with the enabled `extensions`, script panes aside.
+pub(super) fn read(text: &str, extensions: &[String]) -> Result<Layout, String> {
     let mut root: toml::Table = toml::from_str(text).map_err(|error| error.to_string())?;
     let main = match root.remove("main") {
         None => None,
@@ -163,7 +170,7 @@ pub(super) fn read(text: &str) -> Result<Layout, String> {
         }
         Some(_) => return Err(crate::i18n::render("layout_key", &[("key", "main".into())])),
     };
-    let mut layout = read_table(&root)?;
+    let mut layout = read_table(&root, extensions)?;
     if let Some(rect) = main {
         layout.main.position = Some(rect.min.into());
         layout.main.size = rect.size().into();
@@ -171,25 +178,38 @@ pub(super) fn read(text: &str) -> Result<Layout, String> {
     Ok(layout)
 }
 
-/// The layout a table of `root` and `window` describes, script panes aside.
-pub(super) fn read_table(root: &toml::Table) -> Result<Layout, String> {
+/// The layout a table of `root` and `window` describes with the enabled `extensions`,
+/// script panes aside.
+pub(super) fn read_table(root: &toml::Table, extensions: &[String]) -> Result<Layout, String> {
     let mut tiles = Tiles::default();
-    let mut seen = vec![];
-    let mut layout = Layout::default();
+    let mut seen = Seen {
+        panes: vec![],
+        extensions,
+    };
+    let mut layout = Layout {
+        extensions: extensions.to_vec(),
+        ..Layout::default()
+    };
     for (key, value) in root {
         match (key.as_str(), value) {
             ("root", toml::Value::Table(table)) => {
-                let root = build(&mut tiles, table, &[], &mut seen)?;
-                layout.tree = Tree::new(egui::Id::unique("dock"), root, tiles);
+                if let Some(root) = build(&mut tiles, table, &[], &mut seen)? {
+                    layout.tree = Tree::new(egui::Id::unique("dock"), root, tiles);
+                }
                 tiles = Tiles::default();
             }
             ("window", toml::Value::Array(windows)) => {
                 for window in windows {
                     let window = window.as_table().ok_or("[[window]]")?;
-                    let first = seen.len();
+                    let first = seen.panes.len();
                     let mut tiles = Tiles::default();
                     let root = build(&mut tiles, window, &WINDOW_KEYS, &mut seen)?;
+                    let rect = rect(window)?;
+                    let Some(root) = root else {
+                        continue;
+                    };
                     let pane = seen
+                        .panes
                         .get(first)
                         .ok_or_else(|| crate::i18n::t("layout_node"))?;
                     let id = pane.viewport();
@@ -197,7 +217,6 @@ pub(super) fn read_table(root: &toml::Table) -> Result<Layout, String> {
                         id,
                         tree: Tree::new(Float::tree_id(id), root, tiles),
                     };
-                    let rect = rect(window)?;
                     match window.get(MONITOR_KEY).map(MonitorPlacement::read) {
                         Some(_) if rect.is_some() => {
                             return Err(crate::i18n::t("layout_monitor").into())
@@ -222,8 +241,10 @@ pub(super) fn read_table(root: &toml::Table) -> Result<Layout, String> {
         _ => None,
     };
     let chosen = active(&layout);
-    for (_, pane) in VIEWS {
-        if !seen.contains(&pane) {
+    let fixed = VIEWS.into_iter().map(|(_, pane)| pane);
+    let enabled = extensions.iter().map(|name| Pane::Extension(name.clone()));
+    for pane in fixed.chain(enabled) {
+        if !seen.panes.contains(&pane) {
             layout.dock(pane);
         }
     }
@@ -235,20 +256,38 @@ pub(super) fn read_table(root: &toml::Table) -> Result<Layout, String> {
     Ok(layout)
 }
 
-fn view(name: &str, seen: &mut Vec<Pane>) -> Result<Pane, String> {
-    let pane = VIEWS
-        .iter()
-        .find(|(view, _)| *view == name)
-        .map(|(_, pane)| pane.clone())
-        .ok_or_else(|| crate::i18n::render("layout_view", &[("view", name.into())]))?;
-    if seen.contains(&pane) {
+/// The panes read so far, and the extensions that have one.
+struct Seen<'a> {
+    panes: Vec<Pane>,
+    extensions: &'a [String],
+}
+
+/// The pane of view `name`; `None` for an extension that is not enabled.
+fn view(name: &str, seen: &mut Seen) -> Result<Option<Pane>, String> {
+    let fixed = VIEWS.iter().find(|(view, _)| *view == name);
+    let pane = match fixed {
+        Some((_, pane)) => pane.clone(),
+        None if seen.extensions.iter().any(|enabled| enabled == name) => {
+            Pane::Extension(name.into())
+        }
+        None if crate::extension::split(name).is_some_and(|(dll, _)| {
+            crate::resources::extension_names()
+                .iter()
+                .any(|known| known == dll)
+        }) =>
+        {
+            return Ok(None)
+        }
+        None => return Err(crate::i18n::render("layout_view", &[("view", name.into())])),
+    };
+    if seen.panes.contains(&pane) {
         return Err(crate::i18n::render(
             "layout_twice",
             &[("view", name.into())],
         ));
     }
-    seen.push(pane.clone());
-    Ok(pane)
+    seen.panes.push(pane.clone());
+    Ok(Some(pane))
 }
 
 /// The keys of a window's place, read beside its tree: `x`, `y`, `width`, `height`, or
@@ -283,13 +322,15 @@ fn number(value: &toml::Value) -> Option<f32> {
 const TAB_KEYS: &[&str] = &["active"];
 
 /// One node table into `tiles`; `allowed` are the keys its parent reads from it. A view
-/// outside tabs gets tabs of its own, as `all_panes_must_have_tabs` wants.
+/// outside tabs gets tabs of its own, as `all_panes_must_have_tabs` wants. `None` when
+/// nothing is left: the view of an extension that is not enabled, or a container of
+/// only such views.
 fn build(
     tiles: &mut Tiles<Pane>,
     table: &toml::Table,
     allowed: &[&str],
-    seen: &mut Vec<Pane>,
-) -> Result<TileId, String> {
+    seen: &mut Seen,
+) -> Result<Option<TileId>, String> {
     let kinds = ["view", "row", "column", "tabs", "grid"];
     for key in table.keys() {
         if !kinds.contains(&key.as_str()) && !allowed.contains(&key.as_str()) {
@@ -303,13 +344,15 @@ fn build(
         return Err(crate::i18n::t("layout_node").into());
     };
     if kind == "view" {
-        let pane = view(value.as_str().unwrap_or(""), seen)?;
+        let Some(pane) = view(value.as_str().unwrap_or(""), seen)? else {
+            return Ok(None);
+        };
         let pane = tiles.insert_pane(pane);
-        return Ok(if allowed == TAB_KEYS {
+        return Ok(Some(if allowed == TAB_KEYS {
             pane
         } else {
             tiles.insert_tab_tile(vec![pane])
-        });
+        }));
     }
     let children = value
         .as_array()
@@ -325,11 +368,15 @@ fn build(
         let child = child
             .as_table()
             .ok_or_else(|| crate::i18n::t("layout_node"))?;
-        let id = build(tiles, child, child_keys, seen)?;
-        ids.push((id, child));
+        if let Some(id) = build(tiles, child, child_keys, seen)? {
+            ids.push((id, child));
+        }
     }
     let only: Vec<_> = ids.iter().map(|(id, _)| *id).collect();
-    Ok(match kind {
+    if only.is_empty() && !children.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(match kind {
         "row" | "column" => {
             let dir = if kind == "row" {
                 LinearDir::Horizontal
@@ -355,7 +402,7 @@ fn build(
             tiles.insert_container(tabs)
         }
         _ => tiles.insert_container(egui_tiles::Grid::new(only)),
-    })
+    }))
 }
 
 #[cfg(test)]

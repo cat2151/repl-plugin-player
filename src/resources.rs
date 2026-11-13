@@ -11,7 +11,7 @@ use std::{
 };
 
 const BRIDGE: &[u8] = include_bytes!("../build/out/repl_bridge.dll");
-include!(concat!(env!("OUT_DIR"), "/keyboard_dll.rs"));
+include!(concat!(env!("OUT_DIR"), "/extension_dlls.rs"));
 static TEMPORARY_ID: AtomicU64 = AtomicU64::new(0);
 
 pub fn executable_directory() -> Result<PathBuf, String> {
@@ -158,20 +158,43 @@ pub fn bridge() -> Result<PathBuf, String> {
     }
 }
 
-/// In the repository, `repl_keyboard.dll` from the Cargo profile directory this exe was
-/// built into (test executables sit one level below it, in `deps`); elsewhere, the
-/// embedded copy.
-pub fn keyboard() -> Result<PathBuf, String> {
+/// The extensions there are: in the repository, the directories in `extensions/`;
+/// elsewhere, the embedded ones.
+pub fn extension_names() -> Vec<String> {
+    let Some(root) = source_root() else {
+        return EXTENSIONS
+            .iter()
+            .map(|(name, _)| (*name).to_owned())
+            .collect();
+    };
+    let entries = std::fs::read_dir(root.join("extensions"))
+        .into_iter()
+        .flatten();
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect();
+    names.sort();
+    names
+}
+
+/// In the repository, `<name>.dll` from the Cargo profile directory this exe was built
+/// into (test executables sit one level below it, in `deps`); elsewhere, the embedded
+/// copy.
+pub fn extension(name: &str) -> Result<PathBuf, String> {
+    let file = format!("{name}.dll");
     if source_root().is_none() {
-        if KEYBOARD.is_empty() {
-            return Err("repl_keyboard.dll is not embedded in this exe".into());
-        }
-        return deploy("repl_keyboard.dll", KEYBOARD);
+        let (_, bytes) = EXTENSIONS
+            .iter()
+            .find(|(embedded, _)| *embedded == name)
+            .ok_or_else(|| format!("{file} is not embedded in this exe"))?;
+        return deploy(&file, bytes);
     }
     let directory = executable_directory()?;
     let profile = match directory.file_name() {
         Some(name) if name == "deps" => directory.parent().unwrap_or(&directory),
         _ => &directory,
     };
-    Ok(profile.join("repl_keyboard.dll"))
+    Ok(profile.join(file))
 }

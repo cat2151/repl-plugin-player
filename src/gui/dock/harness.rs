@@ -5,6 +5,17 @@ use eframe::egui::{self, Event, Modifiers, PointerButton, Pos2, Rect, Shape, Vec
 
 pub(super) const DEFAULT: Vec2 = egui::vec2(1250.0, 800.0);
 
+/// The pane of keyboard, the extension `config.toml` starts with.
+#[cfg(test)]
+pub(super) fn keyboard() -> Pane {
+    Pane::Extension("builtin/keyboard".into())
+}
+
+/// The enabled extensions of `config.toml` as it starts.
+pub(super) fn with_keyboard() -> Vec<String> {
+    vec!["builtin/keyboard".into()]
+}
+
 pub(super) struct Harness {
     pub ctx: egui::Context,
     pub editor: Editor,
@@ -14,7 +25,13 @@ pub(super) struct Harness {
 }
 
 impl Harness {
+    /// The first layout with keyboard, the extension `config.toml` starts with.
     pub fn new() -> Self {
+        Self::with_extensions(&with_keyboard())
+    }
+
+    /// The first layout with the enabled `extensions`.
+    pub fn with_extensions(extensions: &[String]) -> Self {
         let ctx = egui::Context::default();
         crate::i18n::fonts(&ctx);
         let missing = std::env::temp_dir().join("rpp-dock-test-absent");
@@ -22,7 +39,8 @@ impl Harness {
             Ok(missing.join("status.json")),
             Ok(missing.join("config.toml")),
         );
-        let editor = Editor::new(vec![], settings, None);
+        let layout = super::initial(extensions);
+        let editor = Editor::new(vec![], settings, None, layout);
         Self {
             ctx,
             editor,

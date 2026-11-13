@@ -1,10 +1,9 @@
 [package]
-name = "repl-keyboard"
+name = "repl-extension-api"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
 test = false
 doctest = false
 

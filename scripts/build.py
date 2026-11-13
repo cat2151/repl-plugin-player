@@ -10,6 +10,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# The extensions this repository holds; build.rs embeds exactly these. Extensions
+# cloned into `extensions/` from other repositories are not embedded.
+BUNDLED = ["builtin"]
+EMBEDDED = ROOT / "build/out/extensions"
 
 
 def main():
@@ -42,13 +46,17 @@ def main():
          "repl_bridge", "--parallel", "6"],
         cwd=ROOT, check=True,
     )
-    # The keyboard DLL is built together with the exe, never with `-p repl-keyboard`:
-    # Cargo unifies features only across the packages of one invocation, and a DLL
-    # whose egui differs from the exe's aborts the process when it draws. The exe is
-    # then rebuilt to embed the copied DLL (build.rs watches it). `copy`, not `copy2`:
-    # a preserved older mtime hides the change from rerun-if-changed.
+    # Extension DLLs are built together with the exe, never with `-p <name>`: Cargo
+    # unifies features only across the packages of one invocation, and a DLL whose
+    # egui differs from the exe's aborts the process when it draws. The exe is then
+    # rebuilt to embed the copied DLLs (build.rs watches the directory). `copy`, not
+    # `copy2`: a preserved older mtime hides the change from rerun-if-changed.
     subprocess.run(["cargo", "build", "--release", "--locked"], cwd=ROOT, check=True)
-    shutil.copy(ROOT / "target/release/repl_keyboard.dll", ROOT / "build/out/repl_keyboard.dll")
+    if EMBEDDED.exists():
+        shutil.rmtree(EMBEDDED)
+    EMBEDDED.mkdir(parents=True)
+    for name in BUNDLED:
+        shutil.copy(ROOT / f"target/release/{name}.dll", EMBEDDED / f"{name}.dll")
     subprocess.run(["cargo", "build", "--release", "--locked"], cwd=ROOT, check=True)
 
 

@@ -17,7 +17,7 @@ impl Pane {
             Pane::Editor => 760.0,
             Pane::Main => 400.0,
             Pane::Console => 220.0,
-            Pane::Keyboard => 150.0,
+            Pane::Extension(_) => 150.0,
             Pane::Scope => 170.0,
             Pane::Log => 200.0,
             Pane::Reference => 300.0,

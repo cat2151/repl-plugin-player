@@ -33,11 +33,18 @@ pub fn run() -> Result<(), String> {
     };
     let settings = settings::Settings::new(crate::status::path(), config_path);
     let auto = settings.layout_auto;
-    let layout = (crate::resources::user_directory().ok())
-        .map(|directory| dock::persist::LayoutFile::open(&directory, auto));
-    let main = layout
-        .as_ref()
-        .map_or(config.window, |(_, layout)| layout.main);
+    let extensions = &config.extensions;
+    let (layout_file, layout) = match crate::resources::user_directory() {
+        Ok(directory) => {
+            let (file, layout) = dock::persist::LayoutFile::open(&directory, auto, extensions);
+            (Some(file), layout)
+        }
+        Err(_) => (None, dock::initial(extensions)),
+    };
+    let main = match layout_file {
+        Some(_) => layout.main,
+        None => config.window,
+    };
     let mut viewport = egui::ViewportBuilder::default().with_inner_size(main.size);
     if let Some(position) = main.position {
         viewport = viewport.with_position(position);
@@ -50,7 +57,12 @@ pub fn run() -> Result<(), String> {
         },
         Box::new(move |cc| {
             crate::i18n::fonts(&cc.egui_ctx);
-            Ok(Box::new(Editor::new(config_errors, settings, layout)))
+            Ok(Box::new(Editor::new(
+                config_errors,
+                settings,
+                layout_file,
+                layout,
+            )))
         }),
     )
     .map_err(|e| e.to_string())
@@ -76,17 +88,16 @@ struct Editor {
     settings: settings::Settings,
     help: help::Help,
     player_download: player_download::Offer,
+    extensions: crate::extension::Extensions,
 }
 impl Editor {
+    /// `layout` is `layout_file`'s, or the first layout without a file.
     fn new(
         config_errors: Vec<String>,
         settings: settings::Settings,
-        layout: Option<(dock::persist::LayoutFile, dock::Layout)>,
+        layout_file: Option<dock::persist::LayoutFile>,
+        layout: dock::Layout,
     ) -> Self {
-        let (layout_file, layout) = match layout {
-            Some((file, layout)) => (Some(file), layout),
-            None => (None, dock::initial()),
-        };
         let mut script_editor = crate::script_editor::ScriptEditor::default();
         let code = script_editor.initial_code();
         Self {
@@ -108,6 +119,7 @@ impl Editor {
             settings,
             help: help::Help::default(),
             player_download: player_download::Offer::default(),
+            extensions: crate::extension::Extensions::default(),
         }
     }
     fn initialize(&mut self) {

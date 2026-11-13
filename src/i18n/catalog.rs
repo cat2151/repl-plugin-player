@@ -69,6 +69,9 @@ impl Catalog {
                 selected = defaults;
             }
         }
-        Ok(Self { messages: selected })
+        Ok(Self {
+            language: language.to_owned(),
+            messages: selected,
+        })
     }
 }

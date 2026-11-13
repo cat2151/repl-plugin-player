@@ -6,6 +6,7 @@ use std::{
 };
 
 pub struct Catalog {
+    language: String,
     messages: BTreeMap<String, String>,
 }
 mod catalog;
@@ -99,8 +100,8 @@ pub fn text(key: &str) -> Result<&'static str, String> {
         .ok_or_else(|| render("unknown_text", &[("key", key.into())]))
 }
 
-pub fn t(key: &str) -> &'static str {
-    let catalog = CATALOG.get_or_init(|| {
+fn catalog() -> &'static Catalog {
+    CATALOG.get_or_init(|| {
         #[cfg(test)]
         {
             Catalog::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("locales"), "en").unwrap()
@@ -109,8 +110,16 @@ pub fn t(key: &str) -> &'static str {
         {
             panic!("Translation used before startup")
         }
-    });
-    catalog
+    })
+}
+
+/// The language chosen at startup, `"ja"` or `"en"`.
+pub fn language() -> &'static str {
+    &catalog().language
+}
+
+pub fn t(key: &str) -> &'static str {
+    catalog()
         .messages
         .get(key)
         .unwrap_or_else(|| panic!("Missing translation key: {key}"))

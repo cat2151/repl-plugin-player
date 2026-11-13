@@ -20,28 +20,41 @@ fn scripts(directory: &Path, paths: &mut Vec<PathBuf>) {
     }
 }
 
-/// `scripts/build.py` copies the workspace's `repl_keyboard.dll` here after a first build;
-/// without it nothing is embedded and an exe outside the repository reports that.
-fn keyboard() {
-    println!("cargo:rerun-if-changed=build/out/repl_keyboard.dll");
-    let path = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap())
-        .join("build/out/repl_keyboard.dll");
-    let source = if path.is_file() {
-        let path_text = path.to_str().expect("UTF-8 keyboard DLL path");
-        format!("const KEYBOARD: &[u8] = include_bytes!({path_text:?});\n")
-    } else {
-        "const KEYBOARD: &[u8] = &[];\n".to_owned()
-    };
+/// Embeds every `<name>.dll` in `build/out/extensions`, where `scripts/build.py` copies
+/// the extensions in this repository after a first build; an exe outside the repository
+/// reports the names that are not embedded.
+fn extensions() {
+    println!("cargo:rerun-if-changed=build/out/extensions");
+    let directory =
+        PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("build/out/extensions");
+    let mut paths: Vec<PathBuf> = fs::read_dir(&directory)
+        .into_iter()
+        .flatten()
+        .map(|entry| entry.expect("Read extension DLL entry").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "dll"))
+        .collect();
+    paths.sort();
+    let mut source = String::from("const EXTENSIONS: &[(&str, &[u8])] = &[\n");
+    for path in paths {
+        let name = path
+            .file_stem()
+            .unwrap()
+            .to_str()
+            .expect("UTF-8 extension name");
+        let path_text = path.to_str().expect("UTF-8 extension DLL path");
+        source.push_str(&format!("({name:?}, include_bytes!({path_text:?})),\n"));
+    }
+    source.push_str("];\n");
     fs::write(
-        PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("keyboard_dll.rs"),
+        PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("extension_dlls.rs"),
         source,
     )
-    .expect("Write embedded keyboard DLL");
+    .expect("Write embedded extension DLLs");
 }
 
 fn main() {
     println!("cargo:rerun-if-changed=build/out/repl_bridge.dll");
-    keyboard();
+    extensions();
     println!("cargo:rerun-if-changed=locales/ja.toml");
     println!("cargo:rerun-if-changed=locales/en.toml");
     let directory =
