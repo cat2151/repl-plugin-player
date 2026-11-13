@@ -3,12 +3,21 @@ name = "repl-plugin-player"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
+[workspace]
+members = [".", "extensions/keyboard"]
+default-members = [".", "extensions/keyboard"]
+
+[workspace.dependencies]
 eframe = { version = "=0.37.0", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "glow", "links", "system_fonts", "wayland", "web_screen_reader", "x11"] }
+
+[dependencies]
+eframe.workspace = true
 libloading = "=0.8.9"
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
 syntect = { version = "=5.3.0", default-features = false, features = ["default-syntaxes", "regex-fancy"] }
 cmrt-chord = { path = "../clap-mml-render-tui/chord" }
 mmlabc-to-smf = { git = "https://github.com/cat2151/mmlabc-to-smf-rust.git", features = ["parser"], default-features = false }
 toml = "=1.2.1"
+egui_tiles = "=0.18.0"

@@ -1,6 +1,6 @@
 # Draft: preserve actual CLAP parameter readonly metadata
 
-Not sent. Verified against a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe.
+Not sent. Verified against 4ec5c3b1c30130fdd3b7d4b375082273247e561f.
 
 `UapmdJSRuntime.cpp` reports every parameter writable. The CLAP parameter
 constructor hardcodes automatable and assigns the automatable flag to readable;

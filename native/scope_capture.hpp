@@ -1,5 +1,5 @@
 #pragma once
-#include <uapmd-midi-service/uapmd-midi-service.hpp>
+#include <uapmd-plugin-hosting/uapmd-plugin-hosting.hpp>
 
 // The generated graph observes only the prepared instrument's output. The
 // callback is installed before creation and remains valid until engine teardown.

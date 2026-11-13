@@ -10,7 +10,7 @@ throw new Error('old cell must not run');
 throw new Error('neighbor must not run');
 
 // %% add clip
-uapmd.timeline.createEmptyMidiClip(0, 0, 480, 120);
+uapmd.timeline.createEmptyMidiClip(uapmd.sequencer.getTrackInfos()[0].trackId, 0, 480, 120);
 
 // %% failing snippet
 globalThis.snippetEffect = 42; throw new Error('snippet error');

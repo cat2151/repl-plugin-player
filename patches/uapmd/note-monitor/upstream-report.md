@@ -1,6 +1,6 @@
 # 提案: プラグイン入力ノート状態の観測API
 
-UAPMD revision `a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe` を利用する
+UAPMD revision `4ec5c3b1c30130fdd3b7d4b375082273247e561f` を利用する
 REPL Plugin Playerで、実際にプラグインへ渡ったNote On/Offをミニ鍵盤に表示しています。
 保存済みTimelineイベントやsendNoteOn呼び出しの履歴では、エンジン停止中のキューや
 Stop flushによる解除を含めた入力状態を判断できません。

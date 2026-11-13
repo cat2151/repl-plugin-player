@@ -18,9 +18,9 @@ globalThis.patchUse = (() => {
     }
     const use = step(options => patch.use(options));
 
-    const instances = step(() => uapmd.sequencer.getTrackInfos().flatMap(t => t.nodes
+    const instances = step(() => uapmd.sequencer.getTrackInfos().flatMap((t, trackIndex) => t.nodes
         .filter(n => n.instanceId >= 0)
-        .map(n => ({trackIndex:t.trackIndex, instanceId:n.instanceId, format:n.format,
+        .map(n => ({trackIndex, instanceId:n.instanceId, format:n.format,
             pluginId:n.pluginId, displayName:n.displayName}))));
 
     // Every parameter value of the instance, by parameter id.

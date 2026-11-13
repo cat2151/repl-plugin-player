@@ -24,8 +24,8 @@ globalThis.loopCase = (() => {
     }
 
     // Each track with its nodes and clips, as the timeline view reads them.
-    const tracks = () => uapmd.sequencer.getTrackInfos().map(track => ({
-        trackIndex: track.trackIndex, nodes: track.nodes, clips: e2e.clips(track.trackIndex)
+    const tracks = () => uapmd.sequencer.getTrackInfos().map((track, trackIndex) => ({
+        trackIndex, nodes: track.nodes, clips: e2e.clips(trackIndex)
     }));
 
     return {loopTrack, main, loop, play, publish, tracks, sampleRate: uapmd.sequencer.getSampleRate()};
@@ -106,7 +106,7 @@ repl.test.loopTrace(true);
     const laterPath = getGeneratedMidiPath();
     mmlabc_to_smf.pass4_midi.save_midi_file(mmlabc_to_smf.mml_to_smf_bytes('l2 cde'), laterPath);
     const clipTrack = 0;
-    const clip = uapmd.timeline.addMidiClip(clipTrack, 0, laterPath);
+    const clip = uapmd.timeline.addMidiClip(e2e.trackId(clipTrack), 0, laterPath);
     if (!clip.success) throw new Error(clip.error);
     uapmd.audio.setEngineEnabled(true);
     uapmd.sequencer.startPlayback();

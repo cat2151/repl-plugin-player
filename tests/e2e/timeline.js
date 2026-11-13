@@ -42,7 +42,7 @@ for (let read = 0; read < 3; read++)
 e2e.assert(retainedValue === 42, 'Run unexpectedly reset globals');
 
 // %% error - after a model edit
-uapmd.timeline.createEmptyMidiClip(0, 0);
+uapmd.timeline.createEmptyMidiClip(e2e.trackId(0), 0);
 throw new Error('after model edit');
 
 // %% the edit before the failure stays

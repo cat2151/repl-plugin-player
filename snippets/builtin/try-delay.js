@@ -5,7 +5,7 @@
     const demo = include('builtin/lib/tutorial.js');
     demo.reset();
     // @text demo_levels
-    const synth = demo.preparePreset(include('builtin/lib/patch.js').use({format:'CLAP', plugin:'Surge XT', track:synthTrack}).instanceId, 'Init Saw');
+    const synth = demo.prepareInstrument({format:'CLAP', plugin:'Surge XT', patch:'patches_factory/Templates/Init Saw.fxp', track:synthTrack});
     // @text demo_delay
     const fx = demo.prepareEffect(synthTrack, 'CLAP', 'org.surge-synth-team.surge-xt-fx');
     const mml = 'l16 r >cegb<cegb';

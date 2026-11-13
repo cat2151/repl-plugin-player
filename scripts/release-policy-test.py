@@ -9,6 +9,15 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def git_bash():
+    """Git for Windows's bash.exe; `bash` by name is WSL's and cannot read `C:/...` scripts."""
+    git = Path(shutil.which('git')).resolve()  # `cmd/git.exe` or `mingw64/bin/git.exe`
+    found = next((p / 'bin/bash.exe' for p in git.parents if (p / 'bin/bash.exe').is_file()), None)
+    if found is None:
+        raise SystemExit(f'bin/bash.exe not found in any parent directory of {git}')
+    return str(found)
+
+
 def main():
     workflow = yaml.safe_load((ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8'))
     triggers = workflow.get('on', workflow.get(True))
@@ -26,9 +35,9 @@ def main():
     source = next(s['run'] for s in jobs['resolve']['steps'] if s.get('id') == 'changed')
     actions = [s for job in jobs.values() for s in job['steps'] if 'uses' in s]
     siblings = {s.get('with', {}).get('repository') for s in actions}
-    assert 'atsushieno/uapmd' in siblings and 'cat2151/clap-mml-render-tui' in siblings
+    assert {'atsushieno/uapmd', 'cat2151/clap-mml-render-tui', 'cat2151/cat-plugin-player'} <= siblings
     assert 'cat2151/clap-mml-play-server' not in siblings
-    bash = str(Path(shutil.which('git')).resolve().parent.parent / 'bin/bash.exe') if os.name == 'nt' else shutil.which('bash')
+    bash = git_bash() if os.name == 'nt' else shutil.which('bash')
     with tempfile.TemporaryDirectory(prefix='repl-release-policy-') as temporary:
         directory = Path(temporary)
         script = directory / 'decision.sh'

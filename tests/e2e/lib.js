@@ -28,6 +28,9 @@ globalThis.e2e = (() => {
     // The instrument on track 0, looked up the way cells do.
     const instrument = () => include('builtin/lib/plugins.js').instrumentOn(0);
 
+    // uapmd's trackId of the track numbered `track`, looked up the way cells do.
+    const trackId = track => include('builtin/lib/tracks.js').idOf(track);
+
     // The output peak over `ms`, sampled every 25 ms, and the last block count.
     // Every sample must come from a running engine.
     function observe(ms) {
@@ -91,9 +94,9 @@ globalThis.e2e = (() => {
     }
 
     // The track's clips, each MIDI clip with its UMP events.
-    const clips = track => uapmd.timeline.getClips(track).map(clip => ({
+    const clips = track => uapmd.timeline.getClips(trackId(track)).map(clip => ({
         ...clip,
-        midi: clip.clipType === 'midi' ? uapmd.timeline.getClipUmpEvents(track, clip.clipId) : null
+        midi: clip.clipType === 'midi' ? uapmd.timeline.getClipUmpEvents(clip.clipId) : null
     }));
 
     // Notes paired from MIDI 1/2 UMP Note On/Off by group, channel and pitch.
@@ -128,16 +131,16 @@ globalThis.e2e = (() => {
             uapmd.sequencer.sendNoteOff(instrument(), 60);
             uapmd.sequencer.jumpPlayback(0);
             uapmd.timeline.setTempo(120);
-            for (const clip of uapmd.timeline.getClips(track)) {
-                if (clip.clipType === 'midi' && !uapmd.timeline.removeClip(track, clip.clipId))
+            for (const clip of uapmd.timeline.getClips(trackId(track))) {
+                if (clip.clipType === 'midi' && !uapmd.timeline.removeClip(clip.clipId))
                     throw new Error(`E2E: could not remove clip ${clip.clipId}`);
             }
         }
-        const clip = uapmd.timeline.createEmptyMidiClip(track, 0, 480, 120);
-        assert(clip >= 0, 'E2E: clip creation failed');
-        const tpqn = uapmd.timeline.getClipUmpEvents(track, clip).tickResolution;
-        assert(uapmd.timeline.addUmpEvent(track, clip, tpqn, [0x40903c00, 0x7fff0000])
-            && uapmd.timeline.addUmpEvent(track, clip, 3 * tpqn, [0x40803c00, 0]),
+        const clip = uapmd.timeline.createEmptyMidiClip(trackId(track), 0, 480, 120);
+        assert(clip, 'E2E: clip creation failed');
+        const tpqn = uapmd.timeline.getClipUmpEvents(clip).tickResolution;
+        assert(uapmd.timeline.addUmpEvent(clip, tpqn, [0x40903c00, 0x7fff0000])
+            && uapmd.timeline.addUmpEvent(clip, 3 * tpqn, [0x40803c00, 0]),
             'E2E: note events rejected');
         uapmd.sequencer.jumpPlayback(0);
         uapmd.audio.setEngineEnabled(true);
@@ -206,6 +209,6 @@ globalThis.e2e = (() => {
         return last.blocks;
     }
 
-    return {wait, waitFor, assert, same, instrument, observe, note, heldNotes, clips, notes, timelineNote, heard, phrase,
+    return {wait, waitFor, assert, same, instrument, trackId, observe, note, heldNotes, clips, notes, timelineNote, heard, phrase,
         trace, ons, stopped};
 })();

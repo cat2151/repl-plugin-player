@@ -1,13 +1,14 @@
 # ADR 0002: cell は楽器を track 番号で指し、`use` は track の楽器を置き換える。起動時の楽器も init script で用意する
 
 - 状態: 採用
-- 決定者: user（差し替え先の track を cell の中で指定すること・track を省いた `use` はエラーにすること・起動時の楽器を native でなく init script と lib で用意し `globalThis.surgeId` を消すこと・track 番号は役割の分かる説明変数を経由すること・effect 付き track の置き換えを「graph のつなぎ直し → effect の作り直し → 補修で並べ替え API」の順に試すこと）。track 番号で話す形・「今の track」の global を作らないこと・cell をブロックで包むこと・別 plugin なら置き換えることは AI の提案を user が承認。楽器の決め方・scope の付け替え・起動失敗の分岐は AI の設計
+- 決定者: user（差し替え先の track を cell の中で指定すること・track を省いた `use` はエラーにすること・起動時の楽器を native でなく init script と lib で用意し `globalThis.surgeId` を消すこと・track 番号は役割の分かる説明変数を経由すること・effect 付き track の置き換えを「graph のつなぎ直し → effect の作り直し → 補修で並べ替え API」の順に試すこと）。track 番号で話す形・「今の track」の global を作らないこと・cell をブロックで包むこと・別 plugin なら置き換えることは AI の提案を user が承認。楽器の決め方・scope の付け替え・起動失敗の分岐・uapmd の trackId を lib が track 番号から引くことは AI の設計
 - 関連: [0001](0001-patch-browse-by-plugin-state.md)、[cat-smf-editor ADR 0002](../../../cat-smf-editor/docs/adr/0002-track-patches.md)（track ごとに音色を持つ）
 
 ## 決定
 
 - cell 同士は track 番号で話す。楽器の instance id を global に保存して cell 間で渡さない。「今着目している track」を表す共通の global も作らない。
 - snippet の cell は `{ ... }` で包み、track 番号は `const loopTrack = 0;` のような説明変数を経由して lib に渡す。
+- uapmd の JS API は track・clip を文字列の `trackId`・`clipId` で受ける。track 番号から `trackId` への変換は `lib/tracks.js` の1関数（`getTrackInfos()` の並びの位置で引き、無ければ `patch_browse_00` のエラー）だけが持ち、lib は uapmd を呼ぶ直前に変換する。cell と lib の引数は track 番号のまま。repl 独自の API（`repl.track.*`・`repl.timeline.publishLoopClips`・timeline view の読取）も track 番号のまま。
 - track の楽器は `lib/plugins.js` の `instrumentOn(track)` で引く。`ensureDagGraph(track)` の後の track graph の接続で、graphInput からの event 接続の先の plugin、無ければ audio 接続の先の plugin。
 - `lib/patch.js` の `use({format, plugin, patch, track})` は track を必須にする。track の楽器が同じ plugin ならそれに state を読ませる。別の plugin なら同じ track に新しい instance を作り、古い楽器が持っていた接続を新しい楽器へ付け替えて張り直し（graph のつなぎ直し）、古い楽器を dispose する。
 - 起動時の楽器は init script `snippets/builtin/init.js` が `ensureInstrument(startTrack, {format, plugin})`（track に楽器が無いときだけ作る）で用意する。Rust は scan の後にこの cell を1回評価する。plugin 名は init script に書き、lib には書かない。
@@ -31,6 +32,8 @@
 - **新しい楽器を `create(track)` して古い楽器を dispose するだけ。** uapmd は作った plugin を chain の末尾（effect の後ろ）に足すので、effect が新しい楽器に掛からない。
 - **track の effect を同じ plugin・同じ state で作り直して新しい楽器の後ろに並べる。** uapmd の補修なしで確実に並ぶが、置き換えの瞬間に effect の残響が切れる。effect の state を保存する `saveState` も上流のままでは返らない。
 - **track 内の node を並べ替える API を uapmd の補修で足す。** graph のつなぎ直しが成り立ったので補修は要らない。
+- **cell が `trackId` を持ち、lib へ渡す。** `trackId` は user が画面で見て書ける番号ではなく、cell が番号で話す決定と食い違う。cell 同士が文字列 id でつながる形にも戻る。
+- **uapmd を補修して track 番号で受ける JS API を残す。** 上流の API 全体に掛かる補修になり、上流が変わるたびに追従が要る。変換は script の1関数で済む。
 - **native が起動時に楽器を作り、id を global に出す。** cell が global の instance id でつながる形そのもので、楽器を置き換えると id が古くなる。
 - **native が instance の作成・削除の通知で scope の対象を追う。** どれが楽器かは native では決まらない。
 

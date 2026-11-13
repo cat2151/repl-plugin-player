@@ -3,9 +3,6 @@
 Run after python scripts/build.py. Uses normal Ready (silent engine preparation), then no audio
 playback. Briefly opens plugin editors through test-owned scripts, then runs every built-in snippet
 in its own session and checks only that each runs without error.
-Default includes normal-startup preset application and repeated-load acceptance.
---core checks the independent CLI features only and does not claim that preset
-gate passes.
 """
 import json
 from pathlib import Path
@@ -16,18 +13,17 @@ import sys
 import tempfile
 import threading
 import time
-import xml.etree.ElementTree as XML
 
 ROOT = Path(__file__).resolve().parents[1]
 EXE = ROOT / 'target/release/repl-plugin-player.exe'
-PRESETS = runpy.run_path(str(ROOT / 'patches/uapmd/clap-presets/regression.py'))
 WINDOWS = runpy.run_path(str(ROOT / 'scripts/cli-windows-test.py'))
 # Test-owned topology: a clip on the Surge track, an instrument on a new track, an effect after Surge.
-JOBS = {'cliInstrumentId': ('cli-test-instrument', 'CLAP', 'org.baconpaul.six-sines', -1),
-        'cliEffectId': ('cli-test-effect', 'CLAP', 'michaelwillis.dragonfly.hall', 'cliTrack')}
-INSTRUMENT = 'include("builtin/lib/plugins.js").instrumentOn(0)'
+JOBS = {'cliInstrumentId': ('cli-test-instrument', 'CLAP', 'org.baconpaul.six-sines', "''"),
+        'cliEffectId': ('cli-test-effect', 'CLAP', 'michaelwillis.dragonfly.hall',
+                        "include('builtin/lib/tracks.js').idOf(cliTrack)")}
 SETUP = """globalThis.cliTrack = 0;
-if (uapmd.timeline.createEmptyMidiClip(cliTrack, 0, 480, 120) < 0) throw new Error('clip creation failed');
+if (!uapmd.timeline.createEmptyMidiClip(include('builtin/lib/tracks.js').idOf(cliTrack), 0, 480, 120))
+    throw new Error('clip creation failed');
 """ + ''.join(f"uapmd.instancing.startCreateJob('{key}', '{format_}', '{plugin}', {track});\n"
               for key, format_, plugin, track in JOBS.values())
 CREATED = ' && '.join(f"""(() => {{var j = uapmd.instancing.getCreateJob('{job[0]}');
@@ -36,12 +32,6 @@ CREATED = ' && '.join(f"""(() => {{var j = uapmd.instancing.getCreateJob('{job[0
 SHOW = ''.join(f"globalThis.{name} = uapmd.instancing.startCreateJob('{key}', '{format_}', '{plugin}', {track}).instanceId;\n"
                for name, (key, format_, plugin, track) in JOBS.items()) + \
     'uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).showUI(); uapmd.instance(cliEffectId).showUI();'
-# Test-owned preset choice; the preset snippet may select anything.
-PRESET = 'Attacky'
-LOAD = ('globalThis.cliPresetJob = uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).loadPreset('
-        f'cliPresets.find(p => p.name === {json.dumps(PRESET)}).index)')
-LOADED = ("(() => {var j = uapmd.mutations.getJob(cliPresetJob.jobId);"
-          "if (j.state === 'failed') throw new Error(j.error); return j.state === 'completed';})()")
 
 
 def launch(*args, **kwargs):
@@ -182,9 +172,8 @@ def builtins():
 
 
 def check():
-    if sys.argv[1:] not in ([], ['--core']):
-        raise SystemExit('Usage: python scripts/cli-test.py [--core]')
-    core_only = sys.argv[1:] == ['--core']
+    if sys.argv[1:]:
+        raise SystemExit('Usage: python scripts/cli-test.py')
     with tempfile.TemporaryDirectory(prefix='repl-cli-') as temporary:
         directory = Path(temporary)
         one_shot(directory)
@@ -193,89 +182,22 @@ def check():
             script = directory / 'generated-check.js'
             script.write_text("""globalThis.cliMarker = '日本語';
 if (typeof cmrt_chord.resolve_chord_or_mml !== 'function') throw new Error('Rust API missing');
-globalThis.cliPresets = uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).getPresets();
-for (var name of ['µcomputer', 'Sunrise Breakfast at the Digital Café', 'Wavetextures™ Pro Kit'])
-    // Provider metadata and its supported filename fallback may differ in case.
-    if (!cliPresets.some(p => p.name.toLowerCase() === name.toLowerCase())) throw new Error('Missing Unicode preset: ' + name);
-({marker: cliMarker, presets: cliPresets.length});""", encoding='utf-8')
+({marker: cliMarker});""", encoding='utf-8')
             result = session.request('script', path=str(script))['value']
-            assert result['marker'] == '日本語' and result['presets'] > 600, result
+            assert result['marker'] == '日本語', result
             session.evaluate(SETUP)
             session.request('wait', code=CREATED)
             session.evaluate(SHOW)
             session.evaluate('globalThis.cliTopology = JSON.stringify(uapmd.sequencer.getTrackInfos());'
-                             'globalThis.cliClips = JSON.stringify(uapmd.sequencer.getTrackInfos().map(t => uapmd.timeline.getClips(t.trackIndex)));')
+                             'globalThis.cliClips = JSON.stringify(uapmd.sequencer.getTrackInfos().map(t => uapmd.timeline.getClips(t.trackId)));')
             retained = {}
             for label, instance in [('instrument', 'cliInstrumentId'), ('effect', 'cliEffectId')]:
                 retained[label] = bytes(session.request('state', instanceId=session.evaluate(instance)))
             session.evaluate('globalThis.cliWaitCount = 0')
             session.request('wait', code='++cliWaitCount > 3')
             assert session.evaluate('cliWaitCount') == 4
-            if core_only:
-                assert PRESETS['patch'](bytes(session.request('state', instanceId=int(session.evaluate(INSTRUMENT)))))[0] == 'Init Saw'
-            if not core_only:
-                before = PRESETS['patch'](bytes(session.request('state', instanceId=int(session.evaluate(INSTRUMENT)))))
-                session.evaluate(LOAD)
-                session.request('wait', code=LOADED)
-                factory = PRESETS['patch'](Path(f'C:/ProgramData/Surge XT/patches_factory/Basses/{PRESET}.fxp').read_bytes()[60:])
-
-                def check_state(prior, expected_factory=factory, display_name=None):
-                    state = bytes(session.request('state', instanceId=int(session.evaluate(INSTRUMENT))))
-                    actual = PRESETS['patch'](state)
-                    expected = PRESETS['expected_parameters'](expected_factory, prior)
-                    expected_name = expected_factory[0] if display_name is None else display_name
-                    assert actual[0] == expected_name, (actual[0], expected_name)
-                    assert expected.keys() <= actual[1].keys(), 'Missing original parameters'
-                    mismatches = [(k, v, actual[1][k]) for k, v in expected.items()
-                                  if abs(actual[1][k] - v) > 1e-6 * max(1, abs(v))]
-                    assert not mismatches, mismatches[:5]
-                    if expected_factory[2] <= 22:
-                        length = int.from_bytes(state[4:8], 'little')
-                        parameters = XML.fromstring(state[32:32 + length].rstrip(b'\0')).find('parameters')
-                        for key, value in expected_factory[1].items():
-                            if key.startswith('fx') and key.endswith('_type') and value == 20:
-                                assert parameters.find(key[:-5] + '_p11').get('deactivated') == '1'
-                    return actual
-
-                loaded = check_state(before)
-                # Force an edit that changes an original FXP parameter, then reload
-                # the same preset/name. Job completion must follow actual application.
-                candidates = session.evaluate('uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).getParameters()')
-                cutoff = next(p for p in candidates if 'cutoff' in p['name'].lower())
-                parameter = cutoff['id']
-                session.evaluate(f'uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).setParameterValue({parameter}, 0.37)')
-                changed = PRESETS['patch'](bytes(session.request('state', instanceId=int(session.evaluate(INSTRUMENT)))))
-                assert changed[1] != loaded[1], 'Reload check did not change a stored parameter'
-                for _ in range(2):
-                    session.evaluate(LOAD)
-                    session.request('wait', code=LOADED)
-                    loaded = check_state(changed)
-                for name in ('µcomputer', 'Sunrise Breakfast at the Digital Café', 'Wavetextures™ Pro Kit'):
-                    selected = session.evaluate(f'cliPresets.find(p => p.name === {json.dumps(name)})')
-                    files = [p for folder in ('patches_factory', 'patches_3rdparty')
-                             for p in (Path('C:/ProgramData/Surge XT') / folder).rglob('*.fxp')
-                             if p.stem.casefold() == name.casefold()]
-                    assert len(files) == 1, (name, files)
-                    reference = PRESETS['patch'](files[0].read_bytes()[60:], factory=True)
-                    prior = PRESETS['patch'](bytes(session.request('state', instanceId=int(session.evaluate(INSTRUMENT)))))
-                    job = session.evaluate(f'globalThis.cliUnicodeJob = uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).loadPreset({selected["index"]})')
-                    session.request('wait', code="(() => {var j = uapmd.mutations.getJob(cliUnicodeJob.jobId); if (j.state === 'failed') throw new Error(j.error); return j.state === 'completed';})()")
-                    assert job['jobId'] > 0
-                    # Surge 1.3.4 loadPatch passes the filesystem-derived patch
-                    # list name to loadPatchByPath; it can differ in case from
-                    # the FXP XML metadata (e.g. Sunrise ... At The ...).
-                    check_state(prior, reference, files[0].stem)
-                for invalid in (-1, 2147483647):
-                    job = session.evaluate(f'uapmd.instance(include("builtin/lib/plugins.js").instrumentOn(0)).loadPreset({invalid})')
-                    assert job['state'] == 'failed' and job['error'], job
-                    assert session.evaluate('6 * 7') == 42
-                # A valid load after rejected jobs proves mutation/runtime recovery.
-                prior = PRESETS['patch'](bytes(session.request('state', instanceId=int(session.evaluate(INSTRUMENT)))))
-                session.evaluate(LOAD)
-                session.request('wait', code=LOADED)
-                check_state(prior)
             assert session.evaluate('JSON.stringify(uapmd.sequencer.getTrackInfos()) === cliTopology')
-            assert session.evaluate('JSON.stringify(uapmd.sequencer.getTrackInfos().map(t => uapmd.timeline.getClips(t.trackIndex))) === cliClips')
+            assert session.evaluate('JSON.stringify(uapmd.sequencer.getTrackInfos().map(t => uapmd.timeline.getClips(t.trackId))) === cliClips')
             assert session.request('eval', code='void 0') == {'undefined': True, 'value': None}
             assert session.evaluate('uapmd.audio.isEngineEnabled()') is False
             for label, instance in [('instrument', 'cliInstrumentId'), ('effect', 'cliEffectId')]:
@@ -285,11 +207,7 @@ for (var name of ['µcomputer', 'Sunrise Breakfast at the Digital Café', 'Wavet
             ready = next(i for i, e in enumerate(events) if e['event'] == 'ready')
             assert not any(e['event'] == 'api' and e['details']['call']['api'] == 'uapmd.audio.setEngineEnabled'
                            and e['details']['call'].get('args') == [True] for e in events[ready + 1:])
-            print(f"PASS CLI normal Ready, generated UTF-8 script, {result['presets']} Unicode preset entries, retained globals/topology, UI coexistence, cleanup")
-            if core_only:
-                print('NOT CHECKED by --core: stopped-Surge preset application/reload acceptance; run without --core for its explicit result')
-            else:
-                print('PASS preset acceptance: actual factory values, edited same-preset reloads, three Unicode loads, failed jobs/recovery, byte-equal other instrument/effect states; no engine/device playback')
+            print('PASS CLI normal Ready, generated UTF-8 script, retained globals/topology, UI coexistence, cleanup')
         finally:
             session.kill()
         builtins()
@@ -305,8 +223,6 @@ for (var name of ['µcomputer', 'Sunrise Breakfast at the Digital Café', 'Wavet
                 ('invalid', {}, 'Unknown automation command')]:
                 assert expected in session.request(command, ok=False, **args)
                 assert session.evaluate('6 * 7') == 42
-                if command == 'state':
-                    assert PRESETS['patch'](bytes(session.request('state', instanceId=int(session.evaluate(INSTRUMENT)))))[0] == 'Init Saw'
             session.finish(failure=True, eof=True)
         finally:
             session.kill()

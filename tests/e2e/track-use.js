@@ -34,14 +34,13 @@ globalThis.trackUse = (() => {
     });
 
     // The plugins on the track as `[instanceId, pluginId]`, ordered by pluginId.
-    const plugins = step(track => uapmd.sequencer.getTrackInfos()
-        .find(t => t.trackIndex === track).nodes
+    const plugins = step(track => uapmd.sequencer.getTrackInfos()[track].nodes
         .filter(n => n.instanceId >= 0)
         .map(n => [n.instanceId, n.pluginId])
         .sort((a, b) => a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
 
     const everyPlugin = step(() => uapmd.sequencer.getTrackInfos()
-        .map(t => [t.trackIndex, t.nodes.filter(n => n.instanceId >= 0).map(n => n.instanceId)]));
+        .map((t, trackIndex) => [trackIndex, t.nodes.filter(n => n.instanceId >= 0).map(n => n.instanceId)]));
 
     const parameters = step(instanceId => {
         const i = uapmd.instance(instanceId);
@@ -60,7 +59,7 @@ globalThis.trackUse = (() => {
 
     // The parameters a new instance of the plugin starts with.
     const initialParameters = step(pluginId => {
-        const id = uapmd.instancing.create('CLAP', pluginId, spareTrack);
+        const id = uapmd.instancing.create('CLAP', pluginId, e2e.trackId(spareTrack));
         assert(id >= 0, `Could not create ${pluginId}`);
         const values = parameters(id);
         uapmd.instance(id).dispose();
@@ -112,7 +111,7 @@ globalThis.trackUse = (() => {
         return same(found, expected);
     }
 
-    const connections = step(track => uapmd.timeline.getTrackGraphConnections(track));
+    const connections = step(track => uapmd.timeline.getTrackGraphConnections(e2e.trackId(track)));
 
     return {SURGE, SURGE_ID, DEXED, DEXED_ID, EFFECT_ID, loopTrack, effectTrack, spareTrack,
         step, playLoop, plugins, parameters, changed, initialParameters, replaced, expectError,
@@ -201,8 +200,8 @@ globalThis.trackUse = (() => {
 {
     const t = trackUse;
     t.step(() => {
-        uapmd.instancing.create('CLAP', t.SURGE_ID, t.effectTrack);
-        uapmd.instancing.create('CLAP', t.EFFECT_ID, t.effectTrack);
+        uapmd.instancing.create('CLAP', t.SURGE_ID, e2e.trackId(t.effectTrack));
+        uapmd.instancing.create('CLAP', t.EFFECT_ID, e2e.trackId(t.effectTrack));
     })();
     const before = t.plugins(t.effectTrack);
     const effect = before.filter(p => p[1] === t.EFFECT_ID);

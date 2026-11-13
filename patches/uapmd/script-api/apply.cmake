@@ -54,3 +54,5 @@ file(WRITE "${script_api_output}" "${script_api_source}")
 list(REMOVE_ITEM script_api_sources "src/UapmdJSRuntime.cpp")
 list(APPEND script_api_sources "${script_api_output}")
 set_property(TARGET uapmd-app-model PROPERTY SOURCES "${script_api_sources}")
+# The copy includes runtime-private headers relative to the original source.
+target_include_directories(uapmd-app-model PRIVATE "${UAPMD_DIR}/source/tools/uapmd-app-model/src")

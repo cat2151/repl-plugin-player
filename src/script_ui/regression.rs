@@ -23,10 +23,16 @@ pub(super) fn frame(
         events,
         ..Default::default()
     };
-    ctx.run_ui(input, |_| {
-        renderer.show_observed(ctx, app, |widget, response| {
-            if widget.kind == "slider" {
-                rect = Some(response.rect);
+    ctx.run_ui(input, |ui| {
+        let windows = snapshot();
+        renderer.retain(&windows);
+        egui::CentralPanel::default().show(ui, |ui| {
+            for window in &windows {
+                renderer.contents(ui, window, app, |widget, response| {
+                    if widget.kind == "slider" {
+                        rect = Some(response.rect);
+                    }
+                });
             }
         });
     })

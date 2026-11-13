@@ -35,9 +35,7 @@ thread_local! {
 pub type Start = fn() -> Result<Link, String>;
 
 fn start_player() -> Result<Link, String> {
-    let executable = std::env::current_exe().map_err(|e| e.to_string())?;
-    let player = patch_browser::resolve(&executable, std::env::var_os("PATH"))?;
-    Link::start(&player, patch_browser::spawn)
+    Link::start(&patch_browser::player()?, patch_browser::spawn)
 }
 
 /// Later players on this thread come from `start` instead of the real one.

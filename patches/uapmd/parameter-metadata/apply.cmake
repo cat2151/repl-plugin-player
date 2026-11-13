@@ -1,10 +1,22 @@
-# Compose after clap-presets, which owns the complete generated CLAP directory.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+execute_process(COMMAND git -C "${UAPMD_DIR}" rev-parse HEAD
+    OUTPUT_VARIABLE metadata_revision OUTPUT_STRIP_TRAILING_WHITESPACE)
+set(metadata_input "${UAPMD_DIR}/source/remidy/src/clap/PluginInstanceCLAP.Parameters.cpp")
+set(metadata_output "${REPL_PROJECT_ROOT}/target/shim/parameter-metadata")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_LIST_DIR}/generate.py" "${CMAKE_CURRENT_LIST_DIR}/metadata.hpp")
+    "${metadata_input}" "${CMAKE_CURRENT_LIST_DIR}/generate.py" "${CMAKE_CURRENT_LIST_DIR}/metadata.hpp")
 execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/generate.py"
-    "${clap_presets_output}" "${script_api_output}" RESULT_VARIABLE metadata_result ERROR_VARIABLE metadata_error)
+    "${metadata_input}" "${metadata_output}" "${script_api_output}" RESULT_VARIABLE metadata_result ERROR_VARIABLE metadata_error)
 if(NOT metadata_result EQUAL 0)
-    message(FATAL_ERROR "parameter-metadata: ${clap_presets_output}/PluginInstanceCLAP.Parameters.cpp: ${metadata_error}; upstream ${clap_presets_revision}; see ${CMAKE_CURRENT_LIST_DIR}/README.md")
+    message(FATAL_ERROR "parameter-metadata: ${metadata_input}: ${metadata_error}; upstream ${metadata_revision}; see ${CMAKE_CURRENT_LIST_DIR}/README.md")
 endif()
+get_target_property(metadata_sources remidy SOURCES)
+list(FIND metadata_sources "src/clap/PluginInstanceCLAP.Parameters.cpp" metadata_index)
+if(metadata_index EQUAL -1)
+    message(FATAL_ERROR "parameter-metadata: remidy target has no src/clap/PluginInstanceCLAP.Parameters.cpp; upstream ${metadata_revision}; see ${CMAKE_CURRENT_LIST_DIR}/README.md")
+endif()
+list(REMOVE_AT metadata_sources ${metadata_index})
+list(INSERT metadata_sources ${metadata_index} "${metadata_output}/PluginInstanceCLAP.Parameters.cpp")
+set_property(TARGET remidy PROPERTY SOURCES "${metadata_sources}")
 add_executable(parameter_metadata_regression EXCLUDE_FROM_ALL "${CMAKE_CURRENT_LIST_DIR}/regression.cpp")
 set_target_properties(parameter_metadata_regression PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}/out>")

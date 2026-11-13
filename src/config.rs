@@ -1,6 +1,7 @@
-//! `config.toml` in the user directory: window position/size and the minimum
-//! width of each pane. The app only reads it; invalid items fall back to their
-//! defaults and are reported as messages.
+//! `config.toml` in the user directory: window position and size. The `[layout]` table
+//! is the user's layout, read by `gui::dock::persist`. The app only
+//! reads it; invalid items fall back to their defaults and are reported as
+//! messages, and tables it does not know are ignored.
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -10,17 +11,9 @@ pub struct Window {
     pub size: [f32; 2],
 }
 
-/// Minimum pane widths as fractions of the window width.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Panes {
-    pub left_min: f32,
-    pub right_min: f32,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Config {
     pub window: Window,
-    pub panes: Panes,
 }
 
 impl Default for Config {
@@ -30,16 +23,6 @@ impl Default for Config {
                 position: None,
                 size: [1250.0, 800.0],
             },
-            panes: Panes::default(),
-        }
-    }
-}
-
-impl Default for Panes {
-    fn default() -> Self {
-        Self {
-            left_min: 0.1,
-            right_min: 0.1,
         }
     }
 }
@@ -51,9 +34,18 @@ pub const TEMPLATE: &str = "\
 # y = 100
 # width = 1250
 # height = 800
-# [panes]
-# left_min_percent = 10
-# right_min_percent = 10
+
+# [layout.root]
+# row = [{ width = 1, view = \"editor\" }, { width = 1, view = \"main\" }]
+
+# [[layout.window]]
+# column = [{ height = 1, view = \"keyboard\" }, { height = 1, view = \"scope\" }]
+# [layout.window.monitor_placement]
+# monitor = \"right\"
+# left_percent = 0
+# top_percent = 0
+# width_percent = 100
+# height_percent = 100
 ";
 
 pub fn path() -> Result<PathBuf, String> {
@@ -104,21 +96,6 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             None => {}
         }
     }
-    let panes = table(&root, "panes", &mut errors);
-    let mut minimum = |key: &str, slot: &mut f32| {
-        let name = format!("panes.{key}");
-        match number(&panes, &name, key, &mut errors) {
-            Some(value) if (0.0..=100.0).contains(&value) => *slot = value / 100.0,
-            Some(_) => errors.push(crate::i18n::render("config_percent", &[("key", name)])),
-            None => {}
-        }
-    };
-    minimum("left_min_percent", &mut config.panes.left_min);
-    minimum("right_min_percent", &mut config.panes.right_min);
-    if config.panes.left_min + config.panes.right_min > 1.0 {
-        config.panes = Panes::default();
-        errors.push(crate::i18n::t("config_percent_sum").into());
-    }
     (config, errors)
 }
 
@@ -160,15 +137,11 @@ mod tests {
 
     #[test]
     fn every_key_is_applied() {
-        let (config, errors) = parse(
-            "[window]\nx = -1200\ny = 100.5\nwidth = 1600\nheight = 900\n\
-             [panes]\nleft_min_percent = 20\nright_min_percent = 35.5\n",
-        );
+        let (config, errors) =
+            parse("[window]\nx = -1200\ny = 100.5\nwidth = 1600\nheight = 900\n");
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(config.window.position, Some([-1200.0, 100.5]));
         assert_eq!(config.window.size, [1600.0, 900.0]);
-        assert_eq!(config.panes.left_min, 0.2);
-        assert_eq!(config.panes.right_min, 0.355);
     }
 
     #[test]
@@ -177,33 +150,32 @@ mod tests {
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(config.window.position, None);
         assert_eq!(config.window.size, [900.0, 800.0]);
-        assert_eq!(config.panes, Panes::default());
     }
 
     #[test]
     fn wrong_types_fall_back_per_item() {
-        let (config, errors) =
-            parse("window = 3\n[panes]\nleft_min_percent = \"20\"\nright_min_percent = 30\n");
-        assert_eq!(errors.len(), 2, "{errors:?}");
+        let (config, errors) = parse("window = 3\n");
+        assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(config.window, Config::default().window);
-        assert_eq!(config.panes.left_min, 0.1);
-        assert_eq!(config.panes.right_min, 0.3);
     }
 
     #[test]
     fn negative_values_fall_back_per_item() {
-        let (config, errors) =
-            parse("[window]\nwidth = -5\nheight = 700\n[panes]\nleft_min_percent = -1\n");
-        assert_eq!(errors.len(), 2, "{errors:?}");
+        let (config, errors) = parse("[window]\nwidth = -5\nheight = 700\n");
+        assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(config.window.size, [1250.0, 700.0]);
-        assert_eq!(config.panes, Panes::default());
     }
 
     #[test]
-    fn minimums_over_one_hundred_fall_back_together() {
-        let (config, errors) = parse("[panes]\nleft_min_percent = 60\nright_min_percent = 50\n");
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert_eq!(config.panes, Panes::default());
+    fn old_panes_table_is_ignored() {
+        for text in [
+            "[panes]\nleft_min_percent = 10\nright_min_percent = 10\n",
+            "[panes]\nleft_min_percent = 60\nright_min_percent = 50\n",
+            "[panes]\nleft_min_percent = \"20\"\nright_min_percent = -1\n",
+            "panes = 3\n",
+        ] {
+            assert_eq!(parse(text), (Config::default(), vec![]), "{text}");
+        }
     }
 
     #[test]
@@ -228,7 +200,6 @@ mod tests {
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(config.window.position, Some([100.0, 100.0]));
         assert_eq!(config.window.size, Config::default().window.size);
-        assert_eq!(config.panes, Panes::default());
     }
 
     #[test]

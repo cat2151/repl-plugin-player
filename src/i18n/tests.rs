@@ -44,13 +44,52 @@ fn catalogs_and_resource_layouts_fail_closed() {
     assert!(Catalog::load(&root.join("locales"), "ja").is_ok());
     std::fs::write(root.join("locales/ja.toml"), "m000 = 'custom'").unwrap();
     assert!(Catalog::load(&root.join("locales"), "ja").is_err());
+    let embedded = |lang: &str| {
+        let source = catalog::EMBEDDED
+            .iter()
+            .find(|(l, _)| *l == lang)
+            .unwrap()
+            .1;
+        toml::from_str::<BTreeMap<String, String>>(source).unwrap()
+    };
     let editable = Catalog::load_editable(&root.join("locales"), "ja").unwrap();
     assert_eq!(editable.messages["m000"], "custom");
-    assert!(editable.messages.len() > 100);
-    std::fs::write(root.join("locales/ja.toml"), "m000 = '{$other}'").unwrap();
-    assert!(Catalog::load_editable(&root.join("locales"), "ja")
+    let mut expected = embedded("ja");
+    expected.insert("m000".into(), "custom".into());
+    assert_eq!(editable.messages, expected);
+    // Keys this exe no longer has, or whose placeholders changed, fall back to the embedded text.
+    std::fs::write(
+        root.join("locales/ja.toml"),
+        "m000 = 'custom'\nm016 = 'old'\nf000 = '{$other}'\nm001 = '{$open'",
+    )
+    .unwrap();
+    let editable = Catalog::load_editable(&root.join("locales"), "ja").unwrap();
+    assert_eq!(editable.messages, expected);
+    assert!(!editable.messages.contains_key("m016"));
+    for lang in ["ja", "en"] {
+        std::fs::write(root.join("locales/ja.toml"), "").unwrap();
+        std::fs::write(root.join("locales/en.toml"), "").unwrap();
+        let empty = Catalog::load_editable(&root.join("locales"), lang).unwrap();
+        assert_eq!(empty.messages, embedded(lang));
+    }
+    for (lang, source) in catalog::EMBEDDED {
+        std::fs::write(root.join(format!("locales/{lang}.toml")), source).unwrap();
+    }
+    let mut changed = embedded("ja");
+    changed.insert("f000".into(), "{$other}".into());
+    std::fs::write(
+        root.join("locales/ja.toml"),
+        toml::to_string(&changed).unwrap(),
+    )
+    .unwrap();
+    assert!(Catalog::load(&root.join("locales"), "ja")
         .unwrap_err_string()
         .contains("placeholder"));
+    let reference = root.join("locales/ja.default.toml");
+    crate::resources::write_replacing(&reference, b"full").unwrap();
+    std::fs::write(&reference, "edited").unwrap();
+    crate::resources::write_replacing(&reference, b"full").unwrap();
+    assert_eq!(std::fs::read(&reference).unwrap(), b"full");
     std::fs::write(root.join("locales/ja.toml"), "broken = [").unwrap();
     assert!(Catalog::load_editable(&root.join("locales"), "en").is_err());
     // A simultaneous publisher and later startup must preserve the user's file.
@@ -105,7 +144,7 @@ fn script_translation_arguments_are_named_and_validated() {
     assert!(formatted("snippet_14", &json!({})).is_err());
     assert!(formatted("snippet_14", &json!({"clipId":{},"extra":1})).is_err());
     // Arguments are inserted once: a value that looks like a placeholder stays literal.
-    let inserted = formatted("snippet_12", &json!({"error":"literal {$error}"})).unwrap();
-    assert!(inserted.contains("literal {$error}"));
+    let inserted = formatted("snippet_14", &json!({"clipId":"literal {$clipId}"})).unwrap();
+    assert!(inserted.contains("literal {$clipId}"));
     assert_eq!(inserted.matches("{$").count(), 1);
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include <unordered_map>
 #include <unordered_set>
 
 // Private display metadata, not a second project or playback model.
@@ -17,6 +18,11 @@ public:
         for (const auto* track : engine.timeline().tracks()) {
             const auto& id = track->referenceId();
             auto clips = choc::value::createEmptyArray();
+            // Scripts name clips by document id; the projection pairs them by it.
+            std::unordered_map<int32_t, std::string> clipIds;
+            const auto& document = engine.document().view();
+            for (const auto& clipId : document.clipIds(id))
+                if (const auto snapshot = document.getClip(clipId)) clipIds[snapshot->clipNumericId] = snapshot->clipId;
             const auto allClips = track->clipManager().getAllClips();
             if (!allClips.empty() || !engine.tracks()[tracks.size()]->orderedInstanceIds().empty()) used.insert(id);
             for (const auto& clip : allClips) {
@@ -35,7 +41,7 @@ public:
                     events.addArrayElement(choc::value::createObject("", "sample", static_cast<int64_t>(samples[i]), "words", message));
                     i += count;
                 }
-                clips.addArrayElement(choc::value::createObject("", "clipId", clip.clipId, "events", events));
+                clips.addArrayElement(choc::value::createObject("", "clipId", clipIds[clip.clipId], "events", events));
             }
             tracks.addArrayElement(choc::value::createObject("", "trackId", id,
                 "implicit", implicit.contains(id) && !used.contains(id), "clips", clips));

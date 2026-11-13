@@ -1,8 +1,7 @@
 use crate::{
     config,
-    control::{Control, INIT, TIMELINE_READ},
+    control::{Control, INIT},
     log::Log,
-    timeline,
 };
 use eframe::egui;
 use std::{
@@ -11,25 +10,20 @@ use std::{
 };
 
 mod console;
+mod dock;
+pub(crate) use dock::regression::run as dock_regression;
+pub(crate) use dock::script_regression::run as dock_script_ui_regression;
 mod help;
 mod logs;
+mod panes;
 mod patch;
+mod player_download;
 mod settings;
 mod snippet_execution;
 mod startup;
 
-/// The left code pane; the right pane is the `CentralPanel` that follows it.
-/// Each pane keeps its configured minimum share of `available_width`.
-fn code_panel(available_width: f32, panes: config::Panes) -> egui::Panel {
-    egui::Panel::left("code")
-        .default_size(630.0)
-        .min_size(available_width * panes.left_min)
-        .max_size(available_width * (1.0 - panes.right_min))
-        .resizable(true)
-}
-
-#[cfg(test)]
-mod pane_regression;
+/// The main window's title.
+const TITLE: &str = "REPL Plugin Player";
 
 pub fn run() -> Result<(), String> {
     let config_path = config::path();
@@ -37,21 +31,26 @@ pub fn run() -> Result<(), String> {
         Ok(path) => config::read(path),
         Err(error) => (config::Config::default(), vec![error.clone()]),
     };
-    let mut viewport = egui::ViewportBuilder::default().with_inner_size(config.window.size);
-    if let Some(position) = config.window.position {
+    let settings = settings::Settings::new(crate::status::path(), config_path);
+    let auto = settings.layout_auto;
+    let layout = (crate::resources::user_directory().ok())
+        .map(|directory| dock::persist::LayoutFile::open(&directory, auto));
+    let main = layout
+        .as_ref()
+        .map_or(config.window, |(_, layout)| layout.main);
+    let mut viewport = egui::ViewportBuilder::default().with_inner_size(main.size);
+    if let Some(position) = main.position {
         viewport = viewport.with_position(position);
     }
     eframe::run_native(
-        "REPL Plugin Player",
+        TITLE,
         eframe::NativeOptions {
             viewport,
             ..Default::default()
         },
         Box::new(move |cc| {
             crate::i18n::fonts(&cc.egui_ctx);
-            let settings =
-                settings::Settings::new(crate::external_editor::status_path(), config_path);
-            Ok(Box::new(Editor::new(config.panes, config_errors, settings)))
+            Ok(Box::new(Editor::new(config_errors, settings, layout)))
         }),
     )
     .map_err(|e| e.to_string())
@@ -69,13 +68,25 @@ struct Editor {
     installer: crate::install::Installer,
     script_ui: crate::script_ui::Renderer,
     snippet_execution: snippet_execution::Pending,
-    panes: config::Panes,
+    layout: dock::Layout,
+    /// The layout's source, chosen in the settings; `None` keeps the layout in memory
+    /// only.
+    layout_file: Option<dock::persist::LayoutFile>,
     config_errors: Vec<String>,
     settings: settings::Settings,
     help: help::Help,
+    player_download: player_download::Offer,
 }
 impl Editor {
-    fn new(panes: config::Panes, config_errors: Vec<String>, settings: settings::Settings) -> Self {
+    fn new(
+        config_errors: Vec<String>,
+        settings: settings::Settings,
+        layout: Option<(dock::persist::LayoutFile, dock::Layout)>,
+    ) -> Self {
+        let (layout_file, layout) = match layout {
+            Some((file, layout)) => (Some(file), layout),
+            None => (None, dock::initial()),
+        };
         let mut script_editor = crate::script_editor::ScriptEditor::default();
         let code = script_editor.initial_code();
         Self {
@@ -91,10 +102,12 @@ impl Editor {
             installer: crate::install::Installer::default(),
             script_ui: crate::script_ui::Renderer::default(),
             snippet_execution: snippet_execution::Pending::default(),
-            panes,
+            layout,
+            layout_file,
             config_errors,
             settings,
             help: help::Help::default(),
+            player_download: player_download::Offer::default(),
         }
     }
     fn initialize(&mut self) {
@@ -135,41 +148,12 @@ impl Editor {
         }
         self.error = format!("{stage}: {error}");
     }
-    fn show_reference(&self, ui: &mut egui::Ui) {
-        if let Some(snapshot) = &self.timeline {
-            egui::CollapsingHeader::new(crate::i18n::t("m042"))
-                .id_salt("timeline_raw")
-                .show(ui, |ui| {
-                    egui::ScrollArea::both().max_height(200.0).show(ui, |ui| {
-                        ui.monospace(serde_json::to_string_pretty(snapshot).unwrap_or_default());
-                    });
-                });
+    /// The queued run, once its overlay has been presented.
+    fn run_queued(&mut self, ctx: &egui::Context) {
+        if let Some(request) = self.snippet_execution.take_ready(ctx) {
+            let _ = self.execute(request);
+            self.write_browsed_cell(ctx);
         }
-        egui::CollapsingHeader::new(crate::i18n::t("m004"))
-            .id_salt("m004")
-            .show(ui, |ui| {
-                egui::ScrollArea::both().max_height(190.0).show(ui, |ui| {
-                    ui.monospace(crate::snippets::localize_builtin(
-                        &TIMELINE_READ
-                            .text()
-                            .map(str::to_owned)
-                            .unwrap_or_else(|error| error),
-                    ));
-                });
-            });
-        egui::CollapsingHeader::new(crate::i18n::t("m005"))
-            .id_salt("m005")
-            .show(ui, |ui| {
-                if let Some(control) = &self.control {
-                    ui.monospace(control.stop_script());
-                }
-            });
-        egui::CollapsingHeader::new(crate::i18n::t("m006"))
-            .id_salt("m006")
-            .show(ui, |ui| {
-                ui.monospace("include('builtin/lib/plugins.js').instrumentOn(0)");
-                ui.label(crate::i18n::t("comment_13"));
-            });
     }
     fn execute(&mut self, request: crate::execution::Request) -> Result<(), String> {
         self.error.clear();
@@ -190,10 +174,8 @@ impl eframe::App for Editor {
         let ctx = ui.ctx().clone();
         self.settings.shortcut(&ctx);
         self.help.shortcut(&ctx, self.script_editor.snippets_open());
-        if let Some(request) = self.snippet_execution.take_ready(&ctx) {
-            let _ = self.execute(request);
-            self.write_browsed_cell(&ctx);
-        }
+        self.run_queued(&ctx);
+        self.player_download.update();
         // Present the overlay before synchronous native initialization begins.
         // Keep all native calls on the UI/control thread.
         if self.startup.can_initialize(&ctx) && self.control.is_none() && self.error.is_empty() {
@@ -207,6 +189,13 @@ impl eframe::App for Editor {
         {
             let result = self.control.as_mut().map(Control::poll).transpose();
             if let Err(error) = result {
+                self.error(crate::i18n::t("stage_prepare"), error);
+            }
+        }
+        let active = self.snippet_execution.is_pending()
+            || ctx.input(|input| !input.events.is_empty() || input.pointer.any_down());
+        if let Some(control) = &mut self.control {
+            if let Err(error) = control.refresh_catalog_when_idle(active) {
                 self.error(crate::i18n::t("stage_prepare"), error);
             }
         }
@@ -228,127 +217,23 @@ impl eframe::App for Editor {
             !self.error.is_empty() || self.control.as_ref().is_some_and(|c| c.missing_surge),
         );
         let preparing = self.startup.is_preparing() || self.snippet_execution.is_pending();
-        code_panel(ui.available_width(), self.panes).show(ui, |ui| {
-            if preparing {
-                ui.disable();
-            }
-            ui.heading("JavaScript");
-            let ready = self
-                .control
-                .as_ref()
-                .is_some_and(|c| c.ready && !c.stopping)
-                && !preparing;
-            ui.horizontal(|ui| {
-                if ui
-                    .add_enabled(
-                        self.control.as_ref().is_some_and(|control| control.ready),
-                        egui::Button::new(crate::i18n::t("m000")),
-                    )
-                    .clicked()
-                {
-                    if let Some(control) = &mut self.control {
-                        if let Err(error) = control.stop("GUI Stop") {
-                            self.error(crate::i18n::t("m000"), error);
-                        }
-                    }
-                }
-                if ready {
-                    ui.label(crate::i18n::t("m044"));
-                }
-            });
-            self.startup.focus_editor(ui);
-            if let Some(request) = self.script_editor.show(ui, &mut self.code, ready) {
-                if self.snippet_execution.presents(&request) {
-                    self.snippet_execution.queue(request);
-                } else {
-                    let _ = self.execute(request);
-                    self.write_browsed_cell(&ctx);
-                }
-            }
-        });
-        egui::CentralPanel::default().show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading(crate::i18n::t("m001"));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    self.settings.button(ui);
-                });
-            });
-            // Before the disable below: results stay selectable while a run is pending.
-            console::show(ui, self.control.as_ref().map_or(&[], |c| &c.results[..]));
-            if preparing || self.snippet_execution.is_pending() {
-                ui.disable();
-            }
-            for error in &self.config_errors {
-                ui.colored_label(egui::Color32::LIGHT_RED, error);
-            }
-            let missing = self.control.as_ref().is_some_and(|c| c.missing_surge);
-            if self.installer.show(ui, missing) {
-                self.error.clear();
-                if let Some(control) = &mut self.control {
-                    if let Err(error) = control.retry_surge() {
-                        self.error = error;
-                    }
-                }
-            }
-
-            if !self.error.is_empty() {
-                ui.colored_label(egui::Color32::LIGHT_RED, &self.error);
-            }
-            let notes = self
-                .control
-                .as_ref()
-                .filter(|control| control.ready)
-                .and_then(|control| control.read_notes().ok())
-                .unwrap_or_default();
-            let projected = self.timeline.as_ref().map(timeline::projection::project);
-            // Bottom panels stack upward from the bottom edge, so every section stays
-            // visible and the timeline takes only the height left above them.
-            egui::Panel::bottom("reference").show(ui, |ui| self.show_reference(ui));
-            egui::Panel::bottom("logs").show(ui, |ui| {
-                if logs::show(ui, &self.log_path).is_err() {
-                    self.error = crate::i18n::t("log_directory_open_error").into();
-                }
-            });
-            egui::Panel::bottom("scope").show(ui, |ui| {
-                crate::scope_ui::show(ui, self.control.as_ref().and_then(Control::scope));
-            });
-            egui::Panel::bottom("keyboard").show(ui, |ui| {
-                crate::keyboard::show(
-                    ui,
-                    &notes,
-                    projected.as_ref().and_then(|view| view.pitch_range()),
-                );
-            });
-            if let Some(control) = &self.control {
-                ui.label(crate::i18n::render(
-                    "f001",
-                    &[("arg0", format!("{}", control.log.execution))],
-                ));
-            }
-            if !self.timeline_error.is_empty() {
-                ui.colored_label(
-                    egui::Color32::LIGHT_RED,
-                    crate::i18n::render("f003", &[("arg0", self.timeline_error.to_string())]),
-                );
-            } else if let Some(projected) = &projected {
-                timeline::show(ui, projected);
-            } else {
-                ui.heading(crate::i18n::t("m002"));
-                ui.label(crate::i18n::t("m003"));
-            }
-        });
-        if let Some(control) = &mut self.control {
-            if control.ready && !control.stopping && !self.snippet_execution.is_pending() {
-                self.script_ui.show(&ctx, control);
-            }
-        }
+        self.dock(ui, preparing);
         self.startup.show_overlay(&ctx);
         self.snippet_execution.show_overlay(&ctx);
         self.settings.show(&ctx);
+        if let Some(file) = self.layout_file.as_mut() {
+            if self.settings.take_layout_switch() {
+                file.switch(&mut self.layout);
+            }
+        }
         self.help.show(&ctx);
+        self.player_download.show(&ctx);
         ctx.request_repaint_after(Duration::from_millis(16));
     }
     fn on_exit(&mut self, _: Option<&eframe::glow::Context>) {
+        if let Some(file) = &mut self.layout_file {
+            file.save(&self.layout);
+        }
         if let Some(control) = &mut self.control {
             let _ = control.close();
         }

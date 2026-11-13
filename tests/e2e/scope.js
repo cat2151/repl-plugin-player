@@ -12,7 +12,7 @@ include('builtin/lib/plugins.js').instrumentOn(0)
 repl.scope.target()
 
 // %% plugins on track 0
-uapmd.sequencer.getTrackInfos().find(t => t.trackIndex === 0).nodes.filter(n => n.instanceId >= 0).length
+uapmd.sequencer.getTrackInfos()[0].nodes.filter(n => n.instanceId >= 0).length
 
 // %% note 60
 {
@@ -43,7 +43,7 @@ uapmd.sequencer.sendNoteOff(include('builtin/lib/plugins.js').instrumentOn(0), 6
 {
     const track = 0;
     const plugins = include('builtin/lib/plugins.js');
-    const now = uapmd.sequencer.getTrackInfos().find(t => t.trackIndex === track).nodes
+    const now = uapmd.sequencer.getTrackInfos()[track].nodes
         .find(n => n.instanceId === plugins.instrumentOn(track));
     const plugin = now.pluginId === 'com.digital-suburban.dexed' ? 'Surge XT' : 'Dexed';
     include('builtin/lib/patch.js').use({format:'CLAP', plugin, track});

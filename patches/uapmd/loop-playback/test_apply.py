@@ -29,10 +29,10 @@ class ConnectionTests(unittest.TestCase):
         original = SOURCE.read_text(encoding='utf-8')
         anchors = [
             '        auto snapshot = timeline_tracks_snapshot_.protect();',
-            '        auto wrapToLoopRange = [this](int64_t samplePosition) -> int64_t {',
+            '        auto wrapToLoopRange = [this, offlineTransport](int64_t samplePosition) -> int64_t {',
             '                auto segmentTimeline = renderTransport;',
             '                segmentPosition.samples = wrapToLoopRange(segmentStartSample);',
-            '                if (timeline_.loopEnabled &&',
+            '                if (!offlineTransport && timeline_.loopEnabled &&',
             '                destinationOffsetFrames += segmentFrames;',
         ]
         for anchor in anchors:

@@ -15,4 +15,4 @@ JSON文字列を同期往復するcallbackを1つ登録して対応していま�
 返ります。アプリ側では生成コピーの `__remidy_instance_load_state` をその形に置き換えています。
 `savePluginStateSync` も同じ待ち方です。
 
-確認revision: `a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe`。未報告。
+確認revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`。未報告。

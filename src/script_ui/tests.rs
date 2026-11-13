@@ -78,8 +78,7 @@ fn frames_preserve_windows_external_values_refresh_and_metadata_change_disables(
         readonly: false,
     };
     for _ in 0..3 {
-        ctx.run_ui(Default::default(), |_ui| renderer.show(&ctx, &mut fake))
-            .drop_without_applying_deltas();
+        regression::frame(&ctx, &mut renderer, &mut fake, vec![]);
     }
     assert_eq!(snapshot().len(), 1);
     assert!(fake.writes.is_empty());

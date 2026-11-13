@@ -31,8 +31,7 @@ struct Plugin {
 static TABLE: Mutex<Option<Table>> = Mutex::new(None);
 
 pub fn file(format: &str, plugin_id: &str, patch: &str) -> Result<PathBuf, String> {
-    let executable = std::env::current_exe().map_err(|e| e.to_string())?;
-    let player = crate::patch_browser::resolve(&executable, std::env::var_os("PATH"))?;
+    let player = crate::patch_browser::player()?;
     let reference = lookup(&player, format, plugin_id, patch)?;
     let input = serde_json::to_vec(&reference).map_err(|e| e.to_string())?;
     let state = ask(&player, "--restore-state", &input)?;
@@ -74,7 +73,9 @@ fn ask(player: &Path, flag: &str, input: &[u8]) -> Result<Vec<u8>, String> {
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let failed =
         |error: String| render("patch_state_03", &[("flag", flag.into()), ("error", error)]);
-    let mut child = Command::new(player)
+    let mut command = Command::new(player);
+    crate::surge_home::restore_for_child(&mut command);
+    let mut child = command
         .arg(flag)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

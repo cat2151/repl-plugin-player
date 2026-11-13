@@ -20,8 +20,28 @@ fn scripts(directory: &Path, paths: &mut Vec<PathBuf>) {
     }
 }
 
+/// `scripts/build.py` copies the workspace's `repl_keyboard.dll` here after a first build;
+/// without it nothing is embedded and an exe outside the repository reports that.
+fn keyboard() {
+    println!("cargo:rerun-if-changed=build/out/repl_keyboard.dll");
+    let path = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap())
+        .join("build/out/repl_keyboard.dll");
+    let source = if path.is_file() {
+        let path_text = path.to_str().expect("UTF-8 keyboard DLL path");
+        format!("const KEYBOARD: &[u8] = include_bytes!({path_text:?});\n")
+    } else {
+        "const KEYBOARD: &[u8] = &[];\n".to_owned()
+    };
+    fs::write(
+        PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("keyboard_dll.rs"),
+        source,
+    )
+    .expect("Write embedded keyboard DLL");
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=build/out/repl_bridge.dll");
+    keyboard();
     println!("cargo:rerun-if-changed=locales/ja.toml");
     println!("cargo:rerun-if-changed=locales/en.toml");
     let directory =

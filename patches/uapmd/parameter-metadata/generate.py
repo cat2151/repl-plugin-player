@@ -1,14 +1,14 @@
-"""Compose with the generated CLAP sources, rejecting changed upstream shapes."""
+"""Copy the upstream CLAP parameter source into the shim, rejecting changed upstream shapes."""
 from pathlib import Path
 import sys
 
 
-def generate(directory):
-    path = directory / 'PluginInstanceCLAP.Parameters.cpp'
-    text = path.read_text(encoding='utf-8')
+def generate(source, directory):
+    path = directory / source.name
+    text = source.read_text(encoding='utf-8')
     changes = [
         ('#include "PluginFormatCLAP.hpp"',
-         '#include "PluginFormatCLAP.hpp"\n#include "' +
+         '#include "' + (source.parent / 'PluginFormatCLAP.hpp').resolve().as_posix() + '"\n#include "' +
          (Path(__file__).parent / 'metadata.hpp').resolve().as_posix() + '"'),
         ('        clearParameterList();\n    }',
          '        clearParameterList();\n        repl_parameters::destroy(this);\n    }'),
@@ -26,8 +26,9 @@ def generate(directory):
     ]
     for old, new in changes:
         if text.count(old) != 1:
-            raise RuntimeError(f'{path}: expected unique anchor: {old[:100]}')
+            raise RuntimeError(f'{source}: expected unique anchor: {old[:100]}')
         text = text.replace(old, new)
+    directory.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding='utf-8')
 
 
@@ -41,5 +42,5 @@ def runtime_metadata(runtime):
 
 
 if __name__ == '__main__':
-    generate(Path(sys.argv[1]))
-    runtime_metadata(Path(sys.argv[2]))
+    generate(Path(sys.argv[1]), Path(sys.argv[2]))
+    runtime_metadata(Path(sys.argv[3]))

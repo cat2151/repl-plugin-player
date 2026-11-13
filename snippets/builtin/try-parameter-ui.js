@@ -4,7 +4,7 @@
     const instrumentTrack = 2;
     const demo = include('builtin/lib/tutorial.js');
     demo.reset();
-    const synth = demo.prepareInstrument(instrumentTrack, 'CLAP', 'Six Sines', true);
+    const synth = demo.prepareInstrument({format:'CLAP', plugin:'Six Sines', track:instrumentTrack, levelsOnly:true});
     const mml = 'l4 r c r c r c';
     const {prepareLoopPart, playLoopParts} = include('builtin/lib/loop.js');
     const loopNext = {main:prepareLoopPart(synth.trackIndex, mml)};

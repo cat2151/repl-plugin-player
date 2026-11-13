@@ -11,7 +11,7 @@
     playLoopParts(loopNext, 120);
 
     // @text demo_levels
-    const synth = demo.preparePreset(include('builtin/lib/patch.js').use({format:'CLAP', plugin:'Surge XT', track:loopTrack}).instanceId, 'Init Saw');
+    const synth = demo.prepareInstrument({format:'CLAP', plugin:'Surge XT', patch:'patches_factory/Templates/Init Saw.fxp', track:loopTrack});
     uapmd.instance(synth.instanceId).showUI();
     synth;
 }

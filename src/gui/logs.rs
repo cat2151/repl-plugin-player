@@ -5,7 +5,6 @@ pub(super) fn show(ui: &mut egui::Ui, path: &Path) -> Result<(), ()> {
     let directory = path.parent().filter(|dir| !dir.as_os_str().is_empty());
     let mut result = Ok(());
     ui.horizontal_wrapped(|ui| {
-        ui.label(crate::i18n::t("m008"));
         if ui
             .add_enabled(
                 directory.is_some(),

@@ -1,9 +1,12 @@
 (() => {
+    const tracks = include('builtin/lib/tracks.js');
+
+    // The number of the track holding the instance.
     function trackFor(instanceId, errorKey = 'snippet_15') {
-        var track = uapmd.sequencer.getTrackInfos()
-            .find(t => t.nodes.some(n => n.instanceId === instanceId));
-        if (!track) throw new Error(repl.text(errorKey));
-        return track;
+        var index = uapmd.sequencer.getTrackInfos()
+            .findIndex(t => t.nodes.some(n => n.instanceId === instanceId));
+        if (index < 0) throw new Error(repl.text(errorKey));
+        return index;
     }
 
     // The catalog entry of the plugin named as the user reads it.
@@ -26,8 +29,9 @@
     // The track's connections in signal order. Only an editable (DAG) track
     // reports them, so the track becomes one; that alone keeps its sound.
     function connectionsOf(trackIndex) {
-        uapmd.timeline.ensureDagGraph(trackIndex);
-        const graph = uapmd.timeline.getTrackGraphConnections(trackIndex);
+        const trackId = tracks.idOf(trackIndex);
+        uapmd.timeline.ensureDagGraph(trackId);
+        const graph = uapmd.timeline.getTrackGraphConnections(trackId);
         if (!graph.success) throw new Error(graph.error);
         return graph.connections;
     }
@@ -44,8 +48,7 @@
 
     // The track's plugins other than its instrument, in the track's node order.
     function effectsOn(trackIndex) {
-        const track = uapmd.sequencer.getTrackInfos().find(t => t.trackIndex === trackIndex);
-        if (!track) throw new Error(repl.text('patch_browse_00', {track:trackIndex}));
+        const track = tracks.info(trackIndex);
         const instrument = instrumentOn(trackIndex);
         return track.nodes.map(n => n.instanceId).filter(id => id >= 0 && id !== instrument);
     }
@@ -53,12 +56,11 @@
     // The track's instrument; the plugin is created only when the track has none.
     // The scope shows a created instrument when it shows nothing yet.
     function ensureInstrument(trackIndex, options) {
-        if (!uapmd.sequencer.getTrackInfos().some(t => t.trackIndex === trackIndex))
-            throw new Error(repl.text('patch_browse_00', {track:trackIndex}));
+        const trackId = tracks.idOf(trackIndex);
         const present = instrumentOn(trackIndex);
         if (present >= 0) return present;
         const entry = catalogEntry(options.format, options.plugin);
-        const created = uapmd.instancing.create(entry.format, entry.pluginId, trackIndex);
+        const created = uapmd.instancing.create(entry.format, entry.pluginId, trackId);
         if (created < 0) throw new Error(repl.text('snippet_02'));
         if (repl.scope.target() < 0) repl.scope.setTarget(created);
         return created;

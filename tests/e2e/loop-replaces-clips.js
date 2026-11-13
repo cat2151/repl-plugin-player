@@ -16,7 +16,7 @@ loopReplaces.looped.pitches;
 {
     uapmd.sequencer.addTrack();
     const otherTrack = uapmd.sequencer.getTrackInfos().length - 1;
-    uapmd.timeline.createEmptyMidiClip(otherTrack, 0, 480, 120);
+    uapmd.timeline.createEmptyMidiClip(e2e.trackId(otherTrack), 0, 480, 120);
     const demo = include('builtin/lib/tutorial.js');
     demo.init({instanceId: e2e.instrument(), preset: 'Init Saw', bpm: 120});
     demo.play(loopReplaces.playMml);
@@ -35,7 +35,7 @@ loopReplaces.looped.pitches;
 loopReplaces.result = (() => {
     const {looped, peak} = loopReplaces;
     const remaining = uapmd.sequencer.getTrackInfos()
-        .map(track => [track.trackIndex, uapmd.timeline.getClips(track.trackIndex).length])
+        .map((track, index) => [index, uapmd.timeline.getClips(track.trackId).length])
         .filter(([, count]) => count > 0);
     const trace = repl.test.loopTrace();
     const ons = trace.events.filter(e => e.on).map(e => e.note);

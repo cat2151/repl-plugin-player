@@ -48,6 +48,12 @@ enum Incoming {
     Closed(Option<String>),
 }
 
+/// The player for this process. A miss is reported to the GUI, which offers the download.
+pub fn player() -> Result<PathBuf, String> {
+    let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+    resolve(&executable, std::env::var_os("PATH")).inspect_err(|_| crate::player_download::missed())
+}
+
 /// The player beside this executable, then a release build in the sibling
 /// cat-plugin-player repo, then one on `PATH`.
 pub fn resolve(executable: &Path, path: Option<OsString>) -> Result<PathBuf, String> {
@@ -204,7 +210,9 @@ impl Link {
 pub fn spawn(executable: &Path, name: &str) -> std::io::Result<Option<Child>> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    Command::new(executable)
+    let mut command = Command::new(executable);
+    crate::surge_home::restore_for_child(&mut command);
+    command
         .arg("--resident")
         .arg(name)
         .stdout(Stdio::null())

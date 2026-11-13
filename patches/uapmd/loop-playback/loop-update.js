@@ -26,8 +26,8 @@ globalThis.loopCase = (() => {
     }
 
     // Each track with its nodes and clips, as the timeline view reads them.
-    const tracks = () => uapmd.sequencer.getTrackInfos().map(track => ({
-        trackIndex: track.trackIndex, nodes: track.nodes, clips: e2e.clips(track.trackIndex)
+    const tracks = () => uapmd.sequencer.getTrackInfos().map((track, trackIndex) => ({
+        trackIndex, nodes: track.nodes, clips: e2e.clips(trackIndex)
     }));
 
     return {loopTrack, main, loop, play, publish, tracks, sampleRate: uapmd.sequencer.getSampleRate()};
@@ -235,17 +235,17 @@ loopCase.publish('aaaaaa');
 e2e.stopped();
 
 // %% a second Surge XT for a second part
-loopCase.second = uapmd.instancing.create('CLAP', 'org.surge-synth-team.surge-xt', -1);
+loopCase.second = uapmd.instancing.create('CLAP', 'org.surge-synth-team.surge-xt');
 
 // %% an effect whose state must be preserved
-loopCase.effect = uapmd.instancing.create('CLAP', 'org.surge-synth-team.surge-xt-fx', 0);
+loopCase.effect = uapmd.instancing.create('CLAP', 'org.surge-synth-team.surge-xt-fx', e2e.trackId(0));
 
 // %% an ordinary clip and the states the loop must not change
 (() => {
     loopCase.instrument = e2e.instrument();
     const {second, effect, instrument} = loopCase;
     e2e.assert(second >= 0 && second !== instrument && effect >= 0, 'Multi-part fixture instances were not created');
-    uapmd.timeline.createEmptyMidiClip(0, 12345, 480, 120);
+    uapmd.timeline.createEmptyMidiClip(e2e.trackId(0), 12345, 480, 120);
     loopCase.states = [repl.test.pluginState(instrument), repl.test.pluginState(effect)];
     loopCase.topology = loopCase.tracks();
     repl.test.loopTrace(true);
@@ -261,8 +261,7 @@ loopCase.effect = uapmd.instancing.create('CLAP', 'org.surge-synth-team.surge-xt
 
 // %% the second part on its own track, then playing
 {
-    loopCase.secondTrack = uapmd.sequencer.getTrackInfos()
-        .find(track => track.nodes.some(node => node.instanceId === loopCase.second)).trackIndex;
+    loopCase.secondTrack = include('builtin/lib/plugins.js').trackFor(loopCase.second);
     const next = Object.assign({}, globalThis.loopParts);
     next.second = loopCase.loop.prepareLoopPart(loopCase.secondTrack, 'dddd');
     loopCase.loop.publishLoopParts(next, 120);
@@ -401,7 +400,7 @@ repl.test.loopTrace(true);
     const laterPath = getGeneratedMidiPath();
     mmlabc_to_smf.pass4_midi.save_midi_file(mmlabc_to_smf.mml_to_smf_bytes('l2 cde'), laterPath);
     const clipTrack = 0;
-    const clip = uapmd.timeline.addMidiClip(clipTrack, 0, laterPath);
+    const clip = uapmd.timeline.addMidiClip(e2e.trackId(clipTrack), 0, laterPath);
     if (!clip.success) throw new Error(clip.error);
     uapmd.audio.setEngineEnabled(true);
     uapmd.sequencer.startPlayback();

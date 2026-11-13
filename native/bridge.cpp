@@ -9,6 +9,7 @@
 #include <cmath>
 #include <array>
 #include "../patches/uapmd/note-monitor/note_monitor.hpp"
+#include "../patches/uapmd/catalog-cache-startup/catalog_cache.hpp"
 #include "localization.hpp"
 #include "plugin_windows.hpp"
 #include "parameter_safety.hpp"
@@ -36,10 +37,6 @@ void repl_capture_scope(int32_t instance, uapmd::AudioProcessContext& process) n
     scope_callback(scope_context, left, right, static_cast<size_t>(process.frameCount()), doubles ? 1u : 0u,
         static_cast<const uint32_t*>(process.eventIn().getMessages()), process.eventIn().position() / sizeof(uint32_t));
 }
-
-// Native exceptions must not unwind through QuickJS callback frames.
-static thread_local std::string preset_error;
-extern "C" void repl_preset_error(const char* error) { preset_error = error; }
 
 using ScriptApi = const char* (*)(const char*);
 static ScriptApi script_api{};
@@ -97,6 +94,8 @@ struct Session {
     bool model_created{};
     bool scanning_done{};
     std::string scan_error;
+    // The catalog came from the plugin list cache; the startup scan waits for "refresh".
+    bool catalog_from_cache{};
     bool state_pending{};
     bool state_ready{};
     std::string preparation_error;
@@ -125,6 +124,17 @@ struct Session {
                 scan_error = ok ? "" : error;
             });
         });
+        catalog_from_cache = repl_catalog_cache::load(*model.sequencer().engine()->pluginHost());
+        if (catalog_from_cache)
+            scanning_done = true;
+        else
+            startInitialScan();
+    }
+    // UAPMD's own startup scan: fast formats are enumerated, slow ones come from the cache.
+    void startInitialScan() {
+        auto& model = uapmd_app::AppModel::instance();
+        scanning_done = false;
+        scan_error.clear();
         model.notifyUiReady();
         model.notifyPersistentStorageReady();
     }
@@ -367,6 +377,7 @@ extern "C" __declspec(dllexport) const char* repl_request(const char* request) n
             session->initialize();
             result.setMember("bootstrap", session->runtime->evaluateScript("typeof uapmd.audio.setEngineEnabled"));
             result.setMember("uapmdRevision", std::string(REPL_UAPMD_REVISION));
+            result.setMember("catalogFromCache", session->catalog_from_cache);
             auto* device = uapmd::defaultDeviceIODispatcher()->audio();
             result.setMember("deviceOpened", device != nullptr);
             if (device) {
@@ -407,6 +418,8 @@ extern "C" __declspec(dllexport) const char* repl_request(const char* request) n
                 session->scanning_done = false;
                 session->scan_error.clear();
                 model.performPluginScanning(false, uapmd_app::AppModel::PluginScanRequest::InProcess, 0.0, false);
+            } else if (command == "refresh") {
+                session->startInitialScan();
             } else if (command == "request-state") {
                 session->requestState(args["instanceId"].get<int32_t>());
             } else if (command == "state") {
@@ -421,9 +434,7 @@ extern "C" __declspec(dllexport) const char* repl_request(const char* request) n
                 result.setMember("ok", true);
             } else if (command == "eval" || command == "timeline-view") {
                 session->windows.takeError();
-                preset_error.clear();
                 auto value = session->runtime->evaluateScript(args["code"].get<std::string>());
-                if (!preset_error.empty()) throw std::runtime_error(repl_format1("native_15", "error", preset_error));
                 auto uiError = session->windows.takeError();
                 if (!uiError.empty()) throw std::runtime_error(repl_format1("native_16", "error", uiError));
                 result.setMember("result", value);

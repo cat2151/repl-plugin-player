@@ -129,10 +129,12 @@ pub fn dispatch(api: &str, input: &Value) -> Result<Value, String> {
     })
 }
 
-fn snapshot() -> Vec<Window> {
+/// Every registered window, copied so that no borrow is held while entering JS.
+pub fn snapshot() -> Vec<Window> {
     REGISTRY.with_borrow(|r| r.windows.values().cloned().collect())
 }
-fn close(window: &Window) {
+/// Removes the window unless a later `ui.show` has replaced it.
+pub fn close(window: &Window) {
     REGISTRY.with_borrow_mut(|r| {
         if r.windows
             .get(&window.id)

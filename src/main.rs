@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod bridge;
+mod catalog_refresh;
 mod cli;
 mod config;
 mod control;
@@ -19,6 +20,7 @@ mod patch_browse_e2e;
 mod patch_browser;
 mod patch_cell;
 mod patch_state;
+mod player_download;
 mod preparation;
 mod resources;
 mod scope;
@@ -36,6 +38,8 @@ mod snippet_insert;
 mod snippets;
 mod snippets_e2e;
 mod snippets_ui;
+mod status;
+mod surge_home;
 mod syntax_highlight;
 mod timeline;
 mod tutorials_e2e;
@@ -55,6 +59,7 @@ mod patch_reference;
 mod resident_ipc;
 
 fn main() {
+    surge_home::prepare();
     let args: Vec<String> = std::env::args().collect();
     let args = match i18n::initialize(&args) {
         Ok(args) => args,

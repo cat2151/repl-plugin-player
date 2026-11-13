@@ -1,6 +1,6 @@
 # Proposal: expose safe loop configuration and prepared boundary publication
 
-Observed revision: a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe.
+Observed revision: 4ec5c3b1c30130fdd3b7d4b375082273247e561f.
 
 TimelineFacadeAudio already wraps render positions and splits blocks at loop end,
 but the public scripting API does not expose safe loop configuration or prepared

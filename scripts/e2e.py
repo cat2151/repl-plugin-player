@@ -10,7 +10,7 @@ EXE = ROOT / "target/release/repl-plugin-player.exe"
 LOGS = Path(os.environ["LOCALAPPDATA"]) / "repl-plugin-player/logs"
 CASES = ["cold", "sample", "rerun", "stop", "close", "syntax", "missing",
          "close-preparing", "close-creating", "mutation-close",
-         "syntax-sustain", "runtime-error", "stop-run", "timeline", "timeline-view", "note-monitor", "scope", "partial-run", "snippets", "tutorials", "demo-play", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-browse", "state-load", "track-use", "reset-first-note"]
+         "syntax-sustain", "runtime-error", "stop-run", "timeline", "timeline-view", "note-monitor", "scope", "partial-run", "snippets", "tutorials", "demo-play", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-browse", "state-load", "track-use", "reset-first-note", "dock", "dock-script-ui"]
 
 
 def main():
@@ -34,7 +34,7 @@ def main():
             assert any(e["event"] == "cleanup" and e["details"]["result"]["ok"] for e in events), paths[0]
             calls = [e for e in events if e["event"] == "api"]
             note_on = [e for e in calls if e["details"]["call"]["api"] == "uapmd.sequencer.sendNoteOn"]
-            if case in ("syntax", "missing", "close-preparing", "close-creating", "mutation-close", "timeline", "timeline-view", "partial-run", "snippets", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-browse", "state-load", "track-use", "reset-first-note"):
+            if case in ("syntax", "missing", "close-preparing", "close-creating", "mutation-close", "timeline", "timeline-view", "partial-run", "snippets", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-browse", "state-load", "track-use", "reset-first-note", "dock", "dock-script-ui"):
                 assert not note_on, f"{case}: unexpected NoteOn"
             elif case in ("tutorials", "demo-play"):
                 pass  # Built-in snippets may play notes however the user writes them.

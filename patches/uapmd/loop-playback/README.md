@@ -6,7 +6,7 @@ UAPMD の TimelineFacadeAudio は周回境界でブロックを分割するが�
 loop 設定と準備済み音列の境界公開がない。UI 時刻で remove/add すると、先読み済みの
 音声と複数 track の latency が違うため途中の周回へ変更が混入する。
 
-対象 revision は `a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe`。
+対象 revision は `4ec5c3b1c30130fdd3b7d4b375082273247e561f`。
 `apply.py` は `TimelineFacadeAudio.cpp` の callback 開始、位置変換・segment 分割、
 既存 render segment の終わりに app 所有の処理を接続する。
 音列だけでなく周期も変わるため、transport と既存 clip にも同じ位相と分割を使う。

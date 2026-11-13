@@ -72,11 +72,13 @@ pub fn initialize(args: &[String]) -> Result<Vec<String>, String> {
         Catalog::load(&root.join("locales"), &language)?
     } else {
         let directory = crate::resources::user_directory()?.join("locales");
+        // `<lang>.default.toml` is only a reference for copying keys; reading uses the embedded text.
         for (lang, source) in catalog::EMBEDDED {
-            crate::resources::write_missing(
-                &directory.join(format!("{lang}.toml")),
+            crate::resources::write_replacing(
+                &directory.join(format!("{lang}.default.toml")),
                 source.as_bytes(),
             )?;
+            crate::resources::write_missing(&directory.join(format!("{lang}.toml")), b"")?;
         }
         Catalog::load_editable(&directory, &language)?
     };

@@ -15,10 +15,10 @@ globalThis.resetFirstNote = (() => {
             for (const node of track.nodes.filter(node => node.instanceId >= 0))
                 uapmd.sequencer.setPluginBypassed(node.instanceId, false);
         const clipTrack = 0;
-        for (const clip of uapmd.timeline.getClips(clipTrack)) uapmd.timeline.removeClip(clipTrack, clip.clipId);
+        for (const clip of uapmd.timeline.getClips(e2e.trackId(clipTrack))) uapmd.timeline.removeClip(clip.clipId);
         const path = getGeneratedMidiPath();
         mmlabc_to_smf.pass4_midi.save_midi_file(mmlabc_to_smf.mml_to_smf_bytes(mml), path);
-        const clip = uapmd.timeline.addMidiClip(clipTrack, 0, path);
+        const clip = uapmd.timeline.addMidiClip(e2e.trackId(clipTrack), 0, path);
         if (!clip.success) throw new Error(clip.error);
         uapmd.audio.setEngineEnabled(true);
         uapmd.sequencer.startPlayback();

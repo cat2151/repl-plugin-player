@@ -30,6 +30,8 @@ fn rust_case(case: &str) -> bool {
         "script-ui",
         "patch-browse",
         "state-load",
+        "dock",
+        "dock-script-ui",
     ]
     .contains(&case)
 }
@@ -39,7 +41,7 @@ pub fn run(case: &str) -> Result<(), String> {
     let script = Script::load(case, !rust)?;
     let log = log::Log::new()?;
     let mut app = Control::open(log, &script.init)?;
-    let result = (|| {
+    let mut result = (|| {
         if case == "close-preparing" {
             return Ok(());
         }
@@ -71,9 +73,19 @@ pub fn run(case: &str) -> Result<(), String> {
             "state-load" => state_load::run(app, &script),
             "patch-browse" => crate::patch_browse_e2e::run(app, &script),
             "script-ui" => crate::script_ui::regression::run(app, &script),
+            "dock" | "dock-script-ui" => Ok(()), // Need the engine by value; run below.
             _ => Err(format!("Unhandled E2E case: {case}")),
         }
     })();
+    if matches!(case, "dock" | "dock-script-ui") && result.is_ok() {
+        let regression = match case {
+            "dock" => crate::gui::dock_regression,
+            _ => crate::gui::dock_script_ui_regression,
+        };
+        let (returned, dock) = regression(app, &script);
+        app = returned;
+        result = dock;
+    }
     if let Err(error) = &result {
         app.log
             .event("error", json!({"stage":"E2E","error":error}))?;

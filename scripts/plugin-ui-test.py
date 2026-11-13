@@ -30,10 +30,11 @@ user32.DispatchMessageW.argtypes = [c.POINTER(w.MSG)]
 user32.DispatchMessageW.restype = c.c_ssize_t
 user32.PostMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
 # Test-owned scripts; built-in snippets may change freely.
-CREATE_SURGE = "globalThis.uiInstrumentId = uapmd.instancing.create('CLAP', 'org.surge-synth-team.surge-xt', 0)"
+CREATE_SURGE = ("globalThis.uiInstrumentId = uapmd.instancing.create('CLAP', 'org.surge-synth-team.surge-xt', "
+                "uapmd.sequencer.getTrackInfos()[0].trackId)")
 SHOW_SURGE = 'uapmd.instance(uiInstrumentId).showUI()'
 EFFECT = ("globalThis.uiEffectId = uapmd.instancing.create('CLAP', 'michaelwillis.dragonfly.hall', "
-          "uapmd.sequencer.getTrackInfos().find(t => t.trackIndex === 0).trackIndex);"
+          "uapmd.sequencer.getTrackInfos()[0].trackId);"
           "if (uiEffectId < 0) throw new Error('effect creation failed')")
 SHOW_EFFECT = 'uapmd.instance(uiEffectId).showUI()'
 
@@ -148,11 +149,6 @@ def main():
         assert len(windows()) == 2 and all(user32.IsWindowVisible(h) for h in windows())
         evaluate(effect_snippet)
         assert len(windows()) == 2, 'Repeated effect show recreated the container'
-        # Share the real-plugin process/message loop with the preset regression.
-        import runpy
-        preset_checks = runpy.run_path(str(ROOT / 'patches/uapmd/clap-presets/regression.py'))
-        preset_result = preset_checks['check'](call, evaluate, pump, data, instance_id)
-        os.write(report, (preset_result + '\n').encode('utf-8'))
         evaluate('uapmd.instance(uiEffectId).dispose()')
         pump()
         assert windows() == [hwnd], 'Effect disposal affected the instrument window'

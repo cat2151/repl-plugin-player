@@ -7,27 +7,27 @@ import sys
 def transform(source, header):
     edits = [
         ('        auto snapshot = timeline_tracks_snapshot_.protect();',
-         '        if (repl_loop::instance) repl_loop::instance->begin(engine_, timeline_, process.frameCount());\n'
+         '        if (!offlineTransport && repl_loop::instance) repl_loop::instance->begin(engine_, timeline_, process.frameCount());\n'
          '        auto snapshot = timeline_tracks_snapshot_.protect();'),
-        ('        auto wrapToLoopRange = [this](int64_t samplePosition) -> int64_t {',
-         '        auto wrapToLoopRange = [this](int64_t samplePosition) -> int64_t {\n'
-         '            if (repl_loop::instance && repl_loop::instance->enabled())\n'
+        ('        auto wrapToLoopRange = [this, offlineTransport](int64_t samplePosition) -> int64_t {',
+         '        auto wrapToLoopRange = [this, offlineTransport](int64_t samplePosition) -> int64_t {\n'
+         '            if (!offlineTransport && repl_loop::instance && repl_loop::instance->enabled())\n'
          '                return repl_loop::instance->position(samplePosition);'),
         ('                auto segmentTimeline = renderTransport;',
          '                const auto segmentRaw = renderBaseSample + static_cast<int64_t>(trackOffset) + destinationOffsetFrames;\n'
-         '                const bool managedLoop = repl_loop::instance && repl_loop::instance->enabled();\n'
+         '                const bool managedLoop = !offlineTransport && repl_loop::instance && repl_loop::instance->enabled();\n'
          '                if (managedLoop) segmentStartSample = repl_loop::instance->position(segmentRaw);\n'
          '                auto segmentTimeline = renderTransport;'),
         ('                segmentPosition.samples = wrapToLoopRange(segmentStartSample);',
          '                segmentPosition.samples = segmentStartSample;'),
-        ('                if (timeline_.loopEnabled &&',
+        ('                if (!offlineTransport && timeline_.loopEnabled &&',
          '                if (managedLoop) {\n'
          '                    segmentFrames = static_cast<int32_t>(std::min<int64_t>(remainingFrames, repl_loop::instance->span(segmentRaw)));\n'
          '                    segmentTimeline.loopStart.samples = 0;\n'
          '                    segmentTimeline.loopEnd.samples = repl_loop::instance->timing(segmentRaw).first;\n'
-         '                } else if (timeline_.loopEnabled &&'),
+         '                } else if (!offlineTransport && timeline_.loopEnabled &&'),
         ('                destinationOffsetFrames += segmentFrames;',
-         '                if (repl_loop::instance) repl_loop::instance->segment(\n'
+         '                if (!offlineTransport && repl_loop::instance) repl_loop::instance->segment(\n'
          '                    *(*snapshot)[i], i, trackContext->eventIn(),\n'
          '                    renderBaseSample + static_cast<int64_t>(trackOffset) + destinationOffsetFrames,\n'
          '                    segmentStartSample, segmentFrames, destinationOffsetFrames, segmentTimeline.isPlaying);\n\n'

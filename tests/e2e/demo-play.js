@@ -7,10 +7,13 @@
 globalThis.demoPlay = (() => {
     const {assert, clips, notes} = e2e;
 
+    const usePatch = patch => include('builtin/lib/patch.js').use(
+        {format: 'CLAP', plugin: 'Surge XT', patch, track: 0}).instanceId;
+
     // Init, then play: as a demo cell does.
     function init() {
         globalThis.testDemo = include('builtin/lib/tutorial.js');
-        testDemo.init({instanceId: e2e.instrument(), preset: 'Init Saw', bpm: 120});
+        testDemo.init({instanceId: usePatch('patches_factory/Templates/Init Saw.fxp'), bpm: 120});
     }
 
     // The pitches the phrase should play, from the MML parser itself.
@@ -50,7 +53,7 @@ globalThis.demoPlay = (() => {
         return {source, pitches: expected, firstPeak};
     }
 
-    return {init, check};
+    return {init, check, usePatch};
 })();
 
 // %% first run and reinitialization in one evaluation
@@ -69,14 +72,7 @@ demoPlay.check('cfg');
 
 // %% edits made after initializing (like another cell or the plugin UI) survive play
 uapmd.audio.setEngineEnabled(false);
-(() => {
-    const job = testDemo.preparePreset(e2e.instrument(), 'Attacky');
-    e2e.assert(e2e.waitFor(() => {
-        const j = uapmd.mutations.getJob(job.presetJobId);
-        if (j.state === 'failed') throw new Error(j.error);
-        return j.state === 'completed';
-    }, 10000), 'Demo test preset timed out');
-})();
+demoPlay.usePatch('patches_factory/Basses/Attacky.fxp');
 
 // %% edit the volume
 (() => {

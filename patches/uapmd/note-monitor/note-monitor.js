@@ -48,15 +48,15 @@ e2e.heldNotes([60]);
 e2e.heldNotes([]);
 
 // %% stop - same pitch on different channels, MIDI 1/2, velocity-zero and channel CCs
-uapmd.timeline.removeClip(0, uapmd.timeline.getClips(0)[0].clipId);
+uapmd.timeline.removeClip(uapmd.timeline.getClips(e2e.trackId(0))[0].clipId);
 uapmd.sequencer.jumpPlayback(0);
 (() => {
-    const clip = uapmd.timeline.createEmptyMidiClip(0, 0, 480, 120);
-    const tpqn = uapmd.timeline.getClipUmpEvents(0, clip).tickResolution;
+    const clip = uapmd.timeline.createEmptyMidiClip(e2e.trackId(0), 0, 480, 120);
+    const tpqn = uapmd.timeline.getClipUmpEvents(clip).tickResolution;
     [[1, [0x20903c7f]], [1, [0x20913c7f]], [1, [0x20903d7f]],
      [1, [0x40904800, 0x7fff0000]], [2, [0x20803c00]],
      [3, [0x20b17b00]], [4, [0x20903d00]], [4, [0x40b07800, 0]]]
-        .forEach(e => uapmd.timeline.addUmpEvent(0, clip, e[0] * tpqn, e[1]));
+        .forEach(e => uapmd.timeline.addUmpEvent(clip, e[0] * tpqn, e[1]));
 })();
 uapmd.audio.setEngineEnabled(true);
 uapmd.sequencer.startPlayback();
@@ -70,7 +70,7 @@ e2e.heldNotes([61, 72]);
 e2e.heldNotes([]);
 
 // %% stop - the keyboard shows every instrument, not only the prepared one
-globalThis.otherId = uapmd.instancing.create('CLAP', 'org.baconpaul.six-sines', -1);
+globalThis.otherId = uapmd.instancing.create('CLAP', 'org.baconpaul.six-sines');
 if (otherId < 0) throw new Error('second instrument creation failed');
 uapmd.audio.setEngineEnabled(true);
 uapmd.sequencer.startPlayback();

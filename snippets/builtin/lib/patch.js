@@ -8,6 +8,7 @@
     }
 
     const plugins = include('builtin/lib/plugins.js');
+    const tracks = include('builtin/lib/tracks.js');
     const pluginEnd = instanceId => plugins.pluginEnd(instanceId);
 
     // Wires `next` where `previous` was: the track's input reaches it, and it
@@ -15,8 +16,9 @@
     // connection is laid again, because a plugin created on the track joins
     // the chain behind its effects. Other connections stay as `before` had them.
     function wireInstead(trackIndex, previous, next, before) {
+        const trackId = tracks.idOf(trackIndex);
         for (const c of plugins.connectionsOf(trackIndex)) {
-            const result = uapmd.timeline.disconnectTrackGraphConnection(trackIndex, c.id);
+            const result = uapmd.timeline.disconnectTrackGraphConnection(trackId, c.id);
             if (!result.success) throw new Error(result.error);
         }
         const wanted = new Map();
@@ -32,7 +34,7 @@
         if (!before.some(c => c.busType === 'audio' && c.source.instanceId === previous))
             add('audio', pluginEnd(next), end({type:'graphOutput', instanceId:-1, busIndex:0}));
         for (const [busType, source, target] of wanted.values()) {
-            const result = uapmd.timeline.connectTrackGraph(trackIndex, busType, source, target);
+            const result = uapmd.timeline.connectTrackGraph(trackId, busType, source, target);
             if (!result.success) throw new Error(result.error);
         }
     }
@@ -42,10 +44,9 @@
     function instrumentFor(trackIndex, entry) {
         const before = plugins.connectionsOf(trackIndex);
         const previous = plugins.instrumentOn(trackIndex);
-        const node = uapmd.sequencer.getTrackInfos().find(t => t.trackIndex === trackIndex)
-            .nodes.find(n => n.instanceId === previous);
+        const node = tracks.info(trackIndex).nodes.find(n => n.instanceId === previous);
         if (node && node.format === entry.format && node.pluginId === entry.pluginId) return previous;
-        const next = uapmd.instancing.create(entry.format, entry.pluginId, trackIndex);
+        const next = uapmd.instancing.create(entry.format, entry.pluginId, tracks.idOf(trackIndex));
         if (next < 0) throw new Error(repl.text('snippet_02'));
         wireInstead(trackIndex, previous, next, before);
         if (previous >= 0 && repl.scope.target() === previous) repl.scope.setTarget(next);
@@ -56,8 +57,7 @@
     function use(options) {
         const trackIndex = options.track;
         if (!Number.isInteger(trackIndex)) throw new Error(repl.text('patch_use_02'));
-        if (!uapmd.sequencer.getTrackInfos().some(t => t.trackIndex === trackIndex))
-            throw new Error(repl.text('patch_browse_00', {track:trackIndex}));
+        tracks.info(trackIndex);
         const entry = plugins.catalogEntry(options.format, options.plugin);
         // A patch that cannot be restored fails before any instance is created.
         var file = options.patch === undefined ? undefined
@@ -77,7 +77,7 @@
         const input = {type:'graphInput', instanceId:-1, busIndex:0};
         const output = {type:'graphOutput', instanceId:-1, busIndex:0};
         for (const [busType, source, target] of [['event', input, pluginEnd(instanceId)], ['audio', pluginEnd(instanceId), output]]) {
-            const result = uapmd.timeline.connectTrackGraph(trackIndex, busType, source, target);
+            const result = uapmd.timeline.connectTrackGraph(tracks.idOf(trackIndex), busType, source, target);
             if (!result.success) throw new Error(result.error);
         }
     }
@@ -85,7 +85,7 @@
     // The sound being auditioned: one instance, added to the browsed track.
     function audition(trackIndex, preview, event) {
         if (preview.instanceId === undefined || preview.format !== event.format || preview.pluginId !== event.pluginId) {
-            const id = uapmd.instancing.create(event.format, event.pluginId, trackIndex);
+            const id = uapmd.instancing.create(event.format, event.pluginId, tracks.idOf(trackIndex));
             if (id < 0) throw new Error(repl.text('snippet_02'));
             joinAlone(trackIndex, id);
             if (preview.instanceId !== undefined) uapmd.instance(preview.instanceId).dispose();
@@ -98,13 +98,13 @@
     // Auditions each patch chosen in the player's browser on the track while it
     // keeps playing; closing the browser brings back the track's own sound.
     function browse(options) {
-        var track = uapmd.sequencer.getTrackInfos().find(t => t.trackIndex === options.track);
-        if (!track) throw new Error(repl.text('patch_browse_00', {track:options.track}));
+        const trackIndex = options.track;
+        tracks.info(trackIndex);
         // The track's instrument stays untouched, only bypassed.
-        const instrument = plugins.instrumentOn(track.trackIndex);
+        const instrument = plugins.instrumentOn(trackIndex);
         var bypassed = instrument >= 0 && uapmd.sequencer.isPluginBypassed(instrument);
         var preview = {};
-        repl.patchBrowser.open({track:track.trackIndex});
+        repl.patchBrowser.open({track:trackIndex});
         try {
             for (;;) {
                 repl.processEvents();
@@ -116,7 +116,7 @@
                     var error;
                     try {
                         if (instrument >= 0) uapmd.sequencer.setPluginBypassed(instrument, true);
-                        audition(track.trackIndex, preview, event);
+                        audition(trackIndex, preview, event);
                         error = undefined;
                     } catch (e) {
                         error = e instanceof Error ? e.message : String(e);

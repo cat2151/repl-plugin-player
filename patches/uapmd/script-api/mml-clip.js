@@ -14,7 +14,7 @@ expected;
     const paths = [getGeneratedMidiPath(), getGeneratedMidiPath()];
     e2e.assert(paths[0] !== paths[1], 'Generated paths collide');
     for (const path of paths)
-        e2e.assert(!uapmd.timeline.addMidiClip(0, 0, path).success, `Path helper created a file: ${path}`);
+        e2e.assert(!uapmd.timeline.addMidiClip(e2e.trackId(0), 0, path).success, `Path helper created a file: ${path}`);
     return paths;
 })();
 
@@ -55,9 +55,9 @@ expected;
 // %% the generated SMF stays on disk
 (() => {
     uapmd.sequencer.stopPlayback();
-    const added = uapmd.timeline.addMidiClip(0, 0, generatedPath);
+    const added = uapmd.timeline.addMidiClip(e2e.trackId(0), 0, generatedPath);
     e2e.assert(added.success, `Generated SMF was not retained: ${added.error}`);
-    e2e.assert(uapmd.timeline.removeClip(0, added.clipId), 'E2E: could not remove the reloaded clip');
+    e2e.assert(uapmd.timeline.removeClip(added.clipId), 'E2E: could not remove the reloaded clip');
     return generatedPath;
 })();
 

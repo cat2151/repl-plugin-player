@@ -24,7 +24,7 @@ def main():
         for lang, expected in [('ja', '表示言語'), ('en', 'display language')]:
             output, _ = launch(EXE, base, '--help', '--lang', lang, env=env)
             assert expected in output
-        assert not (base / 'user').exists(), 'repo release must read source catalogs'
+        assert not (base / 'user/repl-plugin-player/locales').exists(), 'repo release must read source catalogs'
         _, error = launch(EXE, base, '--lang', 'invalid', '--help', env=env, ok=False)
         assert 'ja or en' in error
         project = base / 'project'
@@ -64,7 +64,7 @@ def main():
             shutil.copy2(EXE, directory / EXE.name)
             _, error = launch(directory / EXE.name, ROOT, '--help', env=env, ok=False)
             assert 'do not match this executable' in error
-        assert not (base / 'user').exists(), 'project exes must not extract catalogs'
+        assert not (base / 'user/repl-plugin-player/locales').exists(), 'project exes must not extract catalogs'
         # A standalone exe uses LocalAppData.
         layouts = [base / 'standalone']
         for directory in layouts:
@@ -73,40 +73,55 @@ def main():
             output, _ = launch(directory / EXE.name, ROOT, '--lang', 'ja', '--help', env=env)
             assert '表示言語' in output
         catalogs = base / 'user/repl-plugin-player/locales'
-        assert (catalogs / 'ja.toml').read_bytes() == ja
-        assert (catalogs / 'en.toml').read_bytes() == en
+        defaults = {'ja': ja, 'en': en}
+
+        def assert_first_launch():
+            for lang, original in defaults.items():
+                assert (catalogs / f'{lang}.toml').read_bytes() == b'', 'user files start empty'
+                assert (catalogs / f'{lang}.default.toml').read_bytes() == original
+            assert set(p.name for p in catalogs.iterdir()) == {
+                'en.toml', 'ja.toml', 'en.default.toml', 'ja.default.toml'}
+
+        assert_first_launch()
         standalone = layouts[-1] / EXE.name
-        # Existing edits persist across launches; added defaults are merged only in memory.
+        # A user file holds only the changed keys; the rest comes from the embedded catalog.
         edited = 'cli_help = ' + json.dumps('user edited --lang help', ensure_ascii=False) + '\n'
         (catalogs / 'en.toml').write_text(edited, encoding='utf-8')
         for _ in range(2):
             output, _ = launch(standalone, ROOT, '--lang', 'en', '--help', env=env)
             assert output == 'user edited --lang help'
         output, _ = launch(standalone, ROOT, '--lang', 'en', '--invalid', env=env, ok=False)
-        assert 'error' in output, 'missing keys must be supplemented from embedded English'
+        assert 'error' in output, 'unchanged keys must come from embedded English'
+        assert (catalogs / 'en.toml').read_text(encoding='utf-8') == edited
+        # The reference copy is rewritten on every launch.
+        (catalogs / 'en.default.toml').write_text('stale = "x"', encoding='utf-8')
+        launch(standalone, ROOT, '--lang', 'en', '--help', env=env)
+        assert (catalogs / 'en.default.toml').read_bytes() == en
+        # Unknown keys and placeholder mismatches are dropped without stopping startup.
+        stale = edited + 'removed_key = "x"\ninstall_elapsed = "{$wrong}"\n'
+        (catalogs / 'en.toml').write_text(stale, encoding='utf-8')
+        output, _ = launch(standalone, ROOT, '--lang', 'en', '--help', env=env)
+        assert output == 'user edited --lang help'
+        assert (catalogs / 'en.toml').read_text(encoding='utf-8') == stale, 'user files are not rewritten'
+        # A deleted user file comes back empty; the other one is kept.
         (catalogs / 'ja.toml').unlink()
         launch(standalone, ROOT, '--lang', 'en', '--help', env=env)
-        assert (catalogs / 'ja.toml').read_bytes() == ja
-        assert (catalogs / 'en.toml').read_text(encoding='utf-8') == edited
-        (catalogs / 'ja.toml').write_text('m000 = "{$wrong}"', encoding='utf-8')
-        _, error = launch(standalone, ROOT, '--lang', 'en', '--help', env=env, ok=False)
-        assert str(catalogs / 'ja.toml') in error and 'placeholder mismatch' in error
+        assert (catalogs / 'ja.toml').read_bytes() == b''
+        assert (catalogs / 'en.toml').read_text(encoding='utf-8') == stale
+        # Broken TOML stops startup and names the file.
         (catalogs / 'ja.toml').write_text('broken = [', encoding='utf-8')
         _, error = launch(standalone, ROOT, '--help', env=env, ok=False)
         assert str(catalogs / 'ja.toml') in error
-        # Concurrent first launches publish complete catalogs and leave no temporary files.
-        (catalogs / 'ja.toml').unlink()
-        (catalogs / 'en.toml').unlink()
+        # Concurrent first launches publish complete files and leave no temporary files.
+        shutil.rmtree(catalogs)
         children = [subprocess.Popen([str(standalone), '--lang', 'en', '--help'], cwd=ROOT,
                     env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                     creationflags=subprocess.CREATE_NO_WINDOW) for _ in range(4)]
         for child in children:
             out, err = child.communicate(timeout=30)
             assert child.returncode == 0, (out, err)
-        assert (catalogs / 'ja.toml').read_bytes() == ja
-        assert (catalogs / 'en.toml').read_bytes() == en
-        assert set(p.name for p in catalogs.iterdir()) == {'en.toml', 'ja.toml'}
-    print('PASS real source-release/source-root/source-debug/embedded-standalone, foreign CWD, first/partial extraction, edits/restart/default merge, corrupt catalogs and concurrent startup')
+        assert_first_launch()
+    print('PASS real source-release/source-root/source-debug/embedded-standalone, foreign CWD, overlay/reference/dropped keys, corrupt catalogs and concurrent startup')
 
 
 if __name__ == '__main__':

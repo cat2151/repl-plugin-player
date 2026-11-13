@@ -11,14 +11,18 @@ import crt_linkage
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def package(output, executable, bridge):
+def package(output, executable, bridge, keyboard):
     tool = crt_linkage.dumpbin()
     with tempfile.TemporaryDirectory(prefix='repl-package-') as temporary:
         stage = Path(temporary) / 'app'
         stage.mkdir()
         shutil.copy2(executable, stage / 'repl-plugin-player.exe')
         assert bridge.read_bytes() in executable.read_bytes(), 'Executable embeds a different bridge'
-        pending = [stage / 'repl-plugin-player.exe', bridge]
+        assert keyboard.read_bytes() in executable.read_bytes(), 'Executable embeds a different keyboard DLL'
+        # The workspace build is the one `cargo test` checks against the exe's egui.
+        assert keyboard.read_bytes() == (ROOT / 'target/release/repl_keyboard.dll').read_bytes(), \
+            'Embedded keyboard DLL differs from the one built with the exe'
+        pending = [stage / 'repl-plugin-player.exe', bridge, keyboard]
         checked = set()
         imports = {}
         while pending:
@@ -81,6 +85,7 @@ def package(output, executable, bridge):
             names = set(archive.namelist())
             assert 'repl-plugin-player.exe' in names
             assert 'repl_bridge.dll' not in names
+            assert 'repl_keyboard.dll' not in names
             assert not any(name.startswith('locales/') for name in names)
         print('PASS packaged imports:', imports)
         print('PASS isolated ja/en launch and zip:', output)
@@ -91,5 +96,6 @@ if __name__ == '__main__':
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--exe', type=Path, default=ROOT / 'target/release/repl-plugin-player.exe')
     parser.add_argument('--bridge', type=Path, default=ROOT / 'build/out/repl_bridge.dll')
+    parser.add_argument('--keyboard', type=Path, default=ROOT / 'build/out/repl_keyboard.dll')
     args = parser.parse_args()
-    package(args.output.resolve(), args.exe.resolve(), args.bridge.resolve())
+    package(args.output.resolve(), args.exe.resolve(), args.bridge.resolve(), args.keyboard.resolve())

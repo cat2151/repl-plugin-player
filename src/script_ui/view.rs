@@ -7,77 +7,65 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn show(&mut self, ctx: &egui::Context, parameters: &mut impl Parameters) {
-        self.show_observed(ctx, parameters, |_, _| {});
+    /// Drops the cached metadata of windows that are gone.
+    pub fn retain(&mut self, windows: &[Window]) {
+        self.cache
+            .retain(|(id, _), _| windows.iter().any(|w| &w.id == id));
     }
 
-    pub(super) fn show_observed(
+    /// The widgets of one window, drawn into `ui`; wherever the window is placed.
+    pub fn contents(
         &mut self,
-        ctx: &egui::Context,
+        ui: &mut egui::Ui,
+        window: &Window,
         parameters: &mut impl Parameters,
         mut observe: impl FnMut(&Widget, &egui::Response),
     ) {
-        let windows = snapshot(); // Never hold Registry's RefCell while entering JS.
-        self.cache
-            .retain(|(id, _), _| windows.iter().any(|w| &w.id == id));
-        for window in windows {
-            let mut open = true;
-            egui::Window::new(&window.title)
-                .id(egui::Id::unique(("script_ui", &window.id)))
-                .open(&mut open)
-                .show(ctx, |ui| {
-                    for widget in &window.widgets {
-                        ui.push_id(&widget.id, |ui| {
-                            if widget.kind == "label" {
-                                ui.label(&widget.label);
-                                return;
-                            }
-                            let result = self.read(&window, widget, parameters);
-                            match result {
-                                Err(error) => {
-                                    ui.add_enabled(false, egui::Label::new(&widget.label));
-                                    ui.colored_label(ui.visuals().error_fg_color, error);
-                                }
-                                Ok(parameter) => {
-                                    let mut value = parameter.value;
-                                    let response = if widget.kind == "checkbox" {
-                                        let mut checked = value == parameter.max;
-                                        let response = ui.checkbox(&mut checked, &widget.label);
-                                        value = if checked {
-                                            parameter.max
-                                        } else {
-                                            parameter.min
-                                        };
-                                        response
-                                    } else {
-                                        let slider = egui::Slider::new(
-                                            &mut value,
-                                            parameter.min..=parameter.max,
-                                        )
-                                        .text(&widget.label);
-                                        let slider = if parameter.discrete {
-                                            slider.integer()
-                                        } else {
-                                            slider
-                                        };
-                                        ui.add(slider)
-                                    };
-                                    observe(widget, &response);
-                                    if response.changed() {
-                                        if let Err(error) = self
-                                            .write(&window, widget, parameters, &parameter, value)
-                                        {
-                                            ui.colored_label(ui.visuals().error_fg_color, error);
-                                        }
-                                    }
-                                }
-                            }
-                        });
+        for widget in &window.widgets {
+            ui.push_id(&widget.id, |ui| {
+                if widget.kind == "label" {
+                    ui.label(&widget.label);
+                    return;
+                }
+                let result = self.read(window, widget, parameters);
+                match result {
+                    Err(error) => {
+                        ui.add_enabled(false, egui::Label::new(&widget.label));
+                        ui.colored_label(ui.visuals().error_fg_color, error);
                     }
-                });
-            if !open {
-                close(&window);
-            }
+                    Ok(parameter) => {
+                        let mut value = parameter.value;
+                        let response = if widget.kind == "checkbox" {
+                            let mut checked = value == parameter.max;
+                            let response = ui.checkbox(&mut checked, &widget.label);
+                            value = if checked {
+                                parameter.max
+                            } else {
+                                parameter.min
+                            };
+                            response
+                        } else {
+                            let slider =
+                                egui::Slider::new(&mut value, parameter.min..=parameter.max)
+                                    .text(&widget.label);
+                            let slider = if parameter.discrete {
+                                slider.integer()
+                            } else {
+                                slider
+                            };
+                            ui.add(slider)
+                        };
+                        observe(widget, &response);
+                        if response.changed() {
+                            if let Err(error) =
+                                self.write(window, widget, parameters, &parameter, value)
+                            {
+                                ui.colored_label(ui.visuals().error_fg_color, error);
+                            }
+                        }
+                    }
+                }
+            });
         }
     }
 

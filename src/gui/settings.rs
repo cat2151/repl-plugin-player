@@ -1,5 +1,5 @@
-//! The settings overlay: registers the external editor and opens `config.toml`
-//! in it. Opened and closed by `Ctrl+,` or the menu button.
+//! The settings overlay: registers the external editor, opens `config.toml` in it, and
+//! chooses whether the layout is the auto-saved one. Opened and closed by `Ctrl+,`.
 use crate::external_editor;
 use eframe::egui::{self, Key, Modifiers};
 use std::path::PathBuf;
@@ -11,6 +11,10 @@ pub(super) struct Settings {
     focus_input: bool,
     input: String,
     editor: Option<PathBuf>,
+    /// The layout is `layout-auto.toml`'s, else the `[layout]` of `config.toml`'s.
+    pub layout_auto: bool,
+    /// The radio buttons changed `layout_auto` since the editor last took it.
+    layout_switched: bool,
     error: String,
     status: Result<PathBuf, String>,
     config: Result<PathBuf, String>,
@@ -22,6 +26,10 @@ impl Settings {
             Ok(path) => external_editor::read(path),
             Err(error) => (None, Some(error.clone())),
         };
+        let (layout_auto, layout_error) = match &status {
+            Ok(path) => crate::status::layout_auto(path),
+            Err(_) => (true, None),
+        };
         Self {
             open: false,
             focus_input: false,
@@ -30,7 +38,9 @@ impl Settings {
                 .map(|editor| editor.display().to_string())
                 .unwrap_or_default(),
             editor,
-            error: error.unwrap_or_default(),
+            layout_auto,
+            layout_switched: false,
+            error: error.or(layout_error).unwrap_or_default(),
             status,
             config,
         }
@@ -53,12 +63,6 @@ impl Settings {
             pressed
         });
         if pressed {
-            self.toggle();
-        }
-    }
-
-    pub fn button(&mut self, ui: &mut egui::Ui) {
-        if ui.button("☰").clicked() {
             self.toggle();
         }
     }
@@ -88,6 +92,18 @@ impl Settings {
             if ui.button(crate::i18n::t("settings_open_config")).clicked() {
                 self.open_config();
             }
+            let before = self.layout_auto;
+            ui.horizontal(|ui| {
+                ui.label(crate::i18n::t("settings_layout"));
+                let auto = crate::i18n::t("settings_layout_auto");
+                ui.radio_value(&mut self.layout_auto, true, auto);
+                let config = crate::i18n::t("settings_layout_config");
+                ui.radio_value(&mut self.layout_auto, false, config);
+            });
+            if self.layout_auto != before {
+                self.layout_switched = true;
+                self.save_layout_auto();
+            }
             if !self.error.is_empty() {
                 ui.colored_label(egui::Color32::LIGHT_RED, &self.error);
             }
@@ -108,6 +124,20 @@ impl Settings {
                 self.editor = editor;
                 self.error.clear();
             }
+            Err(error) => self.error = error,
+        }
+    }
+
+    /// Whether the radio buttons switched the layout's source since the last call.
+    pub fn take_layout_switch(&mut self) -> bool {
+        std::mem::take(&mut self.layout_switched)
+    }
+
+    fn save_layout_auto(&mut self) {
+        let result = (self.status.clone())
+            .and_then(|path| crate::status::save_layout_auto(&path, self.layout_auto));
+        match result {
+            Ok(()) => self.error.clear(),
             Err(error) => self.error = error,
         }
     }

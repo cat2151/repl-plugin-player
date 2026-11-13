@@ -25,7 +25,7 @@
         }
         return high;
     };
-    const plugins = t => uapmd.sequencer.getTrackInfos().find(x => x.trackIndex === t).nodes
+    const plugins = t => uapmd.sequencer.getTrackInfos()[t].nodes
         .filter(n => n.instanceId >= 0)
         .map(n => ({instanceId:n.instanceId, pluginId:n.pluginId, bypassed:uapmd.sequencer.isPluginBypassed(n.instanceId)}));
     const parameters = id => { const i = uapmd.instance(id); return Object.fromEntries(i.getParameters().map(p => [p.id, i.getParameterValue(p.id)])); };
@@ -74,7 +74,7 @@
 }
 
 // %% plugins on track 0
-uapmd.sequencer.getTrackInfos().find(t => t.trackIndex === 0).nodes.filter(n => n.instanceId >= 0).map(n => [n.instanceId, n.pluginId])
+uapmd.sequencer.getTrackInfos()[0].nodes.filter(n => n.instanceId >= 0).map(n => [n.instanceId, n.pluginId])
 
 // %% parameters
 ({instance}) => { const i = uapmd.instance(instance); return Object.fromEntries(i.getParameters().map(p => [p.id, i.getParameterValue(p.id)])); }

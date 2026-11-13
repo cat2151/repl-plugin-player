@@ -1,6 +1,5 @@
 //! Headless frames in the same order as `Editor::ui`: the shortcut first, then
-//! the code pane with the script editor, the right pane with the menu button,
-//! and the overlay last.
+//! the code pane with the script editor, and the overlay last.
 use super::*;
 use crate::script_editor::ScriptEditor;
 use egui::{epaint::Shape, Event, Pos2, Rect};
@@ -49,17 +48,8 @@ impl Harness {
             |ui| {
                 let ctx = ui.ctx().clone();
                 settings.shortcut(&ctx);
-                super::super::code_panel(ui.available_width(), crate::config::Panes::default())
-                    .show(ui, |ui| {
-                        editor.show(ui, code, true);
-                    });
-                egui::CentralPanel::default().show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.heading("Timeline");
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            settings.button(ui);
-                        });
-                    });
+                egui::Panel::left("code").show(ui, |ui| {
+                    editor.show(ui, code, true);
                 });
                 settings.show(&ctx);
             },
@@ -154,16 +144,9 @@ fn ctrl_comma_toggles() {
 }
 
 #[test]
-fn menu_button_opens_and_outside_click_closes() {
+fn outside_click_closes() {
     let mut harness = Harness::new();
-    let menu = harness.text_rect("☰").expect("menu button is not drawn");
-    let font = egui::TextStyle::Button.resolve(&harness.ctx.global_style());
-    assert!(harness.ctx.fonts_mut(|fonts| fonts.has_glyph(&font, '☰')));
-    assert!(
-        menu.right() > SCREEN.x - 40.0 && menu.top() < 40.0,
-        "{menu:?}"
-    );
-    harness.click(menu.center());
+    harness.settle(ctrl_comma());
     assert!(harness.settings.open);
     harness.click(egui::pos2(10.0, SCREEN.y - 10.0));
     assert!(!harness.settings.open);

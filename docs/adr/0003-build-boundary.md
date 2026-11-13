@@ -30,6 +30,6 @@
 ## 結果
 
 - `.js`・`.toml` だけを変えたときは build しない（`AGENTS.md` の「build の境界」）。runner 自体や、Rust が title で引く cell の title を変えたときは build が要る。
-- repo の中の `target/debug` や repo 直下に置いた exe も、locale を LocalAppData でなく source tree から読む。
+- repo の中の `target/debug` や repo 直下に置いた exe も、locale を LocalAppData でなく source tree から読む。repo の外の exe の locale は、埋め込みに LocalAppData の user のキーを重ねる（[0005](0005-locale-overlay.md)）。
 - `src/*.js` の変更は次の起動から効く（`resources::Source` はプロセス内で最初に使ったときに1回だけ読む）。
 - `uapmd.instance(i).saveState(file)` は上流のままでは返らないので、plugin の state をファイルへ書いて読み戻す state-load の case は Rust に残る。

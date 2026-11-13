@@ -22,24 +22,24 @@ partialValue = -1;
 partialValue += 1;
 throw new Error('next line');
 // %% track and reset
-var e2eTrack = uapmd.sequencer.getTrackInfos().find(t => t.trackIndex === 0);
+var e2eTrack = uapmd.sequencer.getTrackInfos()[0];
 if (!e2eTrack) throw new Error('E2E: no track holds the target plugin');
-var e2eTrackIndex = e2eTrack.trackIndex;
+var e2eTrackId = e2eTrack.trackId;
 uapmd.sequencer.stopPlayback();
 uapmd.sequencer.sendNoteOff(include('builtin/lib/plugins.js').instrumentOn(0), 60);
 uapmd.sequencer.jumpPlayback(0);
 uapmd.timeline.setTempo(120);
-for (var e2eClip of uapmd.timeline.getClips(e2eTrackIndex)) {
-    if (e2eClip.clipType === 'midi' && !uapmd.timeline.removeClip(e2eTrackIndex, e2eClip.clipId))
+for (var e2eClip of uapmd.timeline.getClips(e2eTrackId)) {
+    if (e2eClip.clipType === 'midi' && !uapmd.timeline.removeClip(e2eClip.clipId))
         throw new Error('E2E: could not remove clip ' + e2eClip.clipId);
 }
 
 // %% one note: pitch 60 from beat 1 to beat 3
-var e2eClipId = uapmd.timeline.createEmptyMidiClip(e2eTrackIndex, 0, 480, 120);
-if (e2eClipId < 0) throw new Error('E2E: clip creation failed');
-var e2eTpqn = uapmd.timeline.getClipUmpEvents(e2eTrackIndex, e2eClipId).tickResolution;
-if (!uapmd.timeline.addUmpEvent(e2eTrackIndex, e2eClipId, e2eTpqn, [0x40903c00, 0x7fff0000])
-    || !uapmd.timeline.addUmpEvent(e2eTrackIndex, e2eClipId, 3 * e2eTpqn, [0x40803c00, 0]))
+var e2eClipId = uapmd.timeline.createEmptyMidiClip(e2eTrackId, 0, 480, 120);
+if (!e2eClipId) throw new Error('E2E: clip creation failed');
+var e2eTpqn = uapmd.timeline.getClipUmpEvents(e2eClipId).tickResolution;
+if (!uapmd.timeline.addUmpEvent(e2eClipId, e2eTpqn, [0x40903c00, 0x7fff0000])
+    || !uapmd.timeline.addUmpEvent(e2eClipId, 3 * e2eTpqn, [0x40803c00, 0]))
     throw new Error('E2E: note events rejected');
 
 // %% play

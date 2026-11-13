@@ -1,4 +1,4 @@
-use crate::{bridge::Bridge, log::Log, resources::Source};
+use crate::{bridge::Bridge, catalog_refresh::Refresh, log::Log, resources::Source};
 use serde_json::{json, Value};
 use std::{
     path::PathBuf,
@@ -12,12 +12,19 @@ static SCRIPT_API: Source = Source::new("src/script-api.js", include_str!("scrip
 /// The startup cell: prepares the first instrument before Ready.
 pub const INIT: &str = "include('builtin/init.js')";
 
+pub struct RunResult {
+    pub error: bool,
+    /// Which run it was: scope and first line.
+    pub header: String,
+    pub body: String,
+}
+
 pub struct Control {
     bridge: Bridge,
     pub log: Log,
     pub ready: bool,
-    /// Every run's result line, oldest first.
-    pub results: Vec<String>,
+    /// Every run's result, oldest first.
+    pub results: Vec<RunResult>,
     full_scan: bool,
     pub missing_surge: bool,
     gui_mode: bool,
@@ -28,6 +35,7 @@ pub struct Control {
     prepare_deadline: crate::preparation::Deadline,
     readiness_window: Option<(Instant, u64)>,
     readiness_draining: bool,
+    refresh: Refresh,
 }
 impl Control {
     pub fn enable_gui(&mut self) {
@@ -37,6 +45,7 @@ impl Control {
     pub fn retry_surge(&mut self) -> Result<(), String> {
         self.bridge.call(json!({"command":"scan"}))?;
         self.full_scan = true;
+        self.refresh = Refresh::Done;
         self.missing_surge = false;
         self.prepare_deadline.reset(Instant::now());
         Ok(())
@@ -66,7 +75,7 @@ impl Control {
         std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
         let args =
             json!({"command":"open","data":data,"diagnostics":log.path.with_extension("native")});
-        log.event("startup", json!({"api":"AppModel::instantiate / UapmdJSRuntime::ensureApiBootstrapped","arguments":args,"surgeDataHome":std::env::var_os("SURGE_DATA_HOME").map(|s|s.to_string_lossy().into_owned()),"defaultSurgeData":"C:/ProgramData/Surge XT","templatesExist":PathBuf::from("C:/ProgramData/Surge XT/patches_factory/Templates").is_dir()}))?;
+        log.event("startup", json!({"api":"AppModel::instantiate / UapmdJSRuntime::ensureApiBootstrapped","arguments":args,"surgeDataHome":std::env::var_os("SURGE_DATA_HOME").map(|s|s.to_string_lossy().into_owned()),"surgeDataHomeError":crate::surge_home::error(),"defaultSurgeData":"C:/ProgramData/Surge XT","templatesExist":PathBuf::from("C:/ProgramData/Surge XT/patches_factory/Templates").is_dir()}))?;
         let opened = bridge.call(args);
         log.event("bootstrap", reply_value(&opened))?;
         let opened = opened?;
@@ -77,6 +86,11 @@ impl Control {
         }
         bridge.call(json!({"command":"eval","code":INSTRUMENT.text()?}))?;
         bridge.call(json!({"command":"eval","code":SCRIPT_API.text()?}))?;
+        let refresh = if opened["catalogFromCache"] == true {
+            Refresh::pending()
+        } else {
+            Refresh::Done
+        };
         Ok(Self {
             bridge,
             log,
@@ -92,9 +106,11 @@ impl Control {
             prepare_deadline: crate::preparation::Deadline::new(Instant::now()),
             readiness_window: None,
             readiness_draining: false,
+            refresh,
         })
     }
     pub fn eval(&mut self, code: &str, reason: &str) -> Result<String, String> {
+        self.finish_refresh()?;
         let result = self.bridge.call(json!({"command":"eval","code":code}));
         self.log.event(
             "evaluation",
@@ -157,6 +173,7 @@ impl Control {
     }
     pub fn poll(&mut self) -> Result<(), String> {
         let state = self.bridge.call(json!({"command":"poll"}))?;
+        self.observe_refresh(&state)?;
         if self.missing_surge {
             return Ok(());
         }
@@ -196,6 +213,7 @@ impl Control {
                     Init::MissingPlugin if !self.full_scan => {
                         self.bridge.call(json!({"command":"scan"}))?;
                         self.full_scan = true;
+                        self.refresh = Refresh::Done;
                         self.init_started = false;
                         self.log.event(
                             "scan_started",
@@ -286,20 +304,23 @@ impl Control {
         )?;
         let reason = format!("Run: {}", request.scope);
         let result = self.eval(&request.code, &reason);
-        let (key, name, text) = match &result {
-            Ok(value) => ("f018", "result", value),
-            Err(error) => ("f019", "error", error),
+        let (key, text) = match &result {
+            Ok(value) => ("f018", value),
+            Err(error) => ("f019", error),
         };
         // The console shows a string result as its text, with its own line breaks.
-        let text = serde_json::from_str::<String>(text).unwrap_or_else(|_| text.clone());
-        self.results.push(crate::i18n::render(
-            key,
-            &[
-                ("arg0", crate::i18n::scope(request.scope).to_owned()),
-                ("arg1", format!("{}", request.first_line)),
-                (name, text),
-            ],
-        ));
+        let body = serde_json::from_str::<String>(text).unwrap_or_else(|_| text.clone());
+        self.results.push(RunResult {
+            error: result.is_err(),
+            header: crate::i18n::render(
+                key,
+                &[
+                    ("arg0", crate::i18n::scope(request.scope).to_owned()),
+                    ("arg1", format!("{}", request.first_line)),
+                ],
+            ),
+            body,
+        });
         result
     }
     pub fn read_plugin_state(
@@ -339,6 +360,45 @@ impl Control {
         }
         self.log.event("cleanup", json!({"api":"unregister listeners / destroy runtime / AppModel::cleanupInstance / restore event loop","result":reply_value(&result)}))?;
         result.map(|_| ())
+    }
+}
+impl Control {
+    /// Starts the one scan that refreshes a cached catalog, once `active` (input or
+    /// pending work) has been false for a while after Ready.
+    pub fn refresh_catalog_when_idle(&mut self, active: bool) -> Result<(), String> {
+        if !self.ready || self.stopping || !self.refresh.should_start(active, Instant::now()) {
+            return Ok(());
+        }
+        self.bridge.call(json!({"command":"refresh"}))?;
+        self.log.event(
+            "catalog_refresh_started",
+            json!({"api":"AppModel::notifyUiReady / notifyPersistentStorageReady"}),
+        )
+    }
+    fn observe_refresh(&mut self, state: &Value) -> Result<(), String> {
+        if self.refresh != Refresh::Running || state["scanned"] != true {
+            return Ok(());
+        }
+        self.refresh = Refresh::Done;
+        // A failed refresh leaves the cached catalog in place.
+        self.log.event(
+            "catalog_refresh_finished",
+            json!({"catalogCount":state["catalogCount"],"scanError":state["scanError"]}),
+        )
+    }
+    /// The scan replaces the host's catalog on its own thread; scripts read and
+    /// instantiate from that catalog, so they wait for it.
+    fn finish_refresh(&mut self) -> Result<(), String> {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while self.refresh == Refresh::Running {
+            if Instant::now() >= deadline {
+                return Err(crate::i18n::t("catalog_refresh_timeout").into());
+            }
+            let state = self.bridge.call(json!({"command":"poll"}))?;
+            self.observe_refresh(&state)?;
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        Ok(())
     }
 }
 enum Init {

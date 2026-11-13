@@ -11,22 +11,25 @@ upstream = HERE.parents[3] / 'uapmd/source/remidy/src/clap/PluginInstanceCLAP.Pa
 runtime = HERE.parents[3] / 'uapmd/source/tools/uapmd-app-model/src/UapmdJSRuntime.cpp'
 with tempfile.TemporaryDirectory(prefix='repl-metadata-') as temp:
     root = Path(temp)
-    target = root / upstream.name
+    output = root / 'shim'
+    target = output / upstream.name
     for _ in range(2):  # Each configure starts from upstream, even with a cache.
-        target.write_bytes(upstream.read_bytes())
-        generator.generate(root)
+        generator.generate(upstream, output)
         result = target.read_text(encoding='utf-8')
         assert 'repl_parameters::report' in result and 'info.flags' in result
         assert 'repl_parameters::invalidate' in result and 'repl_parameters::destroy' in result
+        assert (upstream.parent / 'PluginFormatCLAP.hpp').resolve().as_posix() in result
     try:
-        generator.generate(root)
+        generator.generate(target, root)
     except RuntimeError:
         pass
     else:
         raise AssertionError('Already patched/unknown source accepted')
-    target.write_text(upstream.read_text(encoding='utf-8').replace('return parameter_defs;', 'return changed;'), encoding='utf-8')
+    changed = root / 'changed' / upstream.name
+    changed.parent.mkdir()
+    changed.write_text(upstream.read_text(encoding='utf-8').replace('return parameter_defs;', 'return changed;'), encoding='utf-8')
     try:
-        generator.generate(root)
+        generator.generate(changed, root)
     except RuntimeError:
         pass
     else:

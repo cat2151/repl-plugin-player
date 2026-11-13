@@ -21,9 +21,8 @@ permissions:
   contents: read
 
 env:
-  # The uapmd commit that the local build was checked against (ADR 0021). The release
-  # builds exactly this commit: the scripts follow uapmd's JS API at this commit.
-  UAPMD_VERIFIED_SHA: a4a96938eb31ddcb70209d62caf0dcc6ea9d3abe
+  # The uapmd commit that the local build was checked against (ADR 0021).
+  UAPMD_VERIFIED_SHA: 4ec5c3b1c30130fdd3b7d4b375082273247e561f
 
 jobs:
   # Fix the sibling commits once, so that the build and the notes use the same sources.
@@ -33,6 +32,7 @@ jobs:
       version: ${{ steps.refs.outputs.version }}
       uapmd: ${{ steps.refs.outputs.uapmd }}
       tui: ${{ steps.refs.outputs.tui }}
+      player: ${{ steps.refs.outputs.player }}
       build: ${{ steps.changed.outputs.build }}
     steps:
       - uses: actions/checkout@v7
@@ -45,13 +45,15 @@ jobs:
         run: |
           set -euo pipefail
           main_sha() { git ls-remote --exit-code "https://github.com/$1" refs/heads/main | cut -f1; }
-          uapmd=$UAPMD_VERIFIED_SHA
+          uapmd=$(main_sha atsushieno/uapmd)
           tui=$(main_sha cat2151/clap-mml-render-tui)
+          player=$(main_sha cat2151/cat-plugin-player)
           {
             echo "version=$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['package']['version'])")"
             echo "uapmd=$uapmd"
             echo "tui=$tui"
-            echo "inputs=<!-- build-inputs repl=$GITHUB_SHA clap-mml-render-tui=$tui uapmd=$uapmd -->"
+            echo "player=$player"
+            echo "inputs=<!-- build-inputs repl=$GITHUB_SHA clap-mml-render-tui=$tui cat-plugin-player=$player uapmd=$uapmd -->"
           } >> "$GITHUB_OUTPUT"
       # The notes carry this line, so the next scheduled run can tell whether anything changed.
       - name: Compare with the published release
@@ -87,17 +89,21 @@ jobs:
           VERSION: ${{ steps.refs.outputs.version }}
           UAPMD: ${{ steps.refs.outputs.uapmd }}
           TUI: ${{ steps.refs.outputs.tui }}
+          PLAYER: ${{ steps.refs.outputs.player }}
           INPUTS: ${{ steps.refs.outputs.inputs }}
         shell: python
         run: |
           import os, pathlib, string
           env = os.environ
+          verified = '一致' if env['UAPMD'] == env['UAPMD_VERIFIED_SHA'] else '不一致（手元で動作を確認していない uapmd の版でビルドした）'
           commits = [f'- repl-plugin-player: {env["GITHUB_SHA"]}',
                      f'- clap-mml-render-tui: {env["TUI"]}',
-                     f'- uapmd（atsushieno/uapmd、手元で確認した版）: {env["UAPMD"]}']
+                     f'- cat-plugin-player（`shared/` のソースだけを使う）: {env["PLAYER"]}',
+                     f'- uapmd（atsushieno/uapmd の main）: {env["UAPMD"]}',
+                     f'  - 手元で確認した uapmd {env["UAPMD_VERIFIED_SHA"]} と{verified}']
           template = string.Template(pathlib.Path('.github/release-notes.md').read_text(encoding='utf-8'))
           notes = template.substitute(name='repl-plugin-player', version=env['VERSION'],
-              package_files='第三者ライセンス（bridge DLL と ja/en 翻訳は exe に埋め込み）', commits='\n'.join(commits), build_inputs=env['INPUTS'])
+              package_files='第三者ライセンス（bridge・keyboard の DLL と ja/en 翻訳は exe に埋め込み）', commits='\n'.join(commits), build_inputs=env['INPUTS'])
           pathlib.Path('notes.md').write_text(notes, encoding='utf-8')
           with open(env['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
               summary.write(notes)
@@ -132,6 +138,12 @@ jobs:
           repository: cat2151/clap-mml-render-tui
           ref: ${{ needs.resolve.outputs.tui }}
           path: clap-mml-render-tui
+      # src/ reads the resident protocol from its shared/ sources (#[path]).
+      - uses: actions/checkout@v7
+        with:
+          repository: cat2151/cat-plugin-player
+          ref: ${{ needs.resolve.outputs.player }}
+          path: cat-plugin-player
       # The runner image may lag behind the stable Rust that the code is built with locally.
       - name: Update Rust and show tool versions
         run: |
@@ -143,10 +155,10 @@ jobs:
       - name: Build
         working-directory: repl-plugin-player
         run: python scripts/build.py
-      # Check the executable and the exact bridge embedded in it.
+      # Check the executable and the exact DLLs embedded in it.
       - name: Check the CRT linkage
         working-directory: repl-plugin-player
-        run: python scripts/crt_linkage.py target/release/repl-plugin-player.exe build/out/repl_bridge.dll
+        run: python scripts/crt_linkage.py target/release/repl-plugin-player.exe build/out/repl_bridge.dll build/out/repl_keyboard.dll
       - name: Install workflow check dependency
         run: python -m pip install PyYAML==6.0.2
       - name: Package
