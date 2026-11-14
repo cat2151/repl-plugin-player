@@ -79,6 +79,9 @@ pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
     app.run(script.cell("note 64")?)?;
     wait_held(app, 64)?;
     wait_note(app, 64)?;
+    app.run(script.cell("easy reset and play")?)?;
+    scope_on_instrument(app, script)?;
+    wait_note(app, 60)?;
     app.log.event(
         "signal_check",
         serde_json::json!({"startupInstrument":first, "replacedInstrument":replaced}),

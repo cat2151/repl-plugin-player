@@ -44,7 +44,7 @@ def main():
                 assert len(note_on) == 7, paths[0]
             elif case == "scope":
                 assert len(note_on) == 4, paths[0]
-                assert [e["details"]["note"] for e in events if e["event"] == "scope_verified"] == [60, 72, 67, 64], paths[0]
+                assert [e["details"]["note"] for e in events if e["event"] == "scope_verified"] == [60, 72, 67, 64, 60], paths[0]
             else:
                 assert len(note_on) == 1, paths[0]
             # Run/error must never inject audio calls. Explicit test scripts

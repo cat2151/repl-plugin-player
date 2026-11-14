@@ -65,6 +65,8 @@
                 for (const node of track.nodes.filter(n => n.instanceId >= 0))
                     uapmd.instance(node.instanceId).dispose();
             }
+            // The next created instrument goes on the scope (plugins.js ensureInstrument).
+            repl.scope.setTarget(-1);
             // A disposed instance leaves its track only when the host's queued tasks run;
             // a play in the same cell must already find the tracks empty.
             repl.processEvents();

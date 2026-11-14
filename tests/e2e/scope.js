@@ -51,3 +51,11 @@ uapmd.sequencer.sendNoteOff(include('builtin/lib/plugins.js').instrumentOn(0), 6
 
 // %% note 64
 uapmd.sequencer.sendNoteOn(include('builtin/lib/plugins.js').instrumentOn(0), 64);
+
+// %% easy reset and play
+// After the easy layer's reset disposed every instrument, the one play creates goes on the scope.
+{
+    const easy = include('builtin/lib/easy.js').create({format:'CLAP', plugin:'Surge XT', patch:'patches_factory/Templates/Init Saw.fxp', bpm:120});
+    easy.reset();
+    easy.play("l1c");
+}
