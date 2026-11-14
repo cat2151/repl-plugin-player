@@ -22,6 +22,7 @@ const BUILTIN_ORDER: &[&str] = &[
     "try-instrument",
     "try-parameter-ui",
     "try-patch-browse",
+    "try-cut-paste",
     "play",
     "stop-playback",
     "show-instrument-ui",

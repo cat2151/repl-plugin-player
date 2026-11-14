@@ -145,5 +145,5 @@
         return {...playback, trackIndex, ...clip};
     }
 
-    return {reset, prepareInstrument, prepareEffect, replaceMml, restoreBypassControls, init, play};
+    return {reset, stop, prepareInstrument, prepareEffect, replaceMml, restoreBypassControls, init, play};
 })();

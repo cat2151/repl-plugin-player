@@ -230,6 +230,7 @@ pub fn snippet_name(name: &str) -> &str {
         "try-instrument" => t("name_try_instrument"),
         "try-parameter-ui" => t("name_try_parameter_ui"),
         "try-patch-browse" => t("name_try_patch_browse"),
+        "try-cut-paste" => t("name_try_cut_paste"),
         "close-parameter-ui" => t("name_close_parameter_ui"),
         "add-midi-clip" => t("name_add_midi_clip"),
         "play" => t("name_play"),

@@ -121,3 +121,17 @@ repl.timeline = {
     loopStatus: function() { return __replCall('timeline.loop.status', {}); },
     clearLoop: function() { return __replCall('timeline.loop.clear', {}); }
 };
+
+// Notes of the clip `clipId` (a uapmd.timeline clip id), named by getClipNotes' noteId.
+// cut returns how many notes it cut; paste puts the clipboard's first note at `tick`
+// and returns the pasted notes' noteIds. Both save the clip.
+repl.pianoRoll = {
+    cut: function(clipId, noteIds) {
+        if (!Array.isArray(noteIds) || !noteIds.every(id => typeof id === 'string')) throw new Error('Invalid note ids');
+        return __replCall('pianoRoll.cut', {clipId:clipId, noteIds:noteIds});
+    },
+    paste: function(clipId, tick) {
+        if (!(Number.isInteger(tick) && tick >= 0)) throw new Error('Invalid paste tick');
+        return __replCall('pianoRoll.paste', {clipId:clipId, tick:tick});
+    }
+};

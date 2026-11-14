@@ -17,7 +17,8 @@ pub struct Script {
     pub init: String,
     /// The whole file, for cases that run parts of it as the editor does.
     pub text: String,
-    lib: String,
+    /// `tests/e2e/lib.js`; a Rust case runs it itself when its cells use `e2e`.
+    pub lib: String,
     cells: Vec<Cell>,
 }
 

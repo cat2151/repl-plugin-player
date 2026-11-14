@@ -15,6 +15,7 @@
 #include "parameter_safety.hpp"
 #include "loop_playback.hpp"
 #include "timeline_view.hpp"
+#include "piano_roll_api.hpp"
 #include "scope_capture.hpp"
 #include "../patches/uapmd/loop-playback/native_regression.hpp"
 
@@ -42,6 +43,7 @@ using ScriptApi = const char* (*)(const char*);
 static ScriptApi script_api{};
 static const char* loop_api(const char* request);
 static const char* control_api(const char* request);
+static bool session_open();
 extern "C" const char* repl_localized(const char* key) {
     static thread_local std::string value;
     value = key; // Standalone native harnesses register the same catalog callback.
@@ -59,6 +61,7 @@ extern "C" __declspec(dllexport) void repl_set_script_api(ScriptApi callback) {
 extern "C" const char* repl_script_api(const char* request) {
     if (auto result = loop_api(request)) return result;
     if (auto result = control_api(request)) return result;
+    if (auto result = piano_roll_api(request, session_open())) return result;
     if (!script_api) return "{\"ok\":false,\"error\":\"Script API is not registered\"}";
     return script_api(request);
 }
@@ -203,6 +206,7 @@ struct Session {
 std::unique_ptr<Session> session;
 std::string reply;
 }
+static bool session_open() { return session != nullptr; }
 
 // The master output's latest 256 samples (before soft clip / device mute) and the engine counters.
 static void observe_into(choc::value::Value& result) {

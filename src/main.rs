@@ -20,6 +20,7 @@ mod patch_browse_e2e;
 mod patch_browser;
 mod patch_cell;
 mod patch_state;
+mod piano_roll_e2e;
 mod player_download;
 mod preparation;
 mod resources;

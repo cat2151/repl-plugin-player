@@ -23,6 +23,7 @@ fn rust_case(case: &str) -> bool {
         "close-preparing",
         "close-creating",
         "timeline-view",
+        "piano-roll-cut-paste",
         "scope",
         "partial-run",
         "snippets",
@@ -66,6 +67,7 @@ pub fn run(case: &str) -> Result<(), String> {
         match case {
             _ if !rust => script.run(app, case),
             "timeline-view" => crate::timeline::regression::run(app, &script),
+            "piano-roll-cut-paste" => crate::piano_roll_e2e::run(app, &script),
             "scope" => crate::scope_e2e::run(app, &script),
             "partial-run" => crate::execution_e2e::run(app, &script),
             "snippets" => crate::snippets_e2e::run(app, &script),
