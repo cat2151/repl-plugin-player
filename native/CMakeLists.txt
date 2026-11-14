@@ -34,6 +34,8 @@ include("${REPL_PROJECT_ROOT}/patches/uapmd/script-api/apply.cmake")
 include("${REPL_PROJECT_ROOT}/patches/uapmd/parameter-metadata/apply.cmake")
 include("${REPL_PROJECT_ROOT}/patches/uapmd/catalog-cache-startup/apply.cmake")
 include("${REPL_PROJECT_ROOT}/patches/uapmd/loop-end-note-off/apply.cmake")
+include("${REPL_PROJECT_ROOT}/patches/uapmd/clap-note-dialect/CMakeLists.cmake")
+include("${REPL_PROJECT_ROOT}/patches/uapmd/dag-builtins/apply.cmake")
 add_library(repl_bridge SHARED bridge.cpp)
 target_link_libraries(repl_bridge PRIVATE uapmd-app-model remidy-gui ResEmbed)
 execute_process(COMMAND git -C "${UAPMD_DIR}" rev-parse HEAD
