@@ -33,7 +33,7 @@ pub fn run() -> Result<(), String> {
     };
     let settings = settings::Settings::new(crate::status::path(), config_path);
     let auto = settings.layout_auto;
-    let extensions = &config.extensions;
+    let extensions = settings.extensions();
     let (layout_file, layout) = match crate::resources::user_directory() {
         Ok(directory) => {
             let (file, layout) = dock::persist::LayoutFile::open(&directory, auto, extensions);
@@ -244,7 +244,7 @@ impl eframe::App for Editor {
         self.dock(ui, preparing);
         self.startup.show_overlay(&ctx);
         self.snippet_execution.show_overlay(&ctx);
-        self.settings.show(&ctx);
+        self.settings.show(&ctx, &mut self.extensions);
         if let Some(file) = self.layout_file.as_mut() {
             if self.settings.take_layout_switch() {
                 file.switch(&mut self.layout);

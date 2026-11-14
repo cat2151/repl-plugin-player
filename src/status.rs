@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 
 const LAYOUT_AUTO: &str = "layout_auto";
 const EASY: &str = "easy";
+const EXTENSIONS: &str = "extensions";
+/// The extensions on while `status.json` has no `extensions`.
+pub const DEFAULT_EXTENSIONS: [&str; 1] = ["builtin/keyboard"];
 
 pub fn path() -> Result<PathBuf, String> {
     Ok(crate::resources::user_directory()?.join("status.json"))
@@ -57,6 +60,41 @@ pub fn save_easy(path: &Path, easy: bool) -> Result<(), String> {
     write(path, EASY, Some(easy.into()))
 }
 
+/// The `<dll>/<pane>` names of the extensions on, in order; [`DEFAULT_EXTENSIONS`] when
+/// unset or unreadable. An item that is not such a name, or repeats one, is reported and
+/// skipped.
+pub fn extensions(path: &Path) -> (Vec<String>, Option<String>) {
+    let default = || DEFAULT_EXTENSIONS.map(String::from).to_vec();
+    let items = match read(path).map(|root| root.get(EXTENSIONS).cloned()) {
+        Ok(None) => return (default(), None),
+        Ok(Some(Value::Array(items))) => items,
+        Ok(Some(other)) => {
+            let error = error_text(path, format!("{EXTENSIONS}: {other}"));
+            return (default(), Some(error));
+        }
+        Err(error) => return (default(), Some(error)),
+    };
+    let mut names: Vec<String> = Vec::new();
+    let mut wrong = Vec::new();
+    for item in items {
+        match item {
+            Value::String(name)
+                if crate::extension::split(&name).is_some() && !names.contains(&name) =>
+            {
+                names.push(name)
+            }
+            other => wrong.push(other.to_string()),
+        }
+    }
+    let error = (!wrong.is_empty())
+        .then(|| error_text(path, format!("{EXTENSIONS}: {}", wrong.join(", "))));
+    (names, error)
+}
+
+pub fn save_extensions(path: &Path, names: &[String]) -> Result<(), String> {
+    write(path, EXTENSIONS, Some(names.into()))
+}
+
 /// A boolean key that is `true` when unset or unreadable.
 fn flag(path: &Path, key: &str) -> (bool, Option<String>) {
     match read(path).map(|root| root.get(key).cloned()) {
@@ -98,6 +136,35 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "{");
         let (auto, error) = layout_auto(&path);
         assert!(auto && error.is_some());
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn extensions_are_keyboard_until_saved_and_skip_wrong_items() {
+        let directory =
+            std::env::temp_dir().join(format!("rpp-status-extensions-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        let path = directory.join("status.json");
+        assert_eq!(extensions(&path), (vec!["builtin/keyboard".into()], None));
+        save_extensions(&path, &[]).unwrap();
+        assert_eq!(extensions(&path), (vec![], None));
+        let names = vec!["other/probe".to_string(), "builtin/keyboard".into()];
+        save_extensions(&path, &names).unwrap();
+        assert_eq!(extensions(&path), (names, None));
+
+        let wrong = r#"{"extensions": ["a/b", 3, "keyboard", "a/b", "c/d"]}"#;
+        std::fs::write(&path, wrong).unwrap();
+        let (names, error) = extensions(&path);
+        assert_eq!(names, ["a/b", "c/d"]);
+        let error = error.unwrap();
+        assert!(
+            error.contains('3') && error.contains("\"keyboard\""),
+            "{error}"
+        );
+        std::fs::write(&path, r#"{"extensions": "a/b"}"#).unwrap();
+        let (names, error) = extensions(&path);
+        assert_eq!(names, ["builtin/keyboard"]);
+        assert!(error.is_some());
         std::fs::remove_dir_all(&directory).unwrap();
     }
 }

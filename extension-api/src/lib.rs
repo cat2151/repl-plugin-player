@@ -11,15 +11,14 @@
 //!    The path counts from the junction (`extensions/<dll>/`), not from the repo's real place.
 //! 3. Export [`LIST`] as a [`List`]: `#[no_mangle] pub fn repl_extensions() -> &'static [Extension]`,
 //!    one [`Extension`] per pane. Panes of one DLL can share its statics.
-//! 4. Turn each pane on in `config.toml` with `[[extension]]` / `name = "<dll>/<pane>"`,
-//!    then restart the app.
+//! 4. Turn each pane `<dll>/<pane>` on in the settings (`Ctrl+,`), then restart the app.
 //! 5. Build and test in this repo without `-p` (`cargo build --release`, `cargo test --release`).
 //!    The extension's repo cannot build on its own. The tests here load every DLL under
 //!    `extensions/` and draw each of its panes.
 //! 6. When they pass, commit and push the extension's repo only. Do not commit what it
 //!    added to this repo's `Cargo.lock`.
-//! 7. Before removing the junction, drop its `[[extension]]` items from `config.toml` and
-//!    run the app once, so `layout-auto.toml` no longer names them; a view whose DLL dir
+//! 7. Before removing the junction, turn its panes off in the settings and restart the app
+//!    once, so `layout-auto.toml` no longer names them; a view whose DLL dir
 //!    is gone is an unknown view, and the saved layout is not read.
 //! 8. Remove the junction with `rmdir extensions\<dll>`. A delete that removes contents
 //!    can delete the extension repo's files through the junction.

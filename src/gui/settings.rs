@@ -1,9 +1,12 @@
 //! The settings overlay: chooses the easy style for the next startup, registers the
-//! external editor, opens `config.toml` in it, and chooses whether the layout is the
-//! auto-saved one. Opened and closed by `Ctrl+,`.
+//! external editor, opens `config.toml` in it, chooses whether the layout is the
+//! auto-saved one, and turns extensions on or off for the next startup. Opened and closed
+//! by `Ctrl+,`.
 use crate::external_editor;
 use eframe::egui::{self, Key, Modifiers};
 use std::path::PathBuf;
+
+mod extensions;
 
 const INPUT: &str = "settings_editor_input";
 
@@ -18,6 +21,7 @@ pub(super) struct Settings {
     pub layout_auto: bool,
     /// The radio buttons changed `layout_auto` since the editor last took it.
     layout_switched: bool,
+    extensions: extensions::Chooser,
     error: String,
     status: Result<PathBuf, String>,
     config: Result<PathBuf, String>,
@@ -37,6 +41,13 @@ impl Settings {
             Ok(path) => crate::status::easy(path),
             Err(_) => (true, None),
         };
+        let (extensions, extensions_error) = match &status {
+            Ok(path) => crate::status::extensions(path),
+            Err(_) => (
+                crate::status::DEFAULT_EXTENSIONS.map(String::from).to_vec(),
+                None,
+            ),
+        };
         Self {
             open: false,
             focus_input: false,
@@ -48,7 +59,8 @@ impl Settings {
             easy,
             layout_auto,
             layout_switched: false,
-            error: error.or(easy_error).or(layout_error).unwrap_or_default(),
+            extensions: extensions::Chooser::new(extensions),
+            error: (error.or(easy_error).or(layout_error).or(extensions_error)).unwrap_or_default(),
             status,
             config,
         }
@@ -75,7 +87,12 @@ impl Settings {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context) {
+    /// The `<dll>/<pane>` names on at startup.
+    pub fn extensions(&self) -> &[String] {
+        &self.extensions.running
+    }
+
+    pub fn show(&mut self, ctx: &egui::Context, extensions: &mut crate::extension::Extensions) {
         if !self.open {
             return;
         }
@@ -121,6 +138,10 @@ impl Settings {
                 self.layout_switched = true;
                 self.save_layout_auto();
             }
+            ui.separator();
+            if self.extensions.show(ui, extensions) {
+                self.save_extensions();
+            }
             if !self.error.is_empty() {
                 ui.colored_label(egui::Color32::LIGHT_RED, &self.error);
             }
@@ -162,6 +183,16 @@ impl Settings {
     fn save_layout_auto(&mut self) {
         let result = (self.status.clone())
             .and_then(|path| crate::status::save_layout_auto(&path, self.layout_auto));
+        match result {
+            Ok(()) => self.error.clear(),
+            Err(error) => self.error = error,
+        }
+    }
+
+    fn save_extensions(&mut self) {
+        let chosen = &self.extensions.chosen;
+        let result =
+            (self.status.clone()).and_then(|path| crate::status::save_extensions(&path, chosen));
         match result {
             Ok(()) => self.error.clear(),
             Err(error) => self.error = error,

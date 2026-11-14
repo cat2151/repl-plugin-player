@@ -9,6 +9,7 @@ const SCREEN: egui::Vec2 = egui::vec2(1250.0, 800.0);
 struct Harness {
     ctx: egui::Context,
     settings: Settings,
+    extensions: crate::extension::Extensions,
     editor: ScriptEditor,
     code: String,
     shapes: Vec<egui::epaint::ClippedShape>,
@@ -16,15 +17,18 @@ struct Harness {
 
 impl Harness {
     fn new() -> Self {
+        let missing = std::env::temp_dir().join("rpp-settings-test-absent");
+        Self::with_status(missing.join("status.json"))
+    }
+
+    fn with_status(status: PathBuf) -> Self {
         let ctx = egui::Context::default();
         crate::i18n::fonts(&ctx);
-        let missing = std::env::temp_dir().join("rpp-settings-test-absent");
+        let config = status.with_file_name("config.toml");
         let mut harness = Self {
             ctx,
-            settings: Settings::new(
-                Ok(missing.join("status.json")),
-                Ok(missing.join("config.toml")),
-            ),
+            settings: Settings::new(Ok(status), Ok(config)),
+            extensions: crate::extension::Extensions::default(),
             editor: ScriptEditor::default(),
             code: "repl.log('x');\n".into(),
             shapes: Vec::new(),
@@ -39,6 +43,7 @@ impl Harness {
 
     fn frame(&mut self, events: Vec<Event>) {
         let (settings, editor, code) = (&mut self.settings, &mut self.editor, &mut self.code);
+        let extensions = &mut self.extensions;
         let output = self.ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SCREEN)),
@@ -51,7 +56,7 @@ impl Harness {
                 egui::Panel::left("code").show(ui, |ui| {
                     editor.show(ui, code, true);
                 });
-                settings.show(&ctx);
+                settings.show(&ctx, extensions);
             },
         );
         self.shapes = output.shapes.clone();
@@ -204,4 +209,48 @@ fn open_config_without_editor_reports() {
         harness.settings.error,
         crate::i18n::t("settings_editor_missing")
     );
+}
+
+#[test]
+fn panes_of_the_builtin_dll_are_listed() {
+    let mut harness = Harness::new();
+    harness.settle(ctrl_comma());
+    assert!(harness.text_rect("builtin/keyboard").is_some());
+    assert!(harness
+        .text_rect(crate::i18n::t("settings_extensions_restart"))
+        .is_none());
+}
+
+#[test]
+fn a_checkbox_saves_at_once_and_tells_that_restart_applies_it() {
+    let directory =
+        std::env::temp_dir().join(format!("rpp-settings-extensions-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(&directory).unwrap();
+    let status = directory.join("status.json");
+    std::fs::write(&status, r#"{"extensions": ["gone/probe"]}"#).unwrap();
+    let mut harness = Harness::with_status(status.clone());
+    assert_eq!(harness.settings.extensions(), ["gone/probe"]);
+    harness.settle(ctrl_comma());
+    let restart = crate::i18n::t("settings_extensions_restart");
+    assert!(harness.text_rect(restart).is_none());
+
+    let row = harness
+        .text_rect("gone/probe")
+        .expect("an on name no DLL has is listed");
+    harness.click(row.center());
+    assert_eq!(crate::status::extensions(&status), (vec![], None));
+    assert!(harness.text_rect(restart).is_some());
+    assert_eq!(harness.settings.extensions(), ["gone/probe"]);
+
+    let row = harness
+        .text_rect("gone/probe")
+        .expect("the row stays until restart");
+    harness.click(row.center());
+    assert_eq!(
+        crate::status::extensions(&status),
+        (vec!["gone/probe".into()], None)
+    );
+    assert!(harness.text_rect(restart).is_none());
+    std::fs::remove_dir_all(&directory).unwrap();
 }

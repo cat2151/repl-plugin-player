@@ -1,5 +1,4 @@
-//! `config.toml` in the user directory: window position and size, and the extension
-//! DLLs to load (`[[extension]]`, read only at startup). The `[layout]` table
+//! `config.toml` in the user directory: window position and size. The `[layout]` table
 //! is the user's layout, read by `gui::dock::persist`. The app only
 //! reads it; invalid items fall back to their defaults and are reported as
 //! messages, and tables it does not know are ignored.
@@ -15,8 +14,6 @@ pub struct Window {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     pub window: Window,
-    /// The `name` of each `[[extension]]`, in the file's order; none is loaded otherwise.
-    pub extensions: Vec<String>,
 }
 
 impl Default for Config {
@@ -26,7 +23,6 @@ impl Default for Config {
                 position: None,
                 size: [1250.0, 800.0],
             },
-            extensions: Vec::new(),
         }
     }
 }
@@ -50,9 +46,6 @@ pub const TEMPLATE: &str = "\
 # top_percent = 0
 # width_percent = 100
 # height_percent = 100
-
-[[extension]]
-name = \"builtin/keyboard\"
 ";
 
 pub fn path() -> Result<PathBuf, String> {
@@ -103,41 +96,7 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             None => {}
         }
     }
-    config.extensions = extensions(&root, &mut errors);
     (config, errors)
-}
-
-/// The names of `[[extension]]`; an item without a string `name` of the form
-/// `<dll>/<pane>`, or repeating one, is reported and skipped.
-fn extensions(root: &toml::Table, errors: &mut Vec<String>) -> Vec<String> {
-    let items = match root.get("extension") {
-        None => return Vec::new(),
-        Some(toml::Value::Array(items)) => items,
-        Some(_) => {
-            errors.push(crate::i18n::t("config_extension_array").into());
-            return Vec::new();
-        }
-    };
-    let mut names: Vec<String> = Vec::new();
-    for (index, item) in items.iter().enumerate() {
-        let position = (index + 1).to_string();
-        match item.get("name") {
-            Some(toml::Value::String(name)) if crate::extension::split(name).is_none() => errors
-                .push(crate::i18n::render(
-                    "config_extension_form",
-                    &[("name", name.clone())],
-                )),
-            Some(toml::Value::String(name)) if names.contains(name) => errors.push(
-                crate::i18n::render("config_extension_duplicate", &[("name", name.clone())]),
-            ),
-            Some(toml::Value::String(name)) => names.push(name.clone()),
-            _ => errors.push(crate::i18n::render(
-                "config_extension_name",
-                &[("index", position)],
-            )),
-        }
-    }
-    names
 }
 
 /// The `[name]` table, or an empty one when absent or not a table.
@@ -170,66 +129,6 @@ fn number(table: &toml::Table, name: &str, key: &str, errors: &mut Vec<String>) 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn names(names: &[&str]) -> Vec<String> {
-        names.iter().map(|name| name.to_string()).collect()
-    }
-
-    #[test]
-    fn extensions_are_read_in_order() {
-        let (config, errors) = parse(
-            "[[extension]]\nname = \"builtin/keyboard\"\n[[extension]]\nname = \"other/probe\"\n",
-        );
-        assert!(errors.is_empty(), "{errors:?}");
-        assert_eq!(
-            config.extensions,
-            names(&["builtin/keyboard", "other/probe"])
-        );
-    }
-
-    #[test]
-    fn without_extensions_none_is_loaded() {
-        let (config, errors) = parse("[window]\nwidth = 900\n");
-        assert!(errors.is_empty(), "{errors:?}");
-        assert!(config.extensions.is_empty());
-    }
-
-    #[test]
-    fn repeated_extension_is_reported_and_skipped() {
-        let (config, errors) =
-            parse("[[extension]]\nname = \"builtin/keyboard\"\n[[extension]]\nname = \"builtin/keyboard\"\n");
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert!(errors[0].contains("keyboard"), "{errors:?}");
-        assert_eq!(config.extensions, names(&["builtin/keyboard"]));
-    }
-
-    #[test]
-    fn extension_name_without_dll_and_pane_is_reported_and_skipped() {
-        for name in ["keyboard", "/keyboard", "builtin/", "a/b/c"] {
-            let text = format!("[[extension]]\nname = \"{name}\"\n");
-            let (config, errors) = parse(&text);
-            assert_eq!(errors.len(), 1, "{name} {errors:?}");
-            assert!(errors[0].contains(name), "{errors:?}");
-            assert!(config.extensions.is_empty(), "{name}");
-        }
-    }
-
-    #[test]
-    fn extension_without_string_name_is_reported_and_skipped() {
-        let (config, errors) = parse(
-            "[[extension]]\nname = 3\n[[extension]]\n[[extension]]\nname = \"builtin/keyboard\"\n",
-        );
-        assert_eq!(errors.len(), 2, "{errors:?}");
-        assert_eq!(config.extensions, names(&["builtin/keyboard"]));
-        for text in [
-            "extension = \"keyboard\"\n",
-            "[extension]\nname = \"builtin/keyboard\"\n",
-        ] {
-            let (config, errors) = parse(text);
-            assert_eq!(errors.len(), 1, "{text} {errors:?}");
-            assert!(config.extensions.is_empty(), "{text}");
-        }
-    }
 
     #[test]
     fn empty_file_is_default() {
@@ -294,18 +193,13 @@ mod tests {
     }
 
     #[test]
-    fn template_is_the_default_configuration_with_keyboard() {
-        let keyboard = Config {
-            extensions: names(&["builtin/keyboard"]),
-            ..Config::default()
-        };
-        assert_eq!(parse(TEMPLATE), (keyboard, vec![]));
+    fn template_is_the_default_configuration() {
+        assert_eq!(parse(TEMPLATE), (Config::default(), vec![]));
         let uncommented = TEMPLATE.replace("# ", "");
         let (config, errors) = parse(&uncommented);
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(config.window.position, Some([100.0, 100.0]));
         assert_eq!(config.window.size, Config::default().window.size);
-        assert_eq!(config.extensions, names(&["builtin/keyboard"]));
     }
 
     #[test]
@@ -314,20 +208,6 @@ mod tests {
         let (config, errors) = read(&directory.join("config.toml"));
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(config, parse(TEMPLATE).0);
-        assert_eq!(config.extensions, names(&["builtin/keyboard"]));
-    }
-
-    #[test]
-    fn written_template_loads_keyboard() {
-        let directory =
-            std::env::temp_dir().join(format!("rpp-config-template-{}", std::process::id()));
-        std::fs::create_dir_all(&directory).unwrap();
-        let file = directory.join("config.toml");
-        crate::resources::write_missing(&file, TEMPLATE.as_bytes()).unwrap();
-        let result = read(&file);
-        std::fs::remove_dir_all(&directory).unwrap();
-        assert!(result.1.is_empty(), "{:?}", result.1);
-        assert_eq!(result.0.extensions, names(&["builtin/keyboard"]));
     }
 
     #[test]
