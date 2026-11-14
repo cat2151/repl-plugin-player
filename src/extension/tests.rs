@@ -123,9 +123,12 @@ fn range_widens_to_an_octave_with_white_edges() {
         vec![],
         keyboard(&mut extensions, &[], Some((61, 63)), "en"),
     );
-    // A3..A4: 8 white keys and 5 black keys.
-    assert_eq!(keys(&shapes, WHITE).len(), 8);
-    assert_eq!(keys(&shapes, BLACK).len(), 5);
+    // A3..A4: 8 white keys, 5 black keys inside, and G#3 and A#4 cut at the edges.
+    let (white, black) = (keys(&shapes, WHITE), keys(&shapes, BLACK));
+    assert_eq!(white.len(), 8);
+    assert_eq!(black.len(), 7);
+    assert!(black[0].left() < white[0].left() && white[0].left() < black[0].right());
+    assert!(black[6].left() < white[7].right() && white[7].right() < black[6].right());
 }
 
 /// The texts drawn after hovering that were not drawn before.
@@ -172,6 +175,8 @@ fn hovering_shows_a_tooltip_in_the_app_language() {
 #[test]
 fn scroll_state_stored_by_the_dll_is_read_by_the_app() {
     type Probe = fn(&mut egui::Ui);
+    // A DLL with another egui panics inside the probe, which aborts every later test.
+    super::load("builtin").unwrap();
     let path = crate::resources::extension("builtin").unwrap();
     // SAFETY: Built in this workspace with the same `egui`, as in `super::load`.
     let library = unsafe { libloading::Library::new(&path) }

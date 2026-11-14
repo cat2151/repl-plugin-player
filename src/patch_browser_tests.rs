@@ -44,7 +44,7 @@ pub(crate) fn selected(preset_name: &str) -> Selected {
     Selected {
         kit: None,
         reference: None,
-        target: OPEN,
+        target: Kind::Patch.open(),
         plugin: PluginKey {
             format: "CLAP".into(),
             id: "org.surge-synth-team.surge-xt".into(),

@@ -92,13 +92,21 @@ repl.test = {
 repl.patchState = function(options) {
     return __replCall('patchState', {format:options.format, pluginId:options.pluginId, patch:options.patch});
 };
+// The effect preset file `preset` (relative to the plugin's root) with the player's
+// selector `value` inside it, as a state file for `pluginId`.
+repl.effectState = function(options) {
+    return __replCall('effectState', {format:options.format, pluginId:options.pluginId, preset:options.preset, value:options.value});
+};
 
-// cat-plugin-player's patch browser. poll() returns what arrived since the last call:
+// cat-plugin-player's patch or effect browser. poll() returns what arrived since the last call:
 // {kind:'selected', format, pluginId, plugin, patch, stateFile} or {kind:'closed', error}.
 // answer(error) replies to the last selected; the player offers the next one after it.
-// open({track}) names the browsed track, which the cell of the chosen patch sets.
+// open({track, kind, cell}) names the browsed track, which the cell of the chosen preset
+// sets; kind is 'patch' (the default) or 'effect'; cell:false writes no cell.
 repl.patchBrowser = {
-    open: function(options) { return __replCall('patchBrowser.open', {track:options.track}); },
+    open: function(options) {
+        return __replCall('patchBrowser.open', {track:options.track, kind:options.kind, cell:options.cell});
+    },
     poll: function() { return __replCall('patchBrowser.poll', {}); },
     answer: function(error) { return __replCall('patchBrowser.answer', {error:error === undefined ? null : error}); }
 };

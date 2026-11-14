@@ -1,5 +1,5 @@
-//! The app's one resident cat-plugin-player, used only for its patch browser:
-//! started by the first request, then only asked to show the browser again.
+//! The app's one resident cat-plugin-player, used only for its patch and effect
+//! browsers: started by the first request, then only asked to show a browser again.
 //! Dropping the link (or ending this process) closes the pipes, which ends the
 //! player.
 use crate::i18n::{render, t};
@@ -16,8 +16,25 @@ use std::{
 
 const EXECUTABLE: &str = "cat-plugin-player.exe";
 
-/// The browser shown; the player keeps its own track list, so one target suffices.
-const OPEN: Open = Open::Patch { track: 0 };
+/// Which of the player's browsers is shown.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Patch,
+    Effect,
+}
+
+impl Kind {
+    /// The player keeps its own track list, so one target per browser suffices.
+    fn open(self) -> Open {
+        match self {
+            Kind::Patch => Open::Patch { track: 0 },
+            Kind::Effect => Open::Effect {
+                track: 0,
+                slot: None,
+            },
+        }
+    }
+}
 
 /// Starts a player that connects to the link `name`; `None` when there is no
 /// process to watch.
@@ -39,6 +56,8 @@ pub struct Link {
     child: Option<Child>,
     /// `None` until the player has connected.
     sender: Option<Sender>,
+    /// The browser [`Link::show`] brings to the front.
+    pub kind: Kind,
 }
 
 enum Incoming {
@@ -136,15 +155,16 @@ impl Link {
             incoming,
             child,
             sender: None,
+            kind: Kind::Patch,
         })
     }
 
-    /// Brings the browser to the front; before the player connects, it is
-    /// shown on connection instead.
+    /// Brings the browser of [`Link::kind`] to the front; before the player
+    /// connects, it is shown on connection instead.
     pub fn show(&mut self) -> Result<(), String> {
         match &mut self.sender {
             Some(sender) => sender
-                .send(&ToPlayer::Open(OPEN))
+                .send(&ToPlayer::Open(self.kind.open()))
                 .map_err(|e| render("patch_browser_02", &[("error", e.to_string())])),
             None => Ok(()),
         }

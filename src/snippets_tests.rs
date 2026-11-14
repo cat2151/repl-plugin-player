@@ -35,13 +35,13 @@ fn builtins_reload_additions_and_edits_without_a_build() {
     let library = fixture.library();
     fs::create_dir(&library.builtin).unwrap();
     fs::write(library.builtin.join("try-play.js"), "var start = 1;").unwrap();
-    assert_eq!(library.initial().unwrap(), "var start = 1;");
+    assert_eq!(library.initial(false).unwrap(), "var start = 1;");
     assert_eq!(library.load().unwrap().len(), 1);
     fs::write(library.builtin.join("猫.js"), "var cat = '😀';").unwrap();
     fs::write(library.builtin.join("try-play.js"), "var start = 2;").unwrap();
     fs::write(library.builtin.join("ignored.txt"), "ignored").unwrap();
     assert_eq!(library.load().unwrap().len(), 2);
-    assert_eq!(library.initial().unwrap(), "var start = 2;");
+    assert_eq!(library.initial(false).unwrap(), "var start = 2;");
     assert!(library
         .load()
         .unwrap()
@@ -50,13 +50,39 @@ fn builtins_reload_additions_and_edits_without_a_build() {
 }
 
 #[test]
+fn easy_snippets_lead_try_snippets_even_when_unlisted() {
+    let fixture = Fixture::new();
+    let library = fixture.library();
+    fs::create_dir(&library.builtin).unwrap();
+    for name in ["a", "try-z", "easy-z", "try-play", "easy-init"] {
+        fs::write(library.builtin.join(format!("{name}.js")), "").unwrap();
+    }
+    let names: Vec<_> = library
+        .load()
+        .unwrap()
+        .into_iter()
+        .map(|s| s.name)
+        .collect();
+    assert_eq!(names, ["easy-init", "easy-z", "try-play", "try-z", "a"]);
+}
+
+#[test]
 fn embedded_catalog_includes_startup_script_when_repository_is_absent() {
     let fixture = Fixture::new();
     let library = fixture.library();
     assert_eq!(
-        library.initial().unwrap(),
+        library.initial(false).unwrap(),
         library.source(STARTUP_SOURCE).unwrap()
     );
+    // Easy: the definition runs alone as the first cell; an example cell and an empty cell follow.
+    let easy = library.initial(true).unwrap();
+    let first = crate::execution::request(&easy, 0, 0, crate::execution::Scope::Cell);
+    assert_eq!(
+        first.code.trim_end(),
+        library.source(EASY_SOURCE).unwrap().trim_end()
+    );
+    assert!(easy.contains(library.source(EASY_EXAMPLE).unwrap().trim_end()));
+    assert!(easy.ends_with("// %%\n"));
     assert!(library
         .load()
         .unwrap()
@@ -175,7 +201,7 @@ fn unreadable_files_and_missing_initial_are_errors_instead_of_embedded_fallback(
     let fixture = Fixture::new();
     let library = fixture.library();
     fs::create_dir(&library.builtin).unwrap();
-    assert!(library.initial().is_err());
+    assert!(library.initial(false).is_err());
     fs::write(library.builtin.join("broken.js"), [0xff, 0xfe]).unwrap();
     assert!(library.load().unwrap_err().contains("broken.js"));
 }

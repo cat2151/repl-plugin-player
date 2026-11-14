@@ -40,7 +40,7 @@
 
 ## 結果
 
-- DLL と本体の egui がそろっていないと、テストが失敗するのでなく、DLL が egui の状態を引いた所で panic し、`Rust cannot catch foreign exceptions` で process ごと落ちる。
+- DLL と本体の egui がそろっていないと、DLL が egui の状態を引いた所で panic し、`Rust cannot catch foreign exceptions` で process ごと落ちる。そのため本体は読む時に `extension-api` が export する `egui::Context` の `TypeId` を DLL と自分とで比べ、違えばその欄に赤字を出して DLL を呼ばない。`cargo test` は DLL を build しないので、`-p` で作った DLL が残っているとテストはこの赤字で失敗する。
 - `cargo build -p <DLL の package>` だけを走らせると、その回に選ばれた package だけで feature が解決され、本体と違う egui を持つ DLL が `target/release/` に上書きされる（workspace 全体で feature をそろえる cargo の設定は unstable）。DLL は `-p` を付けずに本体と同じ回で build する。`scripts/package-release.py` は、埋め込む `build/out/` の DLL が `target/release/` の物と同じ bytes であることを確かめる。
 - `include_bytes!` で `build/out/` の DLL を直接埋め込むと、DLL は cargo 自身が作る物なので新しい clone の1回目の `cargo build` が通らない。`build.rs` が、DLL があれば埋め込み、無ければ空にし、repo の外の exe は空なら赤字を出す。
 - keyboard の DLL は約 3.9 MB（CRT を静的に link した配布用で約 4.0 MB）。DLL が無いときは keyboard の欄に `<path>: LoadLibraryExW failed` が赤字で出て、cell の実行など他の部分は動く。

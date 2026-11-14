@@ -1,5 +1,6 @@
-//! The settings overlay: registers the external editor, opens `config.toml` in it, and
-//! chooses whether the layout is the auto-saved one. Opened and closed by `Ctrl+,`.
+//! The settings overlay: chooses the easy style for the next startup, registers the
+//! external editor, opens `config.toml` in it, and chooses whether the layout is the
+//! auto-saved one. Opened and closed by `Ctrl+,`.
 use crate::external_editor;
 use eframe::egui::{self, Key, Modifiers};
 use std::path::PathBuf;
@@ -11,6 +12,8 @@ pub(super) struct Settings {
     focus_input: bool,
     input: String,
     editor: Option<PathBuf>,
+    /// Startup opens and runs `easy-init`; read once at startup.
+    pub easy: bool,
     /// The layout is `layout-auto.toml`'s, else the `[layout]` of `config.toml`'s.
     pub layout_auto: bool,
     /// The radio buttons changed `layout_auto` since the editor last took it.
@@ -30,6 +33,10 @@ impl Settings {
             Ok(path) => crate::status::layout_auto(path),
             Err(_) => (true, None),
         };
+        let (easy, easy_error) = match &status {
+            Ok(path) => crate::status::easy(path),
+            Err(_) => (true, None),
+        };
         Self {
             open: false,
             focus_input: false,
@@ -38,9 +45,10 @@ impl Settings {
                 .map(|editor| editor.display().to_string())
                 .unwrap_or_default(),
             editor,
+            easy,
             layout_auto,
             layout_switched: false,
-            error: error.or(layout_error).unwrap_or_default(),
+            error: error.or(easy_error).or(layout_error).unwrap_or_default(),
             status,
             config,
         }
@@ -73,6 +81,15 @@ impl Settings {
         }
         let response = egui::Modal::new(egui::Id::unique("settings_overlay")).show(ctx, |ui| {
             let mut close = false;
+            let easy = self.easy;
+            ui.horizontal(|ui| {
+                ui.label(crate::i18n::t("settings_easy"));
+                ui.radio_value(&mut self.easy, true, crate::i18n::t("settings_on"));
+                ui.radio_value(&mut self.easy, false, crate::i18n::t("settings_off"));
+            });
+            if self.easy != easy {
+                self.save_easy();
+            }
             ui.horizontal(|ui| {
                 ui.label(crate::i18n::t("settings_editor"));
                 let input = ui.add(
@@ -131,6 +148,15 @@ impl Settings {
     /// Whether the radio buttons switched the layout's source since the last call.
     pub fn take_layout_switch(&mut self) -> bool {
         std::mem::take(&mut self.layout_switched)
+    }
+
+    fn save_easy(&mut self) {
+        let result =
+            (self.status.clone()).and_then(|path| crate::status::save_easy(&path, self.easy));
+        match result {
+            Ok(()) => self.error.clear(),
+            Err(error) => self.error = error,
+        }
     }
 
     fn save_layout_auto(&mut self) {

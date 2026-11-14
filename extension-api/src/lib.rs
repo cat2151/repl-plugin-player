@@ -49,3 +49,15 @@ pub type List = fn() -> &'static [Extension];
 
 /// The symbol name of the [`List`] function.
 pub const LIST: &[u8] = b"repl_extensions\0";
+
+/// The `TypeId` of `egui::Context` in the build that links this crate. Every DLL exports
+/// it through this crate, so the app can compare it with its own before calling the DLL.
+/// They differ when the DLL was built with `-p`: then egui's state stored by one side is
+/// not found by the other, and the DLL's panic aborts the app.
+#[no_mangle]
+pub fn repl_egui_type_id() -> std::any::TypeId {
+    std::any::TypeId::of::<egui::Context>()
+}
+
+/// The symbol name of [`repl_egui_type_id`].
+pub const EGUI_TYPE_ID: &[u8] = b"repl_egui_type_id\0";

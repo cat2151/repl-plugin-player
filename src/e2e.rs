@@ -30,6 +30,7 @@ fn rust_case(case: &str) -> bool {
         "tutorials",
         "script-ui",
         "patch-browse",
+        "browser-change",
         "state-load",
         "dock",
         "dock-script-ui",
@@ -74,6 +75,7 @@ pub fn run(case: &str) -> Result<(), String> {
             "tutorials" => crate::tutorials_e2e::run(app, &script),
             "state-load" => state_load::run(app, &script),
             "patch-browse" => crate::patch_browse_e2e::run(app, &script),
+            "browser-change" => crate::browser_change_e2e::run(app, &script),
             "script-ui" => crate::script_ui::regression::run(app, &script),
             "dock" | "dock-script-ui" => Ok(()), // Need the engine by value; run below.
             _ => Err(format!("Unhandled E2E case: {case}")),

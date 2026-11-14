@@ -1,13 +1,8 @@
 // Select a plugin by the name the user reads and a patch by its path in the player's catalog,
-// or audition patches from the player's browser. Loading only defines functions.
+// or take patches from the player's browser. Loading only defines functions.
 (() => {
-    // uapmd reports a failed load as a result, not an exception.
-    function loadState(instanceId, file) {
-        const result = uapmd.instance(instanceId).loadState(file);
-        if (!result.success) throw new Error(result.error);
-    }
-
     const plugins = include('builtin/lib/plugins.js');
+    const loadState = plugins.loadState;
     const tracks = include('builtin/lib/tracks.js');
     const pluginEnd = instanceId => plugins.pluginEnd(instanceId);
 
@@ -68,26 +63,12 @@
         return {instanceId, trackIndex};
     }
 
-    // A plugin created on a track whose connections were edited joins nothing;
-    // the audition then gets the track's events and feeds its output directly.
-    function joinAlone(trackIndex, instanceId) {
-        const joined = plugins.connectionsOf(trackIndex).some(c =>
-            c.source.instanceId === instanceId || c.target.instanceId === instanceId);
-        if (joined) return;
-        const input = {type:'graphInput', instanceId:-1, busIndex:0};
-        const output = {type:'graphOutput', instanceId:-1, busIndex:0};
-        for (const [busType, source, target] of [['event', input, pluginEnd(instanceId)], ['audio', pluginEnd(instanceId), output]]) {
-            const result = uapmd.timeline.connectTrackGraph(tracks.idOf(trackIndex), busType, source, target);
-            if (!result.success) throw new Error(result.error);
-        }
-    }
-
     // The sound being auditioned: one instance, added to the browsed track.
     function audition(trackIndex, preview, event) {
         if (preview.instanceId === undefined || preview.format !== event.format || preview.pluginId !== event.pluginId) {
             const id = uapmd.instancing.create(event.format, event.pluginId, tracks.idOf(trackIndex));
             if (id < 0) throw new Error(repl.text('snippet_02'));
-            joinAlone(trackIndex, id);
+            plugins.joinAlone(trackIndex, id);
             if (preview.instanceId !== undefined) uapmd.instance(preview.instanceId).dispose();
             Object.assign(preview, {instanceId:id, format:event.format, pluginId:event.pluginId});
         }
@@ -104,31 +85,29 @@
         const instrument = plugins.instrumentOn(trackIndex);
         var bypassed = instrument >= 0 && uapmd.sequencer.isPluginBypassed(instrument);
         var preview = {};
-        repl.patchBrowser.open({track:trackIndex});
         try {
-            for (;;) {
-                repl.processEvents();
-                for (var event of repl.patchBrowser.poll()) {
-                    if (event.kind === 'closed') {
-                        if (event.error) throw new Error(event.error);
-                        return;
-                    }
-                    var error;
-                    try {
-                        if (instrument >= 0) uapmd.sequencer.setPluginBypassed(instrument, true);
-                        audition(trackIndex, preview, event);
-                        error = undefined;
-                    } catch (e) {
-                        error = e instanceof Error ? e.message : String(e);
-                    }
-                    repl.patchBrowser.answer(error);
-                }
-            }
+            include('builtin/lib/browser.js').run({track:trackIndex}, event => {
+                if (instrument >= 0) uapmd.sequencer.setPluginBypassed(instrument, true);
+                audition(trackIndex, preview, event);
+            });
         } finally {
             if (preview.instanceId !== undefined) uapmd.instance(preview.instanceId).dispose();
             if (instrument >= 0) uapmd.sequencer.setPluginBypassed(instrument, bypassed);
         }
     }
 
-    return {use, browse};
+    // Each patch chosen in the player's browser becomes the track's instrument
+    // at once and stays after the browser closes. options: {track, cell};
+    // `cell:false` writes no cell for the last patch.
+    function change(options) {
+        const trackIndex = options.track;
+        tracks.info(trackIndex);
+        include('builtin/lib/browser.js').run({track:trackIndex, cell:options.cell}, event => {
+            const instanceId = instrumentFor(trackIndex, {format:event.format, pluginId:event.pluginId});
+            loadState(instanceId, event.stateFile);
+            uapmd.sequencer.setPluginBypassed(instanceId, false);
+        });
+    }
+
+    return {use, browse, change};
 })();

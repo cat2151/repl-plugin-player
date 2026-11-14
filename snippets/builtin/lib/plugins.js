@@ -53,18 +53,44 @@
         return track.nodes.map(n => n.instanceId).filter(id => id >= 0 && id !== instrument);
     }
 
-    // The track's instrument; the plugin is created only when the track has none.
-    // The scope shows a created instrument when it shows nothing yet.
+    // A plugin created on a track whose connections were edited joins nothing
+    // (also after reset left the track empty); it then gets the track's events
+    // and feeds its output directly.
+    function joinAlone(trackIndex, instanceId) {
+        const joined = connectionsOf(trackIndex).some(c =>
+            c.source.instanceId === instanceId || c.target.instanceId === instanceId);
+        if (joined) return;
+        const input = {type:'graphInput', instanceId:-1, busIndex:0};
+        const output = {type:'graphOutput', instanceId:-1, busIndex:0};
+        for (const [busType, source, target] of [['event', input, pluginEnd(instanceId)], ['audio', pluginEnd(instanceId), output]]) {
+            const result = uapmd.timeline.connectTrackGraph(tracks.idOf(trackIndex), busType, source, target);
+            if (!result.success) throw new Error(result.error);
+        }
+    }
+
+    // The track's instrument; the plugin is created only when the track has none,
+    // with `options.patch` (patch.js use()'s path) when given. The scope shows a created instrument when it shows nothing yet.
     function ensureInstrument(trackIndex, options) {
         const trackId = tracks.idOf(trackIndex);
         const present = instrumentOn(trackIndex);
         if (present >= 0) return present;
         const entry = catalogEntry(options.format, options.plugin);
+        // A patch that cannot be restored fails before any instance is created.
+        const file = options.patch === undefined ? undefined
+            : repl.patchState({format:entry.format, pluginId:entry.pluginId, patch:options.patch});
         const created = uapmd.instancing.create(entry.format, entry.pluginId, trackId);
         if (created < 0) throw new Error(repl.text('snippet_02'));
+        joinAlone(trackIndex, created);
+        if (file !== undefined) loadState(created, file);
         if (repl.scope.target() < 0) repl.scope.setTarget(created);
         return created;
     }
 
-    return {trackFor, catalogEntry, pluginEnd, connectionsOf, instrumentOn, effectsOn, ensureInstrument};
+    // uapmd reports a failed load as a result, not an exception.
+    function loadState(instanceId, file) {
+        const result = uapmd.instance(instanceId).loadState(file);
+        if (!result.success) throw new Error(result.error);
+    }
+
+    return {trackFor, catalogEntry, pluginEnd, connectionsOf, instrumentOn, effectsOn, joinAlone, ensureInstrument, loadState};
 })();

@@ -6,9 +6,20 @@ use std::{
 
 include!(concat!(env!("OUT_DIR"), "/builtin_snippets.rs"));
 const STARTUP_SOURCE: &str = "builtin/try-play.js";
+/// The first cell with the easy style on; only it is run once the host is ready.
+const EASY_SOURCE: &str = "builtin/easy-init.js";
+/// The cell after it, an example of one call per cell, followed by an empty cell.
+const EASY_EXAMPLE: &str = "builtin/easy-play.js";
 
 // Follow the trial workflow; unlisted built-ins and user snippets use name order.
 const BUILTIN_ORDER: &[&str] = &[
+    "easy-init",
+    "easy-play",
+    "easy-play-tracks",
+    "easy-play-loop",
+    "easy-reset",
+    "easy-change-patch",
+    "easy-change-effect",
     "try-play",
     "try-init-saw",
     "try-chords",
@@ -23,6 +34,8 @@ const BUILTIN_ORDER: &[&str] = &[
     "try-parameter-ui",
     "try-patch-browse",
     "try-cut-paste",
+    "try-change-patch",
+    "try-change-effect",
     "play",
     "stop-playback",
     "show-instrument-ui",
@@ -106,8 +119,15 @@ impl Library {
         resolve().map_err(|error| format!("{name}: {error}"))
     }
 
-    pub fn initial(&self) -> Result<String, String> {
-        self.source(STARTUP_SOURCE)
+    pub fn initial(&self, easy: bool) -> Result<String, String> {
+        if !easy {
+            return self.source(STARTUP_SOURCE);
+        }
+        Ok(format!(
+            "{}\n// %%\n{}\n// %%\n",
+            self.source(EASY_SOURCE)?.trim_end(),
+            self.source(EASY_EXAMPLE)?.trim_end()
+        ))
     }
 
     pub fn load(&self) -> Result<Vec<Snippet>, String> {
@@ -143,8 +163,10 @@ impl Library {
             } else {
                 None
             };
+            // easy-* then try-* lead even when missing from the order.
             (
                 snippet.group,
+                lead(&snippet.name),
                 rank.unwrap_or(usize::MAX),
                 snippet.name.to_lowercase(),
             )
@@ -175,6 +197,17 @@ impl Library {
             return Err(format!("{}: {error}", path.display()));
         }
         Ok(path)
+    }
+}
+
+// easy-* (the easy layer, which their order builds up) before try-* before the rest.
+fn lead(name: &str) -> u8 {
+    if name.starts_with("easy-") {
+        0
+    } else if name.starts_with("try-") {
+        1
+    } else {
+        2
     }
 }
 

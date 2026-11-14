@@ -29,8 +29,8 @@ impl SnippetsPanel {
         self.open
     }
 
-    pub fn initial(&mut self) -> String {
-        match self.library.initial() {
+    pub fn initial(&mut self, easy: bool) -> String {
+        match self.library.initial(easy) {
             Ok(code) => code,
             Err(error) => {
                 self.error = error;
@@ -73,6 +73,9 @@ impl SnippetsPanel {
         }
         if !self.error.is_empty() && !self.open {
             ui.colored_label(ui.visuals().error_fg_color, &self.error);
+        }
+        if self.open && Self::take_escape(ui.ctx()) {
+            self.open = false;
         }
         if self.open && Self::take_slash(ui.ctx()) {
             ui.memory_mut(|memory| memory.request_focus(filter_id));
@@ -157,6 +160,12 @@ impl SnippetsPanel {
         }
         let snippet = self.preview.and_then(|index| self.entries.get(index))?;
         (enter && ready && !snippet.code.trim().is_empty()).then(|| snippet.clone())
+    }
+
+    /// Consumes `Escape` unless a modal (help, settings) is on top; that modal closes first.
+    fn take_escape(ctx: &egui::Context) -> bool {
+        ctx.memory(|memory| memory.top_modal_layer()).is_none()
+            && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
     }
 
     /// Consumes a typed `/` unless another text field (not the code editor)

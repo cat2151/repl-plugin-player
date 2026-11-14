@@ -4,6 +4,7 @@ use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 
 const LAYOUT_AUTO: &str = "layout_auto";
+const EASY: &str = "easy";
 
 pub fn path() -> Result<PathBuf, String> {
     Ok(crate::resources::user_directory()?.join("status.json"))
@@ -40,19 +41,30 @@ pub fn write(path: &Path, key: &str, value: Option<Value>) -> Result<(), String>
 
 /// Whether the layout is the auto-saved one; `true` when unset or unreadable.
 pub fn layout_auto(path: &Path) -> (bool, Option<String>) {
-    match read(path).map(|root| root.get(LAYOUT_AUTO).cloned()) {
-        Ok(None) => (true, None),
-        Ok(Some(Value::Bool(auto))) => (auto, None),
-        Ok(Some(other)) => (
-            true,
-            Some(error_text(path, format!("{LAYOUT_AUTO}: {other}"))),
-        ),
-        Err(error) => (true, Some(error)),
-    }
+    flag(path, LAYOUT_AUTO)
 }
 
 pub fn save_layout_auto(path: &Path, auto: bool) -> Result<(), String> {
     write(path, LAYOUT_AUTO, Some(auto.into()))
+}
+
+/// Whether startup opens and runs `easy-init`; `true` when unset or unreadable.
+pub fn easy(path: &Path) -> (bool, Option<String>) {
+    flag(path, EASY)
+}
+
+pub fn save_easy(path: &Path, easy: bool) -> Result<(), String> {
+    write(path, EASY, Some(easy.into()))
+}
+
+/// A boolean key that is `true` when unset or unreadable.
+fn flag(path: &Path, key: &str) -> (bool, Option<String>) {
+    match read(path).map(|root| root.get(key).cloned()) {
+        Ok(None) => (true, None),
+        Ok(Some(Value::Bool(value))) => (value, None),
+        Ok(Some(other)) => (true, Some(error_text(path, format!("{key}: {other}")))),
+        Err(error) => (true, Some(error)),
+    }
 }
 
 pub fn error_text(path: &Path, error: impl std::fmt::Display) -> String {
@@ -72,9 +84,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(&directory);
         let path = directory.join("status.json");
         assert_eq!(layout_auto(&path), (true, None));
+        assert_eq!(easy(&path), (true, None));
         write(&path, "external_editor", Some("C:\\editor.exe".into())).unwrap();
         save_layout_auto(&path, false).unwrap();
+        save_easy(&path, false).unwrap();
         assert_eq!(layout_auto(&path), (false, None));
+        assert_eq!(easy(&path), (false, None));
         let root = read(&path).unwrap();
         assert_eq!(root["external_editor"], "C:\\editor.exe");
 

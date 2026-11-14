@@ -33,8 +33,105 @@ static TABLE: Mutex<Option<Table>> = Mutex::new(None);
 pub fn file(format: &str, plugin_id: &str, patch: &str) -> Result<PathBuf, String> {
     let player = crate::patch_browser::player()?;
     let reference = lookup(&player, format, plugin_id, patch)?;
-    let input = serde_json::to_vec(&reference).map_err(|e| e.to_string())?;
-    let state = ask(&player, "--restore-state", &input)?;
+    restore(&player, &reference)
+}
+
+/// The effect preset file `path` as a cell names it: relative to the one root
+/// of the plugin holding it, its parts joined by `/`. A plugin whose presets
+/// are built in names its root itself, which is empty.
+pub fn effect_preset(format: &str, plugin_id: &str, path: &Path) -> Result<String, String> {
+    let player = crate::patch_browser::player()?;
+    let plugin = plugin(&player, format, plugin_id)?;
+    let named: Vec<String> = plugin
+        .roots
+        .iter()
+        .filter_map(|root| path.strip_prefix(root).ok())
+        .map(|relative| {
+            let parts: Vec<_> = relative.iter().map(|p| p.to_string_lossy()).collect();
+            parts.join("/")
+        })
+        .collect();
+    let display = path.display().to_string();
+    match named.as_slice() {
+        [one] => Ok(one.clone()),
+        [] => Err(render(
+            "patch_state_00",
+            &[("patch", display), ("plugin", plugin_id.into())],
+        )),
+        _ => Err(render(
+            "patch_state_01",
+            &[("patch", display), ("plugin", plugin_id.into())],
+        )),
+    }
+}
+
+/// A state file restoring the effect preset `preset` (as [`effect_preset`]
+/// names it) with the player's selector `value` inside the file.
+pub fn effect_file(
+    format: &str,
+    plugin_id: &str,
+    preset: &str,
+    value: &str,
+) -> Result<PathBuf, String> {
+    let player = crate::patch_browser::player()?;
+    let reference = effect_reference(&player, format, plugin_id, preset, value)?;
+    restore(&player, &reference)
+}
+
+/// The player's reference to the effect preset, with the file under the one
+/// root holding it.
+pub fn effect_reference(
+    player: &Path,
+    format: &str,
+    plugin_id: &str,
+    preset: &str,
+    value: &str,
+) -> Result<PatchReference, String> {
+    let plugin = plugin(player, format, plugin_id)?;
+    let missing = |key| {
+        render(
+            key,
+            &[("patch", preset.into()), ("plugin", plugin_id.into())],
+        )
+    };
+    let parts: Vec<&str> = preset.split('/').filter(|_| !preset.is_empty()).collect();
+    if parts
+        .iter()
+        .any(|p| p.is_empty() || *p == "." || *p == ".." || p.contains(['\\', ':']))
+    {
+        return Err(missing("patch_state_00"));
+    }
+    let found: Vec<PathBuf> = plugin
+        .roots
+        .iter()
+        .map(|root| parts.iter().fold(PathBuf::from(root), |p, s| p.join(s)))
+        .filter(|path| path.is_file())
+        .collect();
+    let path = match found.as_slice() {
+        [one] => one.clone(),
+        [] => return Err(missing("patch_state_00")),
+        _ => return Err(missing("patch_state_01")),
+    };
+    Ok(PatchReference {
+        plugin: PluginKey {
+            format: format.into(),
+            id: plugin_id.into(),
+            name: String::new(),
+            vendor: String::new(),
+            bundle_path: plugin.bundle_path,
+        },
+        source: Source::Effect {
+            path,
+            value: value.into(),
+        },
+        display: preset.into(),
+    })
+}
+
+/// The player's state for `reference`, written to this process's state file.
+fn restore(player: &Path, reference: &PatchReference) -> Result<PathBuf, String> {
+    let input = serde_json::to_vec(reference).map_err(|e| e.to_string())?;
+    let state = ask(player, "--restore-state", &input)?;
     let path = std::env::temp_dir()
         .join("repl-plugin-player")
         .join(format!("patch-state-{}.bin", std::process::id()));
@@ -61,6 +158,25 @@ fn lookup(
         }
         result => result,
     }
+}
+
+/// The roots of one plugin, asking the player again only when it is missing.
+fn plugin(player: &Path, format: &str, plugin_id: &str) -> Result<Plugin, String> {
+    let mut slot = TABLE.lock().map_err(|e| e.to_string())?;
+    let find = |table: &Table| {
+        table
+            .plugins
+            .iter()
+            .find(|p| p.format == format && p.id == plugin_id)
+            .cloned()
+    };
+    if let Some(found) = slot.as_ref().and_then(find) {
+        return Ok(found);
+    }
+    let table = fetch(player)?;
+    let found = find(&table);
+    *slot = Some(table);
+    found.ok_or_else(|| render("patch_state_02", &[("plugin", plugin_id.into())]))
 }
 
 fn fetch(player: &Path) -> Result<Table, String> {

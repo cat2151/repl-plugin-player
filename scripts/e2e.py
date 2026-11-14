@@ -36,8 +36,8 @@ def main():
             note_on = [e for e in calls if e["details"]["call"]["api"] == "uapmd.sequencer.sendNoteOn"]
             if case in ("syntax", "missing", "close-preparing", "close-creating", "mutation-close", "timeline", "timeline-view", "piano-roll-cut-paste", "partial-run", "snippets", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-browse", "state-load", "track-use", "reset-first-note", "dock", "dock-script-ui"):
                 assert not note_on, f"{case}: unexpected NoteOn"
-            elif case in ("tutorials", "demo-play"):
-                pass  # Built-in snippets may play notes however the user writes them.
+            elif case in ("tutorials", "demo-play", "easy", "browser-change"):
+                pass  # Built-in snippets and lib playback may play notes however they are written.
             elif case == "stop-run":
                 assert len(note_on) == 2, paths[0]
             elif case == "note-monitor":

@@ -80,6 +80,8 @@ struct Editor {
     installer: crate::install::Installer,
     script_ui: crate::script_ui::Renderer,
     snippet_execution: snippet_execution::Pending,
+    /// The first cell of the startup code, run once the host is ready; only with the easy style.
+    startup_run: Option<crate::execution::Request>,
     layout: dock::Layout,
     /// The layout's source, chosen in the settings; `None` keeps the layout in memory
     /// only.
@@ -99,7 +101,10 @@ impl Editor {
         layout: dock::Layout,
     ) -> Self {
         let mut script_editor = crate::script_editor::ScriptEditor::default();
-        let code = script_editor.initial_code();
+        let code = script_editor.initial_code(settings.easy);
+        let startup_run = settings
+            .easy
+            .then(|| crate::execution::request(&code, 0, 0, crate::execution::Scope::Cell));
         Self {
             control: None,
             code,
@@ -113,6 +118,7 @@ impl Editor {
             installer: crate::install::Installer::default(),
             script_ui: crate::script_ui::Renderer::default(),
             snippet_execution: snippet_execution::Pending::default(),
+            startup_run,
             layout,
             layout_file,
             config_errors,
@@ -184,6 +190,7 @@ impl Editor {
 impl eframe::App for Editor {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.script_editor.tab_to_editor(&ctx);
         self.settings.shortcut(&ctx);
         self.help.shortcut(&ctx, self.script_editor.snippets_open());
         self.run_queued(&ctx);
@@ -228,6 +235,11 @@ impl eframe::App for Editor {
                 .is_some_and(|c| c.ready && !c.stopping),
             !self.error.is_empty() || self.control.as_ref().is_some_and(|c| c.missing_surge),
         );
+        if !self.startup.is_preparing() && self.control.as_ref().is_some_and(|c| c.ready) {
+            if let Some(request) = self.startup_run.take() {
+                self.snippet_execution.queue(request);
+            }
+        }
         let preparing = self.startup.is_preparing() || self.snippet_execution.is_pending();
         self.dock(ui, preparing);
         self.startup.show_overlay(&ctx);

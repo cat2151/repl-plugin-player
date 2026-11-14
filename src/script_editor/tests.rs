@@ -231,6 +231,55 @@ fn shortcuts_execute_selection_line_or_cell_without_editing() {
 }
 
 #[test]
+fn running_the_last_cell_opens_an_empty_cell_and_moves_there() {
+    for (code, expected) in [
+        (
+            "// %%\none();\n// %%\ntwo();",
+            "// %%\none();\n// %%\ntwo();\n// %%\n",
+        ),
+        ("two();\n", "two();\n// %%\n"),
+    ] {
+        let ctx = egui::Context::default();
+        let mut editor = ScriptEditor::default();
+        let mut code = code.to_owned();
+        frame(&ctx, &mut editor, &mut code, vec![], true);
+        let end = code.chars().count();
+        cursor(&ctx, end, end);
+        let request = frame(&ctx, &mut editor, &mut code, key(Modifiers::CTRL), true).unwrap();
+        assert_eq!(request.code.trim_end(), "two();");
+        assert_eq!(code, expected);
+        let end = code.chars().count();
+        assert_eq!((editor.primary, editor.secondary), (end, end));
+        // The next input goes into the new cell.
+        frame(
+            &ctx,
+            &mut editor,
+            &mut code,
+            vec![Event::Text("x".into())],
+            true,
+        );
+        assert!(code.ends_with("// %%\nx"), "{code:?}");
+    }
+}
+
+#[test]
+fn initial_caret_is_placed_and_focused() {
+    let ctx = egui::Context::default();
+    let mut editor = ScriptEditor::default();
+    let mut code = "a();\n// %%\n".to_owned();
+    editor.caret = Some(code.chars().count());
+    frame(&ctx, &mut editor, &mut code, vec![], true);
+    frame(
+        &ctx,
+        &mut editor,
+        &mut code,
+        vec![Event::Text("b".into())],
+        true,
+    );
+    assert_eq!(code, "a();\n// %%\nb");
+}
+
+#[test]
 fn enter_edits_but_shortcuts_require_focus_and_readiness() {
     let ctx = egui::Context::default();
     let mut editor = ScriptEditor::default();

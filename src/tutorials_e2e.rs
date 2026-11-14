@@ -1,5 +1,5 @@
-//! Every try-* snippet runs twice through normal snippet execution without error, even
-//! when another plugin has replaced track 0's instrument first.
+//! Every easy-* and try-* snippet runs twice, in list order, through normal snippet
+//! execution without error, even when another plugin has replaced track 0's instrument first.
 //! Snippet content (notes, plugins, presets, order) is the user's to change, so it is not asserted.
 //! A snippet that browses patches meets a stand-in player whose browser closes at once.
 //! The test-owned cells are `tests/e2e/tutorials.js`.
@@ -23,10 +23,12 @@ pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
     let entries = Library::default().load()?;
     let tutorials: Vec<_> = entries
         .iter()
-        .filter(|s| s.group == "Built-in" && s.name.starts_with("try-"))
+        .filter(|s| {
+            s.group == "Built-in" && (s.name.starts_with("easy-") || s.name.starts_with("try-"))
+        })
         .collect();
     if tutorials.is_empty() {
-        return Err("No try-* snippets".into());
+        return Err("No easy-* or try-* snippets".into());
     }
     for snippet in tutorials {
         // The user may have chosen another plugin's patch before running a snippet.

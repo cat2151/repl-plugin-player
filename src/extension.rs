@@ -2,7 +2,8 @@
 //! drawn. A pane is named `<dll>/<pane>`.
 use eframe::egui;
 use libloading::Library;
-use repl_extension_api::{Extension, Frame, List, LIST};
+use repl_extension_api::{Extension, Frame, List, EGUI_TYPE_ID, LIST};
+use std::any::TypeId;
 use std::collections::BTreeMap;
 
 /// The load result of every DLL drawn so far, by DLL name.
@@ -28,6 +29,15 @@ fn load(dll: &str) -> Result<&'static [Extension], String> {
     // `repl-extension-api`, so the Rust signature of its `LIST` matches `List`.
     unsafe {
         let library = Library::new(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let egui = *library
+            .get::<fn() -> TypeId>(EGUI_TYPE_ID)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        if egui() != repl_extension_api::repl_egui_type_id() {
+            return Err(format!(
+                "{}: built with a different egui; build without -p",
+                path.display()
+            ));
+        }
         let list = *library
             .get::<List>(LIST)
             .map_err(|e| format!("{}: {e}", path.display()))?;

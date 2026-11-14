@@ -102,6 +102,12 @@ fn dispatch(input: &Value) -> Result<Value, String> {
             argument(input, "pluginId")?,
             argument(input, "patch")?,
         )?)),
+        "effectState" => Ok(json!(crate::patch_state::effect_file(
+            argument(input, "format")?,
+            argument(input, "pluginId")?,
+            argument(input, "preset")?,
+            argument(input, "value")?,
+        )?)),
         other => Err(crate::i18n::render("f027", &[("other", other.to_string())])),
     }
 }

@@ -38,7 +38,12 @@
 - `snippets/builtin/` の snippet は全部、user が常に手直しする前提の内容（音符・plugin・preset・parameter値・名前・並び）である。AIが書いた内容を正としてテストで固定しない。snippet を使うテストが見るのは「実行してエラーにならないか」だけにし、音高・音長・音色・名前などを期待値にしない。理由: AIが選ぶ内容は美的に使えず、user が直すたびにテストが落ちると改善の邪魔になる。
 - テストが特定の内容を必要とするときは、snippet を読まずにテスト専用の script を持つ。理由: snippet を書き換えてもテストが壊れないようにする。
 - `snippets/builtin/lib/` には plugin・preset・effect・parameter値・tempo・音符などの決め打ちを置かず、呼出し側の snippet が引数で渡す。理由: lib は snippet から再利用される部品であり、内容の選択は snippet 側に属する。
-- snippet の cell は `{ ... }` で包み、中の宣言は `const`/`let` にする。track 番号は `const loopTrack = 0;` のような役割の分かる説明変数を経由して渡し、関数の引数に `0` や `1` を直接書かない。理由: cell は1つずつ別の global script として評価されるので、トップレベルの `const`/`let` は再実行で `redeclaration` エラーになり、`var` は global に漏れて cell 同士を暗黙につなぐ。
+- easy の層（`lib/easy.js` と `easy-*.js`）以外の snippet の cell は `{ ... }` で包み、中の宣言は `const`/`let` にする。track 番号は `const loopTrack = 0;` のような役割の分かる説明変数を経由して渡し、関数の引数に `0` や `1` を直接書かない。理由: cell は1つずつ別の global script として評価されるので、トップレベルの `const`/`let` は再実行で `redeclaration` エラーになり、`var` は global に漏れて cell 同士を暗黙につなぐ。
+- easy の層だけは global な関数（`play` など）を持ち、cell に `play("cde")` のように直接書く。関数が使う既定値は `lib/easy.js` の `create` の closure に置き、track などの状態は持たない。理由: user が記述量の少なさのために選んだ層で、その代償（実行順で結果が変わる）を easy の層だけに閉じる（ADR 0012）。
+- snippet を選ぶと、貼った cell が全部実行される。`try-` の snippet は何度選んでも同じ状態になるように書き（`easy-` は対象外）、user の操作を待つ cell（browser・modal を開くもの）は、それを試すこと自体が目的の snippet にだけ置く。理由: 全部の cell が走るので、待つ cell が混ざると予期しない窓が開く。
+- 一覧は `easy-`、`try-`、その他の順に並ぶ（`src/snippets.rs`）。足すときは同じ所の `BUILTIN_ORDER` に入れ、表示名の番号を先頭から順に振る。理由: 最初に試すものを探さずに済む。
+- easy の層は先頭の `easy-init` が関数を定義して全 track を reset し、`easy-<機能>` が関数呼び出し1行の cell 1つで1機能ずつ使い方を見せる。`easy-<機能>` は冪等にせず、上に並ぶ snippet を先に選んだ状態に頼り、前提を作る cell（定義・loop の開始など）を持たない。理由: user が選んだのは1行で済む短さで、`easy-` の並びがそのまま使い方の案内と前提の順になる。
+- `play` のような短い関数を使えるようにする snippet は、使えるようになった関数名を最後の値として返し、console に出す。理由: console は実行の最後の値を表示するので、新しい API なしに何が使えるかが分かる。
 
 # API追加
 - 追加するuapmd APIや、repl APIは、極力薄いwrapを小さく作るだけ（どうしてもそれがないと動かない or 遅すぎて音が途切れてしまう というときだけ作る）にして、基本的にはscript側の記述で組み立てる。
@@ -46,7 +51,7 @@
 # MML
 - MMLやコード進行は基本的に `>cg<cg` や `Isus4-I` を書く。これらはloopで使っても適切である
 - デフォルトのt120 l8 o5 はMMLに書かない。長い音符が必要なときだけl4等を書く。octave upしたいときだけ `<` を書く、octave downしたいときだけ `>` を書く
-- show UIやパラメーター変更UIのsnippetsを書くときは、演奏をloopさせる
+- show UIやパラメーター変更UIのsnippetsを書くときは、演奏をloopさせる（`easy-` は対象外で、loop は上に並ぶ snippet が始める）
 
 # ADR
 - 複数の「どれも採用する価値がある」アーキテクチャからcontextに応じて1つ選んだときはADRに残すこと。書くトリガーとformatは、../cat-smf-editor ../cat-plugin-player を参照

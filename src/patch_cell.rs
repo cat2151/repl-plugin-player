@@ -1,7 +1,7 @@
-//! The cell a patch chosen in the patch browser becomes: code the user could
-//! have typed, naming the plugin and the patch's path in the player's catalog,
-//! so that running the cell alone restores the sound.
-use crate::{resident_ipc::Selected, snippets::Snippet};
+//! The cell a patch or effect preset chosen in the player's browser becomes:
+//! code the user could have typed, naming the plugin and the preset, so that
+//! running the cell alone restores the sound.
+use crate::{patch_reference::Source, resident_ipc::Selected, snippets::Snippet};
 
 /// Sets the instrument of `track`, the track that was browsed.
 pub fn snippet(selected: &Selected, track: i64) -> Snippet {
@@ -24,6 +24,36 @@ pub fn snippet(selected: &Selected, track: i64) -> Snippet {
             literal(&plugin.name)
         ),
     }
+}
+
+/// Makes the effect preset one of the effects of `track`, the track that was
+/// browsed. The preset is its file, relative to the plugin's root, and the
+/// player's selector inside that file.
+pub fn effect(selected: &Selected, track: i64) -> Result<Snippet, String> {
+    let plugin = &selected.plugin;
+    let Some(Source::Effect { path, value }) = selected.reference.as_ref().map(|r| &r.source)
+    else {
+        return Err(crate::i18n::t("patch_browse_04").into());
+    };
+    let preset = crate::patch_state::effect_preset(&plugin.format, &plugin.id, path)?;
+    let name = match &selected.preset_name {
+        Some(name) => format!("{} / {name}", plugin.name),
+        None => plugin.name.clone(),
+    };
+    Ok(Snippet {
+        name: name.replace(['\r', '\n'], " "),
+        group: "Effect",
+        code: format!(
+            "{{
+    const track = {track};
+    include('builtin/lib/effect.js').use({{format:{}, plugin:{}, preset:{}, value:{}, track}});
+}}",
+            literal(&plugin.format),
+            literal(&plugin.name),
+            literal(&preset),
+            literal(value)
+        ),
+    })
 }
 
 /// A single-quoted JavaScript string literal.

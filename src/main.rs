@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod bridge;
+mod browser_change_e2e;
 mod catalog_refresh;
 mod cli;
 mod config;

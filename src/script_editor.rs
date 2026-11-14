@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 mod cell_navigation;
 mod folding;
+mod tab_focus;
 
 #[derive(Default)]
 pub struct ScriptEditor {
@@ -13,11 +14,16 @@ pub struct ScriptEditor {
     snippets: crate::snippets_ui::SnippetsPanel,
     highlight: crate::syntax_highlight::JavaScriptHighlight,
     folds: folding::Folding,
+    /// Caret to place and focus on the next frame.
+    caret: Option<usize>,
 }
 
 impl ScriptEditor {
-    pub fn initial_code(&mut self) -> String {
-        self.snippets.initial()
+    /// With the easy style, the caret starts in the empty cell at the end.
+    pub fn initial_code(&mut self, easy: bool) -> String {
+        let code = self.snippets.initial(easy);
+        self.caret = easy.then(|| code.chars().count());
+        code
     }
 
     pub fn insert_snippet(
@@ -39,6 +45,33 @@ impl ScriptEditor {
         code: &mut String,
         write: impl FnOnce(&mut String, usize) -> Request,
     ) -> Request {
+        self.edit(ctx, code, |code, caret| {
+            let request = write(code, caret);
+            (request.chars.clone(), request)
+        })
+    }
+
+    /// Opens an empty cell after the last one and moves the caret into it,
+    /// so the next input does not join the cell just run.
+    fn open_next_cell(&mut self, ctx: &egui::Context, code: &mut String) {
+        self.edit(ctx, code, |code, _| {
+            if !code.is_empty() && !code.ends_with('\n') {
+                code.push('\n');
+            }
+            code.push_str("// %%\n");
+            let end = code.chars().count();
+            (end..end, ())
+        });
+    }
+
+    /// Applies `write` (given the caret) as one undo step, then selects and
+    /// focuses the returned range.
+    fn edit<T>(
+        &mut self,
+        ctx: &egui::Context,
+        code: &mut String,
+        write: impl FnOnce(&mut String, usize) -> (std::ops::Range<usize>, T),
+    ) -> T {
         use egui::text::CCursorRange;
         let id = egui::Id::unique("script_text");
         self.folds.reveal_all();
@@ -50,21 +83,33 @@ impl ScriptEditor {
         };
         let mut undoer = state.undoer();
         undoer.add_undo(&(before, code.clone()));
-        let request = write(code, self.primary);
+        let (chars, result) = write(code, self.primary);
         let selected = CCursorRange {
-            primary: CCursor::new(request.chars.start),
-            secondary: CCursor::new(request.chars.end),
+            primary: CCursor::new(chars.start),
+            secondary: CCursor::new(chars.end),
             h_pos: None,
         };
         undoer.add_undo(&(selected, code.clone()));
         state.set_undoer(undoer);
-        state.cursor.set_char_range(Some(selected));
         state.store(ctx, id);
-        self.primary = request.chars.start;
-        self.secondary = request.chars.end;
         self.flash = None;
+        self.place_caret(ctx, chars);
+        result
+    }
+
+    fn place_caret(&mut self, ctx: &egui::Context, chars: std::ops::Range<usize>) {
+        use egui::text::CCursorRange;
+        let id = egui::Id::unique("script_text");
+        let mut state = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+        state.cursor.set_char_range(Some(CCursorRange {
+            primary: CCursor::new(chars.start),
+            secondary: CCursor::new(chars.end),
+            h_pos: None,
+        }));
+        state.store(ctx, id);
+        self.primary = chars.start;
+        self.secondary = chars.end;
         ctx.memory_mut(|memory| memory.request_focus(id));
-        request
     }
 
     #[cfg(test)]
@@ -76,12 +121,20 @@ impl ScriptEditor {
         self.snippets.is_open()
     }
 
+    /// Call at the start of each pass, before any widget.
+    pub fn tab_to_editor(&self, ctx: &egui::Context) {
+        tab_focus::handle(ctx, self.snippets_open());
+    }
+
     pub fn executed(&mut self, request: Request) {
         self.flash = Some((request, Instant::now()));
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, code: &mut String, ready: bool) -> Option<Request> {
         let id = egui::Id::unique("script_text");
+        if let Some(at) = self.caret.take() {
+            self.place_caret(ui.ctx(), at..at);
+        }
         // Consume execution shortcuts before TextEdit can insert a newline.
         // Also consume them while preparing/stopping, without executing anything.
         let shortcut = if ui.memory(|m| m.has_focus(id)) {
@@ -109,8 +162,12 @@ impl ScriptEditor {
                     action = Some(scope);
                 }
             }
+            let was_open = self.snippets.is_open();
             if let Some(snippet) = self.snippets.show(ui, code, self.primary, ready) {
                 snippet_request = Some(self.insert_snippet(ui.ctx(), code, &snippet));
+            } else if was_open && !self.snippets.is_open() {
+                // Closed without choosing: typing continues at the caret left behind.
+                ui.memory_mut(|memory| memory.request_focus(id));
             }
         });
         ui.small(crate::i18n::t("m015"));
@@ -192,11 +249,16 @@ impl ScriptEditor {
                     }
                 }
             });
-        snippet_request.or_else(|| {
-            action
-                .map(|scope| execution::request(code, self.primary, self.secondary, scope))
-                .filter(|request| !request.code.trim().is_empty())
-        })
+        if snippet_request.is_some() {
+            return snippet_request;
+        }
+        let request = action
+            .map(|scope| execution::request(code, self.primary, self.secondary, scope))
+            .filter(|request| !request.code.trim().is_empty())?;
+        if request.scope == "cell" && request.chars.end == code.chars().count() {
+            self.open_next_cell(ui.ctx(), code);
+        }
+        Some(request)
     }
 }
 

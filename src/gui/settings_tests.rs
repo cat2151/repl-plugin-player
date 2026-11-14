@@ -134,6 +134,18 @@ fn ctrl_comma_opens_over_the_focused_editor_and_escape_closes() {
 }
 
 #[test]
+fn easy_style_is_on_by_default_and_first() {
+    let mut harness = Harness::new();
+    assert!(harness.settings.easy);
+    harness.settle(ctrl_comma());
+    let easy = harness.text_rect(crate::i18n::t("settings_easy")).unwrap();
+    let editor = harness
+        .text_rect(crate::i18n::t("settings_editor"))
+        .unwrap();
+    assert!(easy.bottom() <= editor.top(), "{easy:?} {editor:?}");
+}
+
+#[test]
 fn ctrl_comma_toggles() {
     let mut harness = Harness::new();
     harness.settle(ctrl_comma());

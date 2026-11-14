@@ -30,10 +30,11 @@ pub(crate) fn show(ui: &mut egui::Ui, frame: &Frame) {
     );
     let scale = rect.width() / units;
     let painter = ui.painter_at(rect);
-    // White keys first; black keys overlap their neighbors just as on a piano.
+    // White keys first; black keys overlap their neighbors just as on a piano. The black
+    // keys just outside the range show the half that `painter` does not clip away.
     for is_black in [false, true] {
-        for pitch in first..=last {
-            if black(pitch) != is_black {
+        for pitch in first.saturating_sub(1)..=last.saturating_add(1).min(127) {
+            if black(pitch) != is_black || (!is_black && !(first..=last).contains(&pitch)) {
                 continue;
             }
             let (start, end) = span(pitch);

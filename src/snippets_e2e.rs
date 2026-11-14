@@ -19,7 +19,7 @@ pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
     let library = Library::default();
     let entries = library.load()?;
     let mut editor = ScriptEditor::default();
-    let initial = editor.initial_code();
+    let initial = editor.initial_code(false);
     if !entries
         .iter()
         .any(|s| s.group == "Built-in" && s.code == initial)

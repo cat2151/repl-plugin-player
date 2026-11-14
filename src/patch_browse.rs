@@ -1,9 +1,10 @@
-//! `repl.patchBrowser`: the player's patch browser as events for a script, which
-//! auditions and restores sounds itself. The last selection the script accepted
-//! becomes one cell, written by the GUI after the script returns.
+//! `repl.patchBrowser`: the player's patch or effect browser as events for a
+//! script, which applies the sounds itself. Unless the script opened it with
+//! `cell:false`, the last selection the script accepted becomes one cell,
+//! written by the GUI after the script returns.
 use crate::{
     i18n::t,
-    patch_browser::{self, Event, Link},
+    patch_browser::{self, Event, Kind, Link},
     resident_ipc::{self, Selected},
     snippets::Snippet,
 };
@@ -15,6 +16,8 @@ struct Browser {
     start: Start,
     /// The track being browsed, which the chosen patch's cell sets.
     track: i64,
+    /// Whether accepted selections become a cell.
+    cell: bool,
     /// The cell of the selection awaiting its answer.
     offered: Option<Snippet>,
     /// The cell of the last selection answered without an error.
@@ -26,6 +29,7 @@ thread_local! {
         link: None,
         start: start_player,
         track: 0,
+        cell: true,
         offered: None,
         accepted: None,
     });
@@ -49,7 +53,18 @@ pub fn dispatch(api: &str, input: &Value) -> Result<Value, String> {
             let track = input["track"]
                 .as_i64()
                 .ok_or_else(|| t("patch_browse_02"))?;
-            browser.open(track).map(|()| Value::Null)
+            let kind = match input["kind"].as_str() {
+                None | Some("patch") => Kind::Patch,
+                Some("effect") => Kind::Effect,
+                Some(other) => {
+                    return Err(crate::i18n::render(
+                        "patch_browse_03",
+                        &[("kind", other.to_string())],
+                    ))
+                }
+            };
+            let cell = input["cell"].as_bool().unwrap_or(true);
+            browser.open(track, kind, cell).map(|()| Value::Null)
         }
         "patchBrowser.poll" => Ok(Value::Array(browser.poll())),
         "patchBrowser.answer" => {
@@ -69,8 +84,9 @@ pub fn take_cell() -> Option<Snippet> {
 }
 
 impl Browser {
-    fn open(&mut self, track: i64) -> Result<(), String> {
+    fn open(&mut self, track: i64, kind: Kind, cell: bool) -> Result<(), String> {
         self.track = track;
+        self.cell = cell;
         self.offered = None;
         self.accepted = None;
         if let Some(link) = self.link.as_mut() {
@@ -85,12 +101,15 @@ impl Browser {
                     Event::Closed(_) => gone = true,
                 }
             }
+            link.kind = kind;
             if !gone && link.show().is_ok() {
                 return Ok(());
             }
             self.link = None;
         }
-        self.link = Some((self.start)()?);
+        let mut link = (self.start)()?;
+        link.kind = kind;
+        self.link = Some(link);
         Ok(())
     }
 
@@ -98,12 +117,13 @@ impl Browser {
         let Some(link) = self.link.as_mut() else {
             return vec![json!({"kind":"closed","error":t("patch_browse_01")})];
         };
+        let (kind, cell) = (link.kind, self.cell.then_some(self.track));
         let mut events = Vec::new();
         for event in link.poll() {
             match event {
-                Event::Selected(selected) => match state_file(&selected) {
-                    Ok(file) => {
-                        self.offered = Some(crate::patch_cell::snippet(&selected, self.track));
+                Event::Selected(selected) => match offer(kind, cell, &selected) {
+                    Ok((snippet, file)) => {
+                        self.offered = snippet;
                         events.push(json!({"kind":"selected","format":selected.plugin.format,
                             "pluginId":selected.plugin.id,"plugin":selected.plugin.name,
                             "patch":selected.preset_name,"stateFile":file}));
@@ -141,6 +161,20 @@ impl Browser {
         }
         Ok(())
     }
+}
+
+/// The cell for the selection on `track`, when one is wanted, and its state file.
+fn offer(
+    kind: Kind,
+    track: Option<i64>,
+    selected: &Selected,
+) -> Result<(Option<Snippet>, PathBuf), String> {
+    let snippet = match (track, kind) {
+        (None, _) => None,
+        (Some(track), Kind::Patch) => Some(crate::patch_cell::snippet(selected, track)),
+        (Some(track), Kind::Effect) => Some(crate::patch_cell::effect(selected, track)?),
+    };
+    Ok((snippet, state_file(selected)?))
 }
 
 /// The selection's state, copied out of the player's shared memory, which the

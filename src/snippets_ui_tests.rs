@@ -297,6 +297,12 @@ fn slash_is_text_inside_snippet_name() {
     assert!(ctx.memory(|memory| memory.has_focus(name)));
 }
 
+#[path = "snippets_ui_escape_tests.rs"]
+mod escape;
+
+#[path = "snippets_ui_tab_tests.rs"]
+mod tab;
+
 fn key(key: egui::Key, modifiers: egui::Modifiers) -> Event {
     Event::Key {
         key,

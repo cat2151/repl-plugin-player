@@ -59,28 +59,6 @@
         return unbypass(id);
     }
 
-    // A track whose connections were edited leaves a new plugin unconnected:
-    // put it between what reached the track's output and the output.
-    function joinBeforeOutput(trackIndex, effectId) {
-        const trackId = tracks.idOf(trackIndex);
-        const connections = plugins.connectionsOf(trackIndex);
-        const isEffect = e => e.type === 'plugin' && e.instanceId === effectId;
-        if (connections.some(c => isEffect(c.source) || isEffect(c.target))) return;
-        const check = result => { if (!result.success) throw new Error(result.error); };
-        const buses = new Set();
-        for (const c of connections.filter(c => c.busType === 'audio' && c.target.type === 'graphOutput')) {
-            check(uapmd.timeline.disconnectTrackGraphConnection(trackId, c.id));
-            const source = c.source.type === 'plugin' ? plugins.pluginEnd(c.source.instanceId, c.source.busIndex)
-                : {type:c.source.type, instanceId:c.source.instanceId, nodeId:c.source.nodeId || '', busIndex:c.source.busIndex};
-            check(uapmd.timeline.connectTrackGraph(trackId, 'audio', source, plugins.pluginEnd(effectId, c.target.busIndex)));
-            buses.add(c.target.busIndex);
-        }
-        if (buses.size === 0) buses.add(0);
-        for (const bus of buses)
-            check(uapmd.timeline.connectTrackGraph(trackId, 'audio', plugins.pluginEnd(effectId, bus),
-                {type:'graphOutput', instanceId:-1, nodeId:'', busIndex:bus}));
-    }
-
     // New effects use plugin defaults; reused effects keep the user's edits.
     // If a requested preset cannot be loaded through the available API, report
     // that limitation. Do not replace it with an unexplained dump of raw values.
@@ -90,7 +68,7 @@
         var effect = track.nodes.find(n => n.pluginId === pluginId);
         var effectId = effect ? effect.instanceId : uapmd.instancing.create(format, pluginId, track.trackId);
         if (effectId < 0) throw new Error(repl.text('snippet_17'));
-        if (!effect) joinBeforeOutput(trackIndex, effectId);
+        if (!effect) include('builtin/lib/effect.js').joinBeforeOutput(trackIndex, effectId);
         var fx = uapmd.instance(effectId);
         uapmd.sequencer.setPluginBypassed(effectId, false);
         return fx;

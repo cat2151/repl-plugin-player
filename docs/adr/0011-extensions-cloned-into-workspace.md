@@ -7,7 +7,7 @@
 ## 決定
 
 - workspace は `members = [".", "extensions/*", "extension-api"]`、`default-members = [".", "extensions/*"]` の glob にする。別 repo の拡張は `extensions/<DLL名>/` に置けば、引数なしの `cargo build` で本体と同じ回に build される。`.gitignore` は `extensions/builtin` 以外の `extensions/*` を追わない。
-- 本体から DLL へ渡す型は root の `extension-api/`（package `repl-extension-api`）だけに置く。中身は `Frame`（鳴っている音・音域・本体の言語）、`Show`（`fn(&mut egui::Ui, &Frame)`）、`Extension`（拡張名と `Show`）、DLL が export する一覧の関数 `List`（`fn() -> &'static [Extension]`）とその symbol 名 `repl_extensions` だけ。拡張でないので `extensions/*` の glob から外す。
+- 本体から DLL へ渡す型は root の `extension-api/`（package `repl-extension-api`）だけに置く。中身は `Frame`（鳴っている音・音域・本体の言語）、`Show`（`fn(&mut egui::Ui, &Frame)`）、`Extension`（拡張名と `Show`）、DLL が export する一覧の関数 `List`（`fn() -> &'static [Extension]`）とその symbol 名 `repl_extensions`、egui の一致を確かめる `repl_egui_type_id` だけ。拡張でないので `extensions/*` の glob から外す。
 - 1つの DLL は拡張を1つ以上持つ。同じ DLL の拡張どうしは DLL の static を共有できる。
 - 拡張の名前は `<DLL名>/<拡張名>` で、`config.toml` の `name` ＝ layout の `view` 名。DLL 名 ＝ package 名 ＝ DLL の stem ＝ `extensions/` の dir 名。タブの題は拡張名だけ。この repo の DLL は `builtin`（`builtin.dll`）で、keyboard は `builtin/keyboard`。
 - `config.toml` に `[[extension]] name = "<DLL名>/<拡張名>"` と書いた拡張だけを on にし、書かなければ off（keyboard も同じ）。同じ DLL の拡張も1つずつ書き、DLL 単位の一括指定や `/` の省略形は持たない。`/` が1つでない名前はエラーにして読まない。読むのは起動時だけ。設定の雛形と `config.toml` が無いときの既定は `builtin/keyboard` を on にする。
