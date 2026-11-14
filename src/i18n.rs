@@ -257,6 +257,8 @@ impl Catalog {
             "set-track-volume" => t("name_set_track_volume"),
             "save-project" => t("name_save_project"),
             "load-project" => t("name_load_project"),
+            "show-project-requirements" => t("name_show_project_requirements"),
+            "uapmd-samples" => t("name_uapmd_samples"),
             "api-list" => t("name_api_list"),
             _ => name,
         }

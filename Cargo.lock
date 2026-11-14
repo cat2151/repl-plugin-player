@@ -2960,6 +2960,7 @@ dependencies = [
  "cmrt-chord",
  "eframe",
  "egui_tiles",
+ "flate2",
  "libloading",
  "mmlabc-to-smf",
  "regex",

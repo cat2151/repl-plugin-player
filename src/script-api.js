@@ -65,6 +65,15 @@ repl.project = {
         return path;
     }
 };
+// read: the whole file as byte numbers. list: one directory level as [{name, directory}] in name order.
+repl.file = {
+    read: function(filepath) { return __replCall('file.read', {filepath:filepath}); },
+    list: function(directory) { return __replCall('file.list', {directory:directory}); }
+};
+// Inflates the zlib stream at the start of `bytes`; bytes after the stream's end are ignored.
+repl.zlib = {decompress: function(bytes) { return __replCall('zlib.decompress', {bytes:bytes}); }};
+// The repository this exe was built in, or null when the exe runs outside one.
+repl.sourceRoot = function() { return __replCall('sourceRoot', {}); };
 // The track's volume as a linear gain (1 keeps the level, 0 silences it), as uapmd's track slider sets it.
 // setVolume also takes decibels as a string such as '-3dB'.
 // Both return the volume the track now has, as a linear gain.

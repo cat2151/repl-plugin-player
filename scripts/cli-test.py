@@ -140,10 +140,12 @@ def builtins():
     in the first pass, or when rerun (retrying while jobs settle) after all others have run.
     repl.ui is GUI-only, so its error is the expected CLI outcome.
     """
-    # try-patch-browse opens the real player's browser and waits for a person to close it;
-    # E2E patch-browse covers that flow with a stand-in player.
+    # These open the real player's browser and wait for a person to close it;
+    # E2E patch-browse and browser-change cover those flows with a stand-in player.
+    waits_for_person = {'try-patch-browse', 'try-change-patch', 'try-change-effect',
+                        'easy-change-patch', 'easy-change-effect'}
     names = sorted(path.stem for path in (ROOT / 'snippets/builtin').glob('*.js')
-                   if path.stem != 'try-patch-browse')
+                   if path.stem not in waits_for_person)
     assert names
     session = Session(seconds=600)
     failed = False
@@ -155,15 +157,14 @@ def builtins():
         return reply['ok'] or 'normal GUI' in reply['error'], reply
 
     try:
+        # Rounds over all remaining ones: one may need the state a later one leaves.
         rerun = [name for name in names if not run(name)[0]]
-        for name in rerun:
-            end = time.monotonic() + 30
-            while True:
-                done, reply = run(name)
-                if done:
-                    break
-                assert time.monotonic() < end, (name, reply)
-                time.sleep(.5)
+        end = time.monotonic() + 60
+        while rerun:
+            replies = {name: run(name) for name in rerun}
+            rerun = [name for name, (done, _) in replies.items() if not done]
+            assert not rerun or time.monotonic() < end, {name: replies[name][1] for name in rerun}
+            time.sleep(.5)
         events = session.finish(failure=failed)
         assert sum(e['event'] == 'run_input' and e['details']['scope'] == 'snippet' for e in events) >= len(names)
     finally:

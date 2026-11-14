@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 use std::{
     cell::RefCell,
     ffi::{c_char, CStr, CString},
+    io::Read,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
@@ -113,8 +114,45 @@ fn dispatch(input: &Value) -> Result<Value, String> {
             argument(input, "preset")?,
             argument(input, "value")?,
         )?)),
+        "sourceRoot" => Ok(json!(crate::resources::source_root())),
+        "file.read" => {
+            let path = argument(input, "filepath")?;
+            Ok(json!(
+                std::fs::read(path).map_err(|e| format!("{path}: {e}"))?
+            ))
+        }
+        "file.list" => list_directory(argument(input, "directory")?),
+        "zlib.decompress" => {
+            let bytes: Vec<u8> =
+                serde_json::from_value(input["bytes"].clone()).map_err(|e| e.to_string())?;
+            let mut inflated = Vec::new();
+            flate2::read::ZlibDecoder::new(bytes.as_slice())
+                .read_to_end(&mut inflated)
+                .map_err(|e| e.to_string())?;
+            Ok(json!(inflated))
+        }
         other => Err(crate::i18n::render("f027", &[("other", other.to_string())])),
     }
+}
+
+/// The directory's entries in name order, without descending into subdirectories.
+fn list_directory(directory: &str) -> Result<Value, String> {
+    let error = |e: std::io::Error| format!("{directory}: {e}");
+    let mut entries = std::fs::read_dir(directory)
+        .map_err(error)?
+        .map(|entry| {
+            let entry = entry.map_err(error)?;
+            Ok((
+                entry.file_name().to_string_lossy().into_owned(),
+                entry.file_type().map_err(error)?.is_dir(),
+            ))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    entries.sort();
+    Ok(json!(entries
+        .into_iter()
+        .map(|(name, directory)| json!({"name":name,"directory":directory}))
+        .collect::<Vec<_>>()))
 }
 
 fn generated_midi_path() -> Result<String, String> {

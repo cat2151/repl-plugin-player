@@ -46,6 +46,8 @@ const BUILTIN_ORDER: &[&str] = &[
     "add-midi-clip",
     "save-project",
     "load-project",
+    "show-project-requirements",
+    "uapmd-samples",
 ];
 
 #[derive(Clone, Debug)]
