@@ -1,8 +1,31 @@
 #pragma once
 #include <uapmd-graph/uapmd-graph.hpp>
 #include <umppi/umppi.hpp>
+#include <cstring>
 
 namespace repl_dag {
+// Utility messages have no destination group. In particular, JR Timestamp
+// deltas must survive selection so notes retain their offsets within a block.
+inline bool appendEventsForGroup(remidy::EventSequence& dst,
+                                 remidy::EventSequence& src, uint8_t group) {
+    const auto* bytes = static_cast<const uint8_t*>(src.getMessages());
+    size_t offset = 0;
+    while (offset + sizeof(uint32_t) <= src.position()) {
+        const auto* words = reinterpret_cast<const uint32_t*>(bytes + offset);
+        const auto type = static_cast<uint8_t>(words[0] >> 28);
+        const auto size = static_cast<size_t>(umppi::umpSizeInInts(type)) * sizeof(uint32_t);
+        if (!size || offset + size > src.position()) break;
+        const auto messageGroup = static_cast<uint8_t>((words[0] >> 24) & 15);
+        if (type == 0 || group == 0xff || messageGroup == group) {
+            if (dst.position() + size > dst.maxMessagesInBytes()) return false;
+            std::memcpy(static_cast<uint8_t*>(dst.getMessages()) + dst.position(), bytes + offset, size);
+            dst.position(dst.position() + size);
+        }
+        offset += size;
+    }
+    return true;
+}
+
 inline uint8_t processingGroup(uint8_t assigned, uint8_t device) {
     return assigned <= 15 ? assigned : device;
 }

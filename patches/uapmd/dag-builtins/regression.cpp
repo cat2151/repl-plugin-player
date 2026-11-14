@@ -6,6 +6,7 @@
 #include "routing.hpp"
 
 using namespace uapmd_graph;
+void checkEventTiming();
 void repl_capture_scope(int, remidy::AudioProcessContext&) {}
 static void check(bool value, const char* message) {
     if (!value) throw std::runtime_error(message);
@@ -13,6 +14,7 @@ static void check(bool value, const char* message) {
 
 int main() {
     try {
+        checkEventTiming();
         check(repl_dag::processingGroup(1,0) == 1 && repl_dag::processingGroup(0xff,2) == 2, "persisted track assignment must precede device group");
         auto graph = AudioPluginFullDAGraph::create(4096);
         graph->getExtension<AudioBusesLayoutExtension>()->applyBusesLayout({1,1,1,1});
@@ -62,7 +64,7 @@ int main() {
         repl_dag::normalizeInstanceGroup(process.eventIn(), 1);
         const auto* remapped = static_cast<const uint32_t*>(process.eventIn().getMessages());
         check(remapped[0] == 0x20902464 && remapped[1] == words[1] && remapped[2] == 0x40902400 && remapped[3] == words[3], "assigned instance group must enter local port zero");
-        std::cout << "PASS: routed gains sum once before the implicit fader; disconnected gain has no effect\n";
+        std::cout << "PASS: routed gains sum once before the implicit fader; disconnected gain has no effect; group selection preserves JR timing\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

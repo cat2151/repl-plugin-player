@@ -17,6 +17,7 @@ with tempfile.TemporaryDirectory(prefix='repl-dag-builtins-') as temporary:
     output = work / 'generated/graph.cpp'
     repair.generate(source, output, engine_source=engine)
     generated = output.read_bytes()
+    assert b'return repl_dag::appendEventsForGroup(dst, src, group);' in generated
     stamp = output.stat().st_mtime_ns
     repair.generate(source, output, engine_source=engine)
     assert output.read_bytes() == generated and output.stat().st_mtime_ns == stamp

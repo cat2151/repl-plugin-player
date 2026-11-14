@@ -60,6 +60,13 @@ def generate(source, output, node_header=None, engine_source=None):
         raise ValueError('node header missing')
     once('#include "AudioPluginNodeImpl.hpp"', f'#include "{header.as_posix()}"')
     text = f'#include "{(HERE / "routing.hpp").as_posix()}"\n' + text
+    pattern = (r'        bool appendEventsForGroup\(remidy::EventSequence& dst, '
+               r'remidy::EventSequence& src, uint8_t group\) \{\n.*?\n        \}')
+    text, count = re.subn(pattern, '''        bool appendEventsForGroup(remidy::EventSequence& dst, remidy::EventSequence& src, uint8_t group) {
+            return repl_dag::appendEventsForGroup(dst, src, group);
+        }''', text, flags=re.S)
+    if count != 1:
+        raise ValueError('expected one group event filter')
     once('            if (pluginImpl && pluginNode && instance) {',
          '            if (pluginImpl && pluginNode && instance) {\n'
          '                repl_dag::normalizeInstanceGroup(runtime.process.eventIn(), group);')

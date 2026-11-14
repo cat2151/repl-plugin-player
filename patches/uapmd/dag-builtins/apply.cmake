@@ -27,7 +27,9 @@ endif()
 list(REMOVE_AT dag_builtins_engine_sources ${dag_builtins_engine_position})
 list(INSERT dag_builtins_engine_sources ${dag_builtins_engine_position} "${REPL_PROJECT_ROOT}/target/shim/dag-builtins/SequencerEngine.cpp")
 set_property(TARGET uapmd-engine PROPERTY SOURCES "${dag_builtins_engine_sources}")
-add_executable(dag_builtins_regression EXCLUDE_FROM_ALL "${CMAKE_CURRENT_LIST_DIR}/regression.cpp")
+add_executable(dag_builtins_regression EXCLUDE_FROM_ALL
+    "${CMAKE_CURRENT_LIST_DIR}/regression.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/event_timing_test.cpp")
 target_link_libraries(dag_builtins_regression PRIVATE uapmd-graph)
 get_target_property(dag_builtins_includes uapmd-graph INCLUDE_DIRECTORIES)
 target_include_directories(dag_builtins_regression PRIVATE ${dag_builtins_includes})
