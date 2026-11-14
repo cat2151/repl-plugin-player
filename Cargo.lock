@@ -2962,6 +2962,7 @@ dependencies = [
  "egui_tiles",
  "libloading",
  "mmlabc-to-smf",
+ "regex",
  "repl-extension-api",
  "serde",
  "serde_json",

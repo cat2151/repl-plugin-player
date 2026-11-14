@@ -14,7 +14,6 @@ fn fixture() -> View {
                 start: 1.0,
                 end: 4.0,
                 muted: false,
-                looping: false,
                 notes: [60, 64, 67]
                     .into_iter()
                     .map(|pitch| Note {
@@ -31,6 +30,7 @@ fn fixture() -> View {
         end: 8.0,
         playhead: 2.0,
         playing: true,
+        loop_start: None,
         loop_end: None,
         signatures: vec![projection::Signature {
             start: 0.0,

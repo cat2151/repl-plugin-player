@@ -7,7 +7,7 @@ fn snapshot() -> Value {
             {"trackIndex":3,"nodes":[],"clips":[]}],
         "view":{"tracks":[{"trackId":"bootstrap","implicit":true,"clips":[]},
             {"trackId":"user-empty","implicit":false,"clips":[]}],
-            "loop":{"ready":true,"lengthSamples":0},"tempos":[],"signatures":[]}})
+            "tempos":[],"signatures":[]}})
 }
 
 #[test]
@@ -40,26 +40,29 @@ fn clip_positions_durations_and_source_trims_share_the_same_beat_axis() {
 }
 
 #[test]
-fn loop_parts_and_clips_coexist_and_unterminated_loop_notes_end_at_the_wrap() {
+fn transport_loop_does_not_change_clips_or_the_tempo_map() {
     let mut data = snapshot();
-    data["view"]["loop"] = json!({"ready":true,"bpm":120,"positionSamples":12000,
-    "lengthSamples":144000,"parts":[{"trackId":"bootstrap","events":[
-        {"sample":0,"words":[0x20903c7f_u32]}, {"sample":24000,"words":[0x20803c00_u32]},
-        {"sample":48000,"words":[0x2090407f_u32]}
-    ]}]});
-    data["tracks"][0]["clips"] =
-        json!([{"clipId":8,"clipType":"audio","positionSamples":24000,"durationSamples":48000}]);
+    data["tracks"][1]["clips"] = json!([{"clipId":8,"clipType":"midi",
+        "positionSamples":24000,"durationSamples":144000}]);
+    data["view"]["tracks"][1]["clips"] = json!([{"clipId":8,"events":[
+        {"sample":0,"words":[0x20903c7f_u32]}, {"sample":120000,"words":[0x20803c00_u32]}
+    ]}]);
+    data["view"]["tempos"] = json!([{"seconds":0,"bpm":120},{"seconds":1,"bpm":60}]);
+    data["view"]["signatures"] = json!([{"seconds":1,"numerator":3,"denominator":4}]);
+    let before = project(&data);
+    data["state"]["loopEnabled"] = json!(true);
+    data["state"]["loopStartSamples"] = json!(24000);
+    data["state"]["loopEndSamples"] = json!(144000);
     let view = project(&data);
-    assert_eq!(view.tracks.len(), 2);
-    assert_eq!(view.tracks[0].clips.len(), 2);
-    assert_eq!(view.loop_end, Some(6.0));
-    assert_eq!(view.playhead, 0.5);
-    let notes = &view.tracks[0].clips[1].notes;
-    assert_eq!((notes[0].start, notes[0].end), (0.0, 1.0));
+    assert_eq!(view.tracks[0].clips.len(), before.tracks[0].clips.len());
     assert_eq!(
-        (notes[1].start, notes[1].end, notes[1].open),
-        (2.0, 6.0, false)
+        view.tracks[0].clips[0].notes[0].end,
+        before.tracks[0].clips[0].notes[0].end
     );
+    assert_eq!((view.loop_start, view.loop_end), (Some(1.0), Some(4.0)));
+    assert_eq!(view.playhead, before.playhead);
+    assert_eq!(view.signatures[1].start, 2.0);
+    assert_eq!(view.signatures[1].numerator, 3);
 }
 
 #[test]
@@ -81,7 +84,7 @@ fn project_tempo_map_and_meter_changes_are_used_instead_of_clip_tempo() {
 }
 
 #[test]
-fn pitch_range_spans_every_note_across_tracks_clips_and_loop_parts() {
+fn pitch_range_spans_every_note_across_tracks_and_clips() {
     let mut data = snapshot();
     assert_eq!(project(&data).pitch_range(), None);
     data["tracks"][1]["clips"] = json!([{"clipId":7,"clipType":"midi",
@@ -89,7 +92,10 @@ fn pitch_range_spans_every_note_across_tracks_clips_and_loop_parts() {
     data["view"]["tracks"][1]["clips"] = json!([{"clipId":7,"events":[
         {"sample":0,"words":[0x2090487f_u32]}, {"sample":100,"words":[0x20804800_u32]}
     ]}]);
-    data["view"]["loop"] = json!({"ready":true,"bpm":120,"lengthSamples":48000,
-        "parts":[{"trackId":"bootstrap","events":[{"sample":0,"words":[0x2090237f_u32]}]}]});
+    data["tracks"][0]["clips"] = json!([{"clipId":8,"clipType":"midi",
+        "positionSamples":0,"durationSamples":48000}]);
+    data["view"]["tracks"][0]["clips"] = json!([{"clipId":8,"events":[
+        {"sample":0,"words":[0x2090237f_u32]}
+    ]}]);
     assert_eq!(project(&data).pitch_range(), Some((0x23, 0x48)));
 }

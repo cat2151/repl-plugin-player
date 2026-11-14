@@ -22,49 +22,72 @@
         var mml = cmrt_chord.resolve_chord_or_mml(input).mml;
         var beats = loopPhraseBeats(mml);
         var path = midi.writeMml(mml);
-        return {trackIndex:trackIndex, filepath:path, beats:beats};
+        return {trackIndex:trackIndex, filepath:path, beats:beats, mml:mml};
     }
 
-    function publishLoopParts(next, bpm) {
-        var parts = Object.keys(next).map(k => next[k]);
-        var beats = parts.reduce((length, p) => Math.max(length, p.beats), 0);
-        // First publication needs initialized native timing. Later calls keep the cycle running.
-        if (!globalThis.loopParts && uapmd.timeline.getState().isPlaying) {
-            uapmd.sequencer.stopPlayback();
-            // Existing shutdown/restart drains the stop flush before the first loop note.
-            uapmd.audio.setEngineEnabled(false);
+    // Stage standard UAPMD clips before removing old ones, so failed imports
+    // leave the existing performance intact. No scheduler or boundary reservation.
+    function publishLoopParts(next, bpm, replaceAll = false) {
+        if (!(Number.isFinite(bpm) && bpm > 0)) throw new Error('Invalid tempo');
+        const entries = Object.entries(next);
+        const beats = entries.reduce((length, [, p]) => Math.max(length, p.beats), 0);
+        if (!(Number.isFinite(beats) && beats > 0)) throw new Error('Invalid loop length');
+        const samples = Math.round(beats * 60 / bpm * uapmd.sequencer.getSampleRate());
+        if (!(Number.isSafeInteger(samples) && samples > 0)) throw new Error('Invalid loop length');
+        const tracks = include('builtin/lib/tracks.js');
+        const seen = [];
+        for (const [, part] of entries) {
+            tracks.info(part.trackIndex);
+            if (seen.includes(part.trackIndex)) throw new Error('Combine parts on the same track in script');
+            seen.push(part.trackIndex);
         }
-        repl.timeline.publishLoopClips(parts, beats, bpm);
-        globalThis.loopParts = next;
+        const masterId = uapmd.timeline.getMasterTrackId();
+        const masterIds = () => uapmd.timeline.getClips(masterId).map(c => c.clipId);
+        const initialMasters = masterIds();
+        const added = [];
+        const published = {};
+        try {
+            for (const [name, part] of entries) {
+                // Imported master tempo events, rather than the transient state field,
+                // are UAPMD's timing authority. Supply the caller's default tempo in the SMF.
+                const filepath = part.mml === undefined ? part.filepath : midi.writeMml('t' + bpm + ' ' + part.mml);
+                const before = masterIds();
+                const clip = midi.addFile(part.trackIndex, filepath);
+                added.push(clip.clipId);
+                published[name] = {...part, clipId:clip.clipId, masterClipIds:masterIds().filter(id => !before.includes(id))};
+            }
+        } catch (error) {
+            for (const clipId of added) uapmd.timeline.removeClip(clipId);
+            for (const clipId of masterIds().filter(id => !initialMasters.includes(id)))
+                uapmd.timeline.removeClip(clipId);
+            throw error;
+        }
+        const previous = Object.values(globalThis.loopParts || {}).map(p => p.clipId);
+        for (const track of uapmd.sequencer.getTrackInfos()) {
+            for (const clip of uapmd.timeline.getClips(track.trackId)) {
+                if (!added.includes(clip.clipId) && (replaceAll || previous.includes(clip.clipId))) {
+                    if (!uapmd.timeline.removeClip(clip.clipId))
+                        throw new Error(repl.text('snippet_14', {clipId:clip.clipId}));
+                }
+            }
+        }
+        for (const part of Object.values(globalThis.loopParts || {})) {
+            for (const id of part.masterClipIds || []) {
+                if (masterIds().includes(id) && !uapmd.timeline.removeClip(id))
+                    throw new Error(repl.text('snippet_14', {clipId:id}));
+            }
+        }
+        uapmd.timeline.setTempo(bpm);
+        repl.timeline.setLoop(0, samples);
+        globalThis.loopParts = published;
     }
 
-    // Counterpart of tutorial play(): only the loop sounds afterwards.
+    // Counterpart of tutorial play(): ordinary clips and loop clips share one timeline.
     function playLoopParts(next, bpm) {
-        var clips = [];
-        for (var track of uapmd.sequencer.getTrackInfos()) {
-            for (var clip of uapmd.timeline.getClips(track.trackId)) clips.push(clip.clipId);
-        }
-        // A running loop is updated at its boundary; ordinary clips force a fresh entry instead.
-        if (clips.length > 0 || !globalThis.loopParts) {
-            if (uapmd.timeline.getState().isPlaying) {
-                uapmd.sequencer.stopPlayback();
-                uapmd.audio.setEngineEnabled(false);
-            }
-            if (globalThis.loopParts) {
-                repl.timeline.clearLoop();
-                delete globalThis.loopParts;
-            }
-            for (var c of clips) {
-                if (!uapmd.timeline.removeClip(c))
-                    throw new Error(repl.text('snippet_14', {clipId:c}));
-            }
-        }
-        publishLoopParts(next, bpm);
-        var tracks = Object.keys(next).map(k => next[k].trackIndex);
-        // Only the instrument, as play() does; effects keep their bypass state.
+        publishLoopParts(next, bpm, true);
         const plugins = include('builtin/lib/plugins.js');
-        for (var trackIndex of uapmd.sequencer.getTrackInfos().map((t, i) => i).filter(i => tracks.indexOf(i) >= 0)) {
-            const instrument = plugins.instrumentOn(trackIndex);
+        for (const part of Object.values(next)) {
+            const instrument = plugins.instrumentOn(part.trackIndex);
             if (instrument >= 0) uapmd.sequencer.setPluginBypassed(instrument, false);
         }
         uapmd.audio.setEngineEnabled(true);

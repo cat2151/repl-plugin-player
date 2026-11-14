@@ -90,13 +90,11 @@ repl.scope = {
 // notes(): pitches the scope target's plugin input holds now.
 // loopTrace(start): {events:[{frame, note, on, instance}], overflow, programChanges, timing}
 // of plugin input since the last loopTrace(true); start needs a stopped device.
-// loopChecks(): the native loop-playback regression; throws on a failure.
 // pluginState(instanceId): the instance's whole state as a hex string, within five seconds.
 repl.test = {
     observe: function() { return __replCall('test.observe', {}); },
     notes: function() { return __replCall('test.notes', {}); },
     loopTrace: function(start) { return __replCall('test.loopTrace', {start:start === true}); },
-    loopChecks: function() { return __replCall('test.loopChecks', {}); },
     pluginState: function(instanceId) { return __replCall('test.pluginState', {instanceId:instanceId}); }
 };
 // The player's catalog patch `patch` (its display path) as a state file for `pluginId`.
@@ -127,18 +125,15 @@ repl.ui = {
     close: function(id) { return __replCall('ui.close', {id:id}); }
 };
 
-// Only the missing native timing primitives; composition and part names stay in script.
+// Session-only UAPMD transport state; samples use the engine's current sample rate.
 repl.timeline = {
-    configureLoop: function(beats, bpm) {
-        return __replCall('timeline.loop.configure', {beats:beats, bpm:bpm});
+    setLoop: function(startSamples, endSamples) {
+        if (!(Number.isSafeInteger(startSamples) && startSamples >= 0 &&
+              Number.isSafeInteger(endSamples) && endSamples > startSamples))
+            throw new Error('Invalid loop range');
+        return __replCall('timeline.setLoop', {startSamples:startSamples, endSamples:endSamples});
     },
-    publishLoopClips: function(parts, beats, bpm) {
-        if (beats !== undefined && !(Number.isFinite(beats) && beats > 0)) throw new Error('Invalid loop length');
-        if (bpm !== undefined && !(Number.isFinite(bpm) && bpm > 0)) throw new Error('Invalid loop tempo');
-        return __replCall('timeline.loop.publish', {parts:parts, beats:beats, bpm:bpm});
-    },
-    loopStatus: function() { return __replCall('timeline.loop.status', {}); },
-    clearLoop: function() { return __replCall('timeline.loop.clear', {}); }
+    clearLoop: function() { return __replCall('timeline.clearLoop', {}); }
 };
 
 // Notes of the clip `clipId` (a uapmd.timeline clip id), named by getClipNotes' noteId.

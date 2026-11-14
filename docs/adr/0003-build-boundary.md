@@ -10,7 +10,7 @@
 - disk から読むかの判定は `src/resources.rs` の `source_root`（exe の祖先に package 名 `repl-plugin-player` の `Cargo.toml` がある dir）1本にする。repo の中の exe でファイルが無ければ、埋め込みへ戻らずエラーにする。
 - E2E のシナリオは `tests/e2e/<case>.js`（uapmd の補修の回帰は `patches/uapmd/<補修名>/<case>.js`）に `// %% <title>` の cell で書き、`--e2e <case>` が disk から読んで cell を1つずつ流す。title の語 `init`・`stop`・`error` で runner の扱いを変える。補助関数は `tests/e2e/lib.js` に置く。
 - Rust に残すのは、起動・終了の case と、検査対象が Rust のコード（projection・scope 表示・範囲の切り出し・editor・egui・代役の patch browser）の case だけ。その case でも JS は case の `.js` の cell に置き、Rust は title で引いて流す。値を渡す cell は関数式にして、Rust は JSON を引数に呼ぶ。
-- JS から読めない native の観測は、既存の bridge command と同じ関数を呼ぶだけの `repl.test.*`（`observe`・`notes`・`loopTrace`・`loopChecks`・`pluginState`）で出す。
+- JS から読めない native の観測は、既存の bridge command と同じ関数を呼ぶだけの `repl.test.*`（`observe`・`notes`・`loopTrace`・`pluginState`）で出す。
 
 ## 理由
 

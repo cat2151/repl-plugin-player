@@ -9,7 +9,7 @@
     function silence(keep) {
         include('builtin/lib/tutorial.js').stop();
         repl.timeline.clearLoop();
-        // Without the map, the next loop publication takes the first-publication path.
+        // Discard script references to the previous clips.
         delete globalThis.loopParts;
         uapmd.sequencer.getTrackInfos().forEach((track, index) => {
             if (keep.includes(index)) return;

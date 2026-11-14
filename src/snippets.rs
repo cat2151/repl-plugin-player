@@ -37,6 +37,7 @@ const BUILTIN_ORDER: &[&str] = &[
     "try-change-patch",
     "try-change-effect",
     "play",
+    "play-loop",
     "stop-playback",
     "show-instrument-ui",
     "show-effect-ui",

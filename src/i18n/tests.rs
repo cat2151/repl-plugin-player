@@ -42,6 +42,16 @@ fn catalogs_and_resource_layouts_fail_closed() {
         assert_eq!(crate::resources::project_root(&start).unwrap(), root);
     }
     assert!(Catalog::load(&root.join("locales"), "ja").is_ok());
+    let japanese = Catalog::load(&root.join("locales"), "ja").unwrap();
+    assert_eq!(japanese.snippet_name("play", true), "Play timeline");
+    assert_eq!(
+        japanese.snippet_name("play", false),
+        japanese.messages["name_play"]
+    );
+    assert_ne!(
+        japanese.snippet_name("play", true),
+        japanese.snippet_name("play", false)
+    );
     std::fs::write(root.join("locales/ja.toml"), "m000 = 'custom'").unwrap();
     assert!(Catalog::load(&root.join("locales"), "ja").is_err());
     let embedded = |lang: &str| {
@@ -57,6 +67,17 @@ fn catalogs_and_resource_layouts_fail_closed() {
     let mut expected = embedded("ja");
     expected.insert("m000".into(), "custom".into());
     assert_eq!(editable.messages, expected);
+    std::fs::write(
+        root.join("locales/en.toml"),
+        "name_play = 'Custom English title'",
+    )
+    .unwrap();
+    let editable = Catalog::load_editable(&root.join("locales"), "ja").unwrap();
+    assert_eq!(editable.snippet_name("play", true), "Custom English title");
+    assert_eq!(
+        editable.snippet_name("custom-user-snippet", true),
+        "custom-user-snippet"
+    );
     // Keys this exe no longer has, or whose placeholders changed, fall back to the embedded text.
     std::fs::write(
         root.join("locales/ja.toml"),

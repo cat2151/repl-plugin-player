@@ -3,7 +3,6 @@
 // Test-owned phrases: editable snippet contents are never expectations.
 
 // %% native loop checks, the phrases, and a fresh plugin-input trace
-repl.test.loopChecks();
 globalThis.loopReplaces = {playMml: 'c', loopMml: 'gggg'};
 loopReplaces.played = e2e.phrase(loopReplaces.playMml);
 loopReplaces.looped = e2e.phrase(loopReplaces.loopMml);
@@ -43,7 +42,7 @@ loopReplaces.result = (() => {
     const start = ons.findIndex(note => looped.pitches.includes(note));
     e2e.assert(start >= 0, `Loop never reached plugin: ${JSON.stringify(ons)}`);
     const after = ons.slice(start);
-    e2e.assert(!remaining.length && after.length >= 8 && after.every(note => looped.pitches.includes(note)),
+    e2e.assert(remaining.length === 1 && remaining[0][0] === 0 && remaining[0][1] === 1 && after.length >= 8 && after.every(note => looped.pitches.includes(note)),
         `Ordinary clips survived loop entry: clips per track ${JSON.stringify(remaining)}, note-ons ${JSON.stringify(ons)}`);
     e2e.assert(peak > 0.001, 'Loop produced no output signal');
     return {noteOns: ons, loopStart: start, overflow: trace.overflow, peak};

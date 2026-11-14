@@ -9,7 +9,7 @@
 - snippet を2層に分ける。従来の層は ADR 0002 と AGENTS.md の snippets 節のまま（cell を `{ ... }` で包み、track は説明変数で渡し、「今の track」の global を作らない）。easy の層だけが global な関数を持つ。easy の層も track の状態は持たない。
 - easy の層は `lib/easy.js` の `create({format, plugin, patch, bpm})` が返す `play`・`playLoop`・`reset`・`changePatch`・`changeEffect` を、前置きの cell（`easy-init`）が `Object.assign(globalThis, ...)` で global に出し、続けて `reset()` する。plugin・patch・tempo の既定値は前置きの cell に書き、lib には書かない。
 - `reset()` は全 track の再生・loop・clip・plugin（楽器も effect も）を消す。track の数は変えない。
-- `play(...inputs)`・`playLoop(...inputs)` は i 番目の引数を track i に置き、引数に入らない track は鳴らさない。`changePatch(track)`/`changeEffect(track)` は引数の track（0 が先頭）で browser を開く。楽器の無い track にだけ `ensureInstrument` で前置きの plugin を patch つきで置き、楽器のある track の patch には触れない。
+- `play(...inputs)`・`playLoop(...inputs)` は i 番目の引数を track i に置き、引数に入らない track は鳴らさない。 両者は同じ標準clipを使い、反復はtransport設定とする（[0014](0014-loop-in-project-archive.md)）。`changePatch(track)`/`changeEffect(track)` は引数の track（0 が先頭）で browser を開く。楽器の無い track にだけ `ensureInstrument` で前置きの plugin を patch つきで置き、楽器のある track の patch には触れない。
 - patch・effect の browser は `repl.patchBrowser.open({track, kind, cell})` の1本で開く。`kind` は `'patch'`（既定）か `'effect'`、`cell:false` なら最後の選択を cell にしない。`lib/patch.js` と `lib/effect.js` の `change({track, cell})` は選ぶたびに track へ適用し、閉じても戻さない。easy の `changePatch`/`changeEffect` は `cell:false` で呼ぶ。
 - snippet は `easy-init` が関数を定義して関数名の文字列を返し、`easy-play` などの `easy-<機能>` が関数呼び出し1行の cell 1つで1機能ずつ使い方を見せる。`easy-<機能>` は冪等にせず、上に並ぶ snippet を先に選んだ状態（定義済み・loop 中）に頼る。一覧は `easy-`、`try-`、その他の順に並ぶ。
 - effect の置き場所は cat-smf-editor と同じ: 同じ plugin の effect があればそれに state を読ませ、無ければ track の最後の effect（output へつながる楽器以外の plugin）を置き換え、effect が無ければ output の手前に足す。置き換えでは古い effect の bus 0 の接続だけを引き継ぐ。

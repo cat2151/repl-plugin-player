@@ -73,9 +73,8 @@ Zero crossや他の周期数の処理も削除した。
 
 共通周期loopの時刻検証では、同じ入力点にある有界traceを明示的に有効にする。
 各instanceのsample frame、Note On/Offとrender leadをcontrol threadから読み、
-音声threadではatomic配列への記録だけを行う。表示用の最新状態とは独立している。
-通常GUIではtraceを有効にしない。詳細と回帰は
-[loop-playback](../loop-playback/README.md) にある。
+音声threadではatomic配列への記録だけを行う。JR Timestampは31250 Hzの差分を積算し、sampleへ換算する。時刻にはJR量子化の誤差がある。表示用の最新状態とは独立している。
+通常GUIではtraceを有効にしない。回帰は `tests/e2e/loop.js` と `loop-update.js` にある。
 
 ```powershell
 python scripts/build.py

@@ -145,9 +145,6 @@ impl Editor {
         if let Some(control) = &self.control {
             match control.read_timeline() {
                 Ok(snapshot) => {
-                    if snapshot["view"]["loop"]["ready"] == false {
-                        return; // Audio is exchanging its guarded display snapshot.
-                    }
                     self.timeline = Some(snapshot);
                     self.timeline_error.clear();
                 }

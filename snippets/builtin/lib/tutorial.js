@@ -21,7 +21,7 @@
     function reset() {
         stop();
         repl.timeline.clearLoop();
-        // Without the map, the next loop publication takes the first-publication path.
+        // Discard script references to the previous clips.
         delete globalThis.loopParts;
         // @text demo_isolate
         for (var track of uapmd.sequencer.getTrackInfos()) {

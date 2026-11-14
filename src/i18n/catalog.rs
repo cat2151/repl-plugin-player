@@ -53,6 +53,7 @@ impl Catalog {
         let ja = parse(EMBEDDED[1].1, Path::new("embedded ja.toml"))?;
         validate(&ja, &en, Path::new("embedded ja.toml"))?;
         let mut selected = BTreeMap::new();
+        let mut english = BTreeMap::new();
         // Validate both languages before rendering, including the unselected catalog.
         for (lang, mut defaults) in [("en", en), ("ja", ja)] {
             let path = directory.join(format!("{lang}.toml"));
@@ -65,6 +66,9 @@ impl Catalog {
                 validate(&messages, &defaults, &path)?;
             }
             defaults.extend(messages);
+            if lang == "en" {
+                english = defaults.clone();
+            }
             if lang == language {
                 selected = defaults;
             }
@@ -72,6 +76,7 @@ impl Catalog {
         Ok(Self {
             language: language.to_owned(),
             messages: selected,
+            english,
         })
     }
 }

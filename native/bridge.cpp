@@ -13,13 +13,11 @@
 #include "localization.hpp"
 #include "plugin_windows.hpp"
 #include "parameter_safety.hpp"
-#include "loop_playback.hpp"
-#include "loop_project.hpp"
+#include "timeline_api.hpp"
 #include "timeline_view.hpp"
 #include "piano_roll_api.hpp"
 #include "project_api.hpp"
 #include "scope_capture.hpp"
-#include "../patches/uapmd/loop-playback/native_regression.hpp"
 
 using ScopeCallback = void (*)(void*, const void*, const void*, size_t, uint32_t, const uint32_t*, size_t);
 static ScopeCallback scope_callback{};
@@ -43,7 +41,6 @@ void repl_capture_scope(int32_t instance, uapmd::AudioProcessContext& process) n
 
 using ScriptApi = const char* (*)(const char*);
 static ScriptApi script_api{};
-static const char* loop_api(const char* request);
 static const char* control_api(const char* request);
 static bool session_open();
 extern "C" const char* repl_localized(const char* key) {
@@ -61,7 +58,7 @@ extern "C" __declspec(dllexport) void repl_set_script_api(ScriptApi callback) {
 }
 // Called synchronously on the control thread; copy the Rust-owned reply immediately.
 extern "C" const char* repl_script_api(const char* request) {
-    if (auto result = loop_api(request)) return result;
+    if (auto result = timeline_api(request, session_open())) return result;
     if (auto result = control_api(request)) return result;
     if (auto result = piano_roll_api(request, session_open())) return result;
     if (auto result = project_api(request, session_open())) return result;
@@ -93,8 +90,6 @@ class ControlLoop final : public remidy::EventLoop {
     }
 };
 struct Session {
-    repl_loop::Playback loop_playback;
-    repl_loop::Project loop_project{loop_playback};
     TimelineView timeline_view;
     ControlLoop loop;
     remidy::EventLoop* previous{};
@@ -122,12 +117,6 @@ struct Session {
         runtime->ensureApiBootstrapped();
         auto& model = uapmd_app::AppModel::instance();
         timeline_view.captureInitial(*model.sequencer().engine());
-        repl_loop::instance = &loop_playback;
-        model.sequencer().engine()->addPlaybackEngineExtension(loop_playback);
-        loop_project.attach(*model.sequencer().engine());
-        model.projectLoaded.push_back([this] {
-            loop_project.projectReplaced();
-        });
         windows.attach();
         model.scanningCompleted.push_back([this](bool ok, std::string error) {
             remidy::EventLoop::enqueueTaskOnMainThread([this, ok, error] {
@@ -198,9 +187,6 @@ struct Session {
             }
             remidy::EventLoop::processQueuedTasks();
             windows.closeAll();
-            model.sequencer().engine()->removePlaybackEngineExtension(loop_playback);
-            loop_project.detach();
-            repl_loop::instance = nullptr;
             if (runtime) {
                 runtime->unregisterAllParameterListeners();
                 runtime->unregisterAllMetadataListeners();
@@ -264,6 +250,8 @@ static void loop_trace_into(choc::value::Value& result, bool start) {
     if (start) {
         if (uapmd_app::AppModel::instance().sequencer().isAudioPlaying())
             throw std::runtime_error("Stop audio before starting input trace");
+        repl_trace::sampleRate.store(static_cast<uint32_t>(
+            uapmd_app::AppModel::instance().sequencer().engine()->currentSampleRate()));
         repl_trace::count.store(0);
         repl_trace::overflow.store(0);
         repl_trace::programChanges.store(0);
@@ -302,7 +290,7 @@ static const char* control_api(const char* request) {
         if (api != "control.processEvents" && api != "audio.isProcessing" &&
             api != "scope.target" && api != "scope.setTarget" &&
             api != "test.observe" && api != "test.notes" &&
-            api != "test.loopTrace" && api != "test.loopChecks" &&
+            api != "test.loopTrace" &&
             api != "test.pluginState" && api != "track.volume" &&
             api != "track.setVolume") return nullptr;
         if (!session) throw std::runtime_error("No session");
@@ -315,8 +303,6 @@ static const char* control_api(const char* request) {
         } else if (api == "test.loopTrace") {
             value = choc::value::createObject("");
             loop_trace_into(value, args["start"].getWithDefault<bool>(false));
-        } else if (api == "test.loopChecks") {
-            repl_loop::Regression::run();
         } else if (api == "test.pluginState") {
             value = choc::value::createString(session->readState(args["instanceId"].get<int32_t>()));
         } else if (api == "track.volume" || api == "track.setVolume") {
@@ -341,29 +327,6 @@ static const char* control_api(const char* request) {
         } else {
             value = choc::value::createBool(uapmd_app::AppModel::instance().sequencer().isAudioPlaying() != 0);
         }
-        result = choc::json::toString(choc::value::createObject("", "ok", true, "value", value));
-    } catch (const std::exception& error) {
-        result = choc::json::toString(choc::value::createObject("", "ok", false, "error", error.what()));
-    }
-    return result.c_str();
-}
-
-static const char* loop_api(const char* request) {
-    static thread_local std::string result;
-    try {
-        auto args = choc::json::parse(request);
-        const auto api = args["api"].get<std::string>();
-        if (!api.starts_with("timeline.loop.")) return nullptr;
-        if (!session) throw std::runtime_error("No session");
-        auto& playback = session->loop_playback;
-        auto& engine = *uapmd_app::AppModel::instance().sequencer().engine();
-        auto value = choc::value::createObject("");
-        if (api == "timeline.loop.configure") playback.configure(args["beats"].get<double>(), args["bpm"].get<double>(), engine);
-        else if (api == "timeline.loop.publish") value = choc::value::createInt64(static_cast<int64_t>(playback.publish(args["parts"], engine,
-            args["beats"].getWithDefault<double>(0), args["bpm"].getWithDefault<double>(0))));
-        else if (api == "timeline.loop.status") value = playback.status();
-        else if (api == "timeline.loop.clear") playback.clear(engine);
-        else throw std::runtime_error("Unknown loop API");
         result = choc::json::toString(choc::value::createObject("", "ok", true, "value", value));
     } catch (const std::exception& error) {
         result = choc::json::toString(choc::value::createObject("", "ok", false, "error", error.what()));
@@ -405,9 +368,7 @@ extern "C" __declspec(dllexport) const char* repl_request(const char* request) n
             if (!session || !session->runtime) throw std::runtime_error(repl_localized("native_04"));
             remidy::EventLoop::processQueuedTasks();
             session->windows.pump();
-            if (command == "loop-checks") {
-                repl_loop::Regression::run();
-            } else if (command == "cli-pump") {
+            if (command == "cli-pump") {
                 // CLI has no winit event loop. Drain this control thread's
                 // windows (including plugin-owned hidden callback windows).
                 // Normal GUI callers never send this command.
@@ -452,7 +413,7 @@ extern "C" __declspec(dllexport) const char* repl_request(const char* request) n
                 if (!uiError.empty()) throw std::runtime_error(repl_format1("native_16", "error", uiError));
                 result.setMember("result", value);
                 if (command == "timeline-view") result.setMember("view", session->timeline_view.read(
-                    *uapmd_app::AppModel::instance().sequencer().engine(), session->loop_playback));
+                    *uapmd_app::AppModel::instance().sequencer().engine()));
             } else throw std::runtime_error(repl_format1("native_17", "command", command));
         }
         reply = choc::json::toString(result, false);

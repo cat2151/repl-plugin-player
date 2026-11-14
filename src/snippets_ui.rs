@@ -4,12 +4,16 @@ use crate::{
 };
 use eframe::egui;
 
+mod filter;
+use filter::Filter;
+
 #[derive(Default)]
 pub struct SnippetsPanel {
     pub library: Library,
     open: bool,
     entries: Vec<Snippet>,
     filter: String,
+    search: Filter,
     name: String,
     error: String,
     notice: String,
@@ -67,6 +71,7 @@ impl SnippetsPanel {
         if ui.button(crate::i18n::t("m022")).clicked() || shortcut {
             if !self.open {
                 self.open = true;
+                self.filter.clear();
                 self.refresh();
             }
             self.focus_filter = true;
@@ -99,6 +104,15 @@ impl SnippetsPanel {
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("m024"));
                     let filter = ui.add(egui::TextEdit::singleline(&mut self.filter).id(filter_id));
+                    self.update_preview();
+                    if !self.search.is_valid() {
+                        ui.painter().rect_stroke(
+                            filter.rect,
+                            2.0,
+                            egui::Stroke::new(1.0, ui.visuals().error_fg_color),
+                            egui::StrokeKind::Inside,
+                        );
+                    }
                     // A window's first frame drops focus requests, so keep asking until it holds.
                     if self.focus_filter {
                         if filter.has_focus() {
@@ -139,9 +153,9 @@ impl SnippetsPanel {
                 input.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
             )
         });
-        let filter = self.filter.to_lowercase();
+        self.update_preview();
         let visible: Vec<usize> = (0..self.entries.len())
-            .filter(|&i| Self::matches_filter(&self.entries[i], &filter))
+            .filter(|&i| self.search.matches(&self.entries[i]))
             .collect();
         if up || down {
             let position = self
@@ -229,31 +243,32 @@ impl SnippetsPanel {
             });
     }
 
-    fn matches_filter(snippet: &Snippet, filter: &str) -> bool {
-        format!(
-            "{} {} {} {}",
-            snippet.group,
-            snippet.name,
-            crate::i18n::group(snippet.group),
-            if snippet.group == "Built-in" {
-                crate::i18n::snippet_name(&snippet.name)
-            } else {
-                &snippet.name
-            },
-        )
-        .to_lowercase()
-        .contains(filter)
+    #[cfg(test)]
+    fn matches_filter(snippet: &Snippet, query: &str) -> bool {
+        let mut filter = Filter::default();
+        filter.update(query);
+        filter.matches(snippet)
+    }
+
+    fn update_preview(&mut self) {
+        let changed = self.search.update(&self.filter);
+        if changed
+            || self.preview.is_none_or(|index| {
+                self.entries
+                    .get(index)
+                    .is_none_or(|snippet| !self.search.matches(snippet))
+            })
+        {
+            self.preview = self
+                .entries
+                .iter()
+                .position(|snippet| self.search.matches(snippet));
+            self.scroll_to_preview = true;
+        }
     }
 
     fn browser(&mut self, ui: &mut egui::Ui, ready: bool) -> Option<Snippet> {
-        let filter = self.filter.to_lowercase();
-        if self.preview.is_some_and(|index| {
-            self.entries
-                .get(index)
-                .is_none_or(|snippet| !Self::matches_filter(snippet, &filter))
-        }) {
-            self.preview = None;
-        }
+        self.update_preview();
         // A resting pointer must not take the preview back from the arrow keys.
         let pointer = ui.input(|input| input.pointer.latest_pos());
         let moved = std::mem::replace(&mut self.pointer, pointer) != pointer;
@@ -269,7 +284,7 @@ impl SnippetsPanel {
                 .auto_shrink([false, false])
                 .show(&mut columns[0], |ui| {
                     for (index, snippet) in self.entries.iter().enumerate() {
-                        if !Self::matches_filter(snippet, &filter) {
+                        if !self.search.matches(snippet) {
                             continue;
                         }
                         let name = if snippet.group == "Built-in" {

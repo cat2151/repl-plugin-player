@@ -1,6 +1,54 @@
 use super::*;
 
 #[test]
+fn reopening_snippets_clears_the_filter() {
+    for shortcut in [false, true] {
+        let ctx = egui::Context::default();
+        ctx.global_style_mut(|style| style.animation_time = 0.0);
+        let (mut editor, mut code) = open_snippets(&ctx);
+        editor_frame(&ctx, &mut editor, &mut code, vec![Event::Text("-[".into())]);
+        assert_eq!(editor.snippets().filter, "-[");
+        editor_frame(
+            &ctx,
+            &mut editor,
+            &mut code,
+            vec![key(egui::Key::Escape, egui::Modifiers::NONE)],
+        );
+        assert!(!editor.snippets().open);
+        let shapes = editor_frame(&ctx, &mut editor, &mut code, vec![]);
+        if shortcut {
+            editor_frame(
+                &ctx,
+                &mut editor,
+                &mut code,
+                vec![key(
+                    egui::Key::P,
+                    egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+                )],
+            );
+        } else {
+            let button = text_rect(&shapes, crate::i18n::t("m022")).0.center();
+            editor_frame(
+                &ctx,
+                &mut editor,
+                &mut code,
+                vec![Event::PointerMoved(button), click(button, true)],
+            );
+            editor_frame(&ctx, &mut editor, &mut code, vec![click(button, false)]);
+        }
+        editor_frame(&ctx, &mut editor, &mut code, vec![]);
+        assert!(editor.snippets().open, "shortcut={shortcut}");
+        assert!(editor.snippets().filter.is_empty());
+        let panel = editor.snippets();
+        assert!(panel.search.is_valid());
+        assert!(panel
+            .entries
+            .iter()
+            .all(|entry| panel.search.matches(entry)));
+    }
+}
+
+#[test]
 fn escape_returns_typing_to_the_editor_caret() {
     let ctx = egui::Context::default();
     let (mut editor, mut code) = open_snippets(&ctx);

@@ -17,16 +17,7 @@ repl.project.load(projectPath);
 }
 
 // %% outgoing loop cleared
-(() => {
-    if (globalThis.loopParts) return 'loopParts retained';
-    try {
-        // A new publication must configure timing instead of inheriting the old loop.
-        repl.timeline.publishLoopClips([]);
-    } catch (error) {
-        return String(error).includes('Configure the common loop first') || String(error);
-    }
-    return 'old timing retained';
-})();
+!globalThis.loopParts && !uapmd.timeline.getState().loopEnabled;
 
 // %% invalid source
 (() => {

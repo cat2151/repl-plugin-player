@@ -8,7 +8,7 @@
     // The bass track keeps its instrument; an empty one gets this plugin.
     include('builtin/lib/plugins.js').ensureInstrument(bassTrack, {format:'CLAP', plugin:'Surge XT'});
 
-    // Edit each MML and re-run: publish both parts together at the next feasible boundary.
+    // Edit each MML and re-run: update the ordinary clips immediately through UAPMD.
     const loopNext = {
         main: prepareLoopPart(melodyTrack, "Isus4 I"),
         bass: prepareLoopPart(bassTrack, ">c1c1")

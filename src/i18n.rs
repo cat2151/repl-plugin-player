@@ -8,6 +8,7 @@ use std::{
 pub struct Catalog {
     language: String,
     messages: BTreeMap<String, String>,
+    english: BTreeMap<String, String>,
 }
 mod catalog;
 static CATALOG: OnceLock<Catalog> = OnceLock::new();
@@ -216,31 +217,48 @@ pub fn fonts(ctx: &eframe::egui::Context) {
 mod tests;
 
 pub fn snippet_name(name: &str) -> &str {
-    match name {
-        "try-play" => t("name_try_play"),
-        "try-init-saw" => t("name_try_init_saw"),
-        "try-chords" => t("name_try_chords"),
-        "try-preset" => t("name_try_preset"),
-        "try-delay" => t("name_try_delay"),
-        "try-surge-ui" => t("name_try_surge_ui"),
-        "try-effect-ui" => t("name_try_effect_ui"),
-        "try-mml" => t("name_try_mml"),
-        "try-loop-mml" => t("name_try_loop_mml"),
-        "try-loop-mml-multi-track" => t("name_try_loop_mml_multi_track"),
-        "try-instrument" => t("name_try_instrument"),
-        "try-parameter-ui" => t("name_try_parameter_ui"),
-        "try-patch-browse" => t("name_try_patch_browse"),
-        "try-cut-paste" => t("name_try_cut_paste"),
-        "close-parameter-ui" => t("name_close_parameter_ui"),
-        "add-midi-clip" => t("name_add_midi_clip"),
-        "play" => t("name_play"),
-        "stop-playback" => t("name_stop_playback"),
-        "show-instrument-ui" => t("name_show_instrument_ui"),
-        "show-effect-ui" => t("name_show_effect_ui"),
-        "set-track-volume" => t("name_set_track_volume"),
-        "save-project" => t("name_save_project"),
-        "load-project" => t("name_load_project"),
-        "api-list" => t("name_api_list"),
-        _ => name,
+    catalog().snippet_name(name, false)
+}
+
+pub fn english_snippet_name(name: &str) -> &str {
+    catalog().snippet_name(name, true)
+}
+
+impl Catalog {
+    fn snippet_name<'a>(&'a self, name: &'a str, english: bool) -> &'a str {
+        let messages = if english {
+            &self.english
+        } else {
+            &self.messages
+        };
+        let t = |key: &str| messages.get(key).expect("Missing snippet name").as_str();
+        match name {
+            "try-play" => t("name_try_play"),
+            "try-init-saw" => t("name_try_init_saw"),
+            "try-chords" => t("name_try_chords"),
+            "try-preset" => t("name_try_preset"),
+            "try-delay" => t("name_try_delay"),
+            "try-surge-ui" => t("name_try_surge_ui"),
+            "try-effect-ui" => t("name_try_effect_ui"),
+            "try-mml" => t("name_try_mml"),
+            "try-loop-mml" => t("name_try_loop_mml"),
+            "try-loop-mml-multi-track" => t("name_try_loop_mml_multi_track"),
+            "try-instrument" => t("name_try_instrument"),
+            "try-parameter-ui" => t("name_try_parameter_ui"),
+            "try-patch-browse" => t("name_try_patch_browse"),
+            "try-cut-paste" => t("name_try_cut_paste"),
+            "close-parameter-ui" => t("name_close_parameter_ui"),
+            "add-midi-clip" => t("name_add_midi_clip"),
+            "play" => t("name_play"),
+            "play-loop" => t("name_play_loop"),
+            "stop-playback" => t("name_stop_playback"),
+            "show-instrument-ui" => t("name_show_instrument_ui"),
+            "show-effect-ui" => t("name_show_effect_ui"),
+            "set-track-volume" => t("name_set_track_volume"),
+            "save-project" => t("name_save_project"),
+            "load-project" => t("name_load_project"),
+            "api-list" => t("name_api_list"),
+            _ => name,
+        }
     }
 }

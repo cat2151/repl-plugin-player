@@ -8,7 +8,7 @@
 
 - cell 同士は track 番号で話す。楽器の instance id を global に保存して cell 間で渡さない。「今着目している track」を表す共通の global も作らない。
 - snippet の cell は `{ ... }` で包み、track 番号は `const loopTrack = 0;` のような説明変数を経由して lib に渡す。
-- uapmd の JS API は track・clip を文字列の `trackId`・`clipId` で受ける。track 番号から `trackId` への変換は `lib/tracks.js` の1関数（`getTrackInfos()` の並びの位置で引き、無ければ `patch_browse_00` のエラー）だけが持ち、lib は uapmd を呼ぶ直前に変換する。cell と lib の引数は track 番号のまま。repl 独自の API（`repl.track.*`・`repl.timeline.publishLoopClips`・timeline view の読取）も track 番号のまま。
+- uapmd の JS API は track・clip を文字列の `trackId`・`clipId` で受ける。track 番号から `trackId` への変換は `lib/tracks.js` の1関数（`getTrackInfos()` の並びの位置で引き、無ければ `patch_browse_00` のエラー）だけが持ち、lib は uapmd を呼ぶ直前に変換する。cell と lib の引数は track 番号のまま。repl 独自の API（`repl.track.*`・timeline view の読取）も track 番号のまま。
 - track の楽器は `lib/plugins.js` の `instrumentOn(track)` で引く。`ensureDagGraph(track)` の後の track graph の接続で、graphInput からの event 接続の先の plugin、無ければ audio 接続の先の plugin。
 - `lib/patch.js` の `use({format, plugin, patch, track})` は track を必須にする。track の楽器が同じ plugin ならそれに state を読ませる。別の plugin なら同じ track に新しい instance を作り、古い楽器が持っていた接続を新しい楽器へ付け替えて張り直し（graph のつなぎ直し）、古い楽器を dispose する。
 - 起動時の楽器は init script `snippets/builtin/init.js` が `ensureInstrument(startTrack, {format, plugin})`（track に楽器が無いときだけ作る）で用意する。Rust は scan の後にこの cell を1回評価する。plugin 名は init script に書き、lib には書かない。

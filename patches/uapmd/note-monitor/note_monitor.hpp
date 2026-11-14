@@ -3,7 +3,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstddef>
-#include "../loop-playback/event_trace.hpp"
+#include "event_trace.hpp"
 
 // Every plugin node, observed at its graph input just before processing.
 // Each node publishes its held keys to its own slot; readers take the union.

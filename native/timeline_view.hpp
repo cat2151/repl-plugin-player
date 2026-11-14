@@ -10,10 +10,7 @@ public:
     void captureInitial(uapmd::SequencerEngine& engine) {
         for (const auto* track : engine.timeline().tracks()) implicit.insert(track->referenceId());
     }
-    choc::value::Value read(uapmd::SequencerEngine& engine, const repl_loop::Playback& playback) {
-        auto loop = playback.view(engine.isPlaybackActive());
-        if (loop.hasObjectMember("parts"))
-            for (const auto& part : loop["parts"]) used.insert(part["trackId"].get<std::string>());
+    choc::value::Value read(uapmd::SequencerEngine& engine) {
         auto tracks = choc::value::createEmptyArray();
         for (const auto* track : engine.timeline().tracks()) {
             const auto& id = track->referenceId();
@@ -55,7 +52,6 @@ public:
             signatures.addArrayElement(choc::value::createObject("", "seconds", point.timeSeconds,
                 "numerator", static_cast<int32_t>(point.signature.numerator),
                 "denominator", static_cast<int32_t>(point.signature.denominator)));
-        return choc::value::createObject("", "tracks", tracks, "tempos", tempos, "signatures", signatures,
-            "loop", loop);
+        return choc::value::createObject("", "tracks", tracks, "tempos", tempos, "signatures", signatures);
     }
 };

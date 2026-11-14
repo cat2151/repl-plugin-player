@@ -167,10 +167,6 @@ impl Control {
     pub fn scope(&self) -> Option<&crate::scope::Scope> {
         self.bridge.scope()
     }
-    pub fn loop_checks(&self) -> Result<(), String> {
-        self.bridge.call(json!({"command":"loop-checks"}))?;
-        Ok(())
-    }
     pub fn poll(&mut self) -> Result<(), String> {
         let state = self.bridge.call(json!({"command":"poll"}))?;
         self.observe_refresh(&state)?;

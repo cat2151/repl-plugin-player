@@ -1,17 +1,17 @@
-# ADR 0014: loopの演奏データをproject archiveの拡張として保存する
+# ADR 0014: 音符は標準clipに統一し、loopは演奏中の設定にする
 
-- 状態: 採用
-- 決定者: AI（userのsave/load後にtimelineが空になる報告を受けた保存方式の補修）
-- 関連: [0012](0012-easy-layer-with-global-state.md)（通常再生とloopの分離）
+- 状態: 採用（独自loop planとarchive拡張による保存の決定を撤回）
+- 決定者: user（UX検証の結果、独自loop仕様の保存と通常timelineからの分離を不要と判断。更新は周回境界を待たずuapmdの仕組みを使う）
+- 関連: [0012](0012-easy-layer-with-global-state.md)（`play`と`playLoop`の入口）
 
 ## 決定と理由
 
-projectの保存にはUAPMDのarchiveを使い、通常のMIDI clipと音源の状態をまとめる方針だった。一方、loopは再生境界で演奏全体を差し替える独自planであり、通常のclipとは別にtimelineへ投影していた。通常clipの保存・復元だけを検証していたため、画面上のloopも保存されるという前提の誤りを見落とした。userの報告を受けて実際のarchiveを調べると、音源は存在したが通常trackにはclipがなく、loopの音符は保存されていなかった。
+当初、AIは演奏中の編集を周回境界でまとめて反映するため、通常clipとは別のloop planを採用した。その音符がproject保存から漏れたため、音源と一緒に保持できるarchive拡張へ独自データを保存する方針を選んだ。
 
-loopのtrack識別子、周期、tempo、音符をUAPMDのproject serialization extensionで同じarchiveに保存する。保存対象は最後に提出されたplanとし、次の境界を待つ編集も含める。復元先のsample rateに合わせて時刻を換算し、通常clipと併存させる。loadは音を鳴らさず、単純再生で復元したloopを鳴らせる状態にする。
+userがUX検証した結果、別アプリでprojectを読むとloopの音符が標準clipとして扱えず、今回の問題が見つかった。userが必要とするのは同じtimelineを演奏中に指定範囲で反復することで、loop設定の保存も境界での更新予約も要件ではなかった。uapmd自体に通常clipを範囲反復する処理があるため、独自の演奏データと保存形式を持つ理由がなくなった。
 
-通常clipへ変換して保存する案もあるが、loopの反復と境界での差し替えという意味を変え、保存時の再生状態へ干渉する。別のsidecarファイルを持つ案はprojectの移動時に音符を分離してしまう。同一archiveの拡張なら既存の音源保存とtrackの識別を利用できるため、これを採用する。
+音符はloopの有無によらずuapmd標準のtimeline clipに統一し、音源・設定とともに標準project archiveへ保存する。loopの有効・範囲はセッション内のtransport設定だけとし、project読込時は無効にする。編集はuapmdの通常のclip更新経路を使い、アプリ独自の周回境界待ちや演奏スケジューラを設けない。JSに不足する範囲設定だけを薄く公開する。
 
 ## 結果
 
-loopの保存を理解するのはこのアプリとなり、通常clipだけを理解する他のhostでの演奏互換性は引き受けない。既存archiveの音源や設定はそのまま読めるが、そもそも保存されなかった音符はarchive単体から復元できない。既存利用データの補修では原本を保全し、保存時の入力または生成MIDIが残る場合だけ、それを根拠に音符を補う。
+`play`と`playLoop`は記述用の入口として残すが、音符・表示・保存のモデルは共通になる。反復を解除してもclipは残る。独自loop拡張の読み書きと再生補修は撤去する。既存の試用projectはuserの指示で破棄し、旧独自形式の互換読込や移行は作らない。

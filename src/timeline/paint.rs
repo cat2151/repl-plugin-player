@@ -121,7 +121,7 @@ pub fn show(ui: &mut egui::Ui, view: &View) {
             painter.rect_filled(ruler, 0.0, ui.visuals().extreme_bg_color);
             draw_grid(&plot, view, rect, ruler_top, scale, &x);
             if let Some(end) = view.loop_end {
-                for beat in [0.0, end] {
+                for beat in [view.loop_start.unwrap_or(0.0), end] {
                     plot.line_segment(
                         [
                             egui::pos2(x(beat), ruler_top + 3.0),
@@ -178,8 +178,6 @@ fn draw_keys(painter: &egui::Painter, track: &Track, rect: Rect) {
 fn color(clip: &Clip) -> Color32 {
     if clip.muted {
         Color32::from_gray(110)
-    } else if clip.looping {
-        Color32::from_rgb(66, 182, 148)
     } else {
         Color32::from_rgb(78, 156, 222)
     }

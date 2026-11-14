@@ -15,7 +15,6 @@ pub struct Clip {
     pub start: f64,
     pub end: f64,
     pub muted: bool,
-    pub looping: bool,
     pub notes: Vec<Note>,
 }
 
@@ -39,6 +38,7 @@ pub struct View {
     pub end: f64,
     pub playhead: f64,
     pub playing: bool,
+    pub loop_start: Option<f64>,
     pub loop_end: Option<f64>,
     pub signatures: Vec<Signature>,
 }
@@ -127,23 +127,11 @@ pub fn project(snapshot: &Value) -> View {
     let metadata = &snapshot["view"];
     let state = &snapshot["state"];
     let sr = number(&snapshot["sampleRate"], 48000.0).max(1.0);
-    let loop_data = &metadata["loop"];
-    let length = number(&loop_data["lengthSamples"], 0.0);
-    let loop_bpm = number(&loop_data["bpm"], 120.0).max(1.0);
-    let looping = length > 0.0;
-    let clock = Clock::new(
-        if looping {
-            &[]
-        } else {
-            array(&metadata["tempos"])
-        },
-        if looping {
-            loop_bpm
-        } else {
-            number(&state["tempo"], 120.0)
-        },
-    );
-    let loop_end = looping.then(|| clock.beat(length / sr));
+    let clock = Clock::new(array(&metadata["tempos"]), number(&state["tempo"], 120.0));
+    let looping = state["loopEnabled"] == true
+        && number(&state["loopEndSamples"], 0.0) > number(&state["loopStartSamples"], 0.0);
+    let loop_start = looping.then(|| clock.beat(number(&state["loopStartSamples"], 0.0) / sr));
+    let loop_end = looping.then(|| clock.beat(number(&state["loopEndSamples"], 0.0) / sr));
     let mut tracks = Vec::new();
     let mut end: f64 = loop_end.unwrap_or(4.0);
     for (index, track) in array(&snapshot["tracks"]).iter().enumerate() {
@@ -174,33 +162,9 @@ pub fn project(snapshot: &Value) -> View {
                 start,
                 end,
                 muted: clip["muted"] == true,
-                looping: false,
                 notes: project_notes(events, start, end, |sample| {
                     clock.beat((position + sample as f64 - offset) / sr)
                 }),
-            });
-        }
-        if let Some(part) = array(&loop_data["parts"])
-            .iter()
-            .find(|p| p["trackId"] == id)
-        {
-            let end = loop_end.unwrap_or(0.0);
-            clips.push(Clip {
-                label: "↻".into(),
-                start: 0.0,
-                end,
-                muted: false,
-                looping: true,
-                // Note Offs at the loop end are not stored; playback flushes held notes at the wrap.
-                notes: project_notes(&part["events"], 0.0, end, |sample| {
-                    clock.beat(sample as f64 / sr)
-                })
-                .into_iter()
-                .map(|note| Note {
-                    open: false,
-                    ..note
-                })
-                .collect(),
             });
         }
         let plugins: Vec<String> = array(&track["nodes"])
@@ -244,33 +208,28 @@ pub fn project(snapshot: &Value) -> View {
         numerator: 4,
         denominator: 4,
     }];
-    if !looping {
-        for point in array(&metadata["signatures"]) {
-            let numerator = number(&point["numerator"], 4.0).max(1.0) as u32;
-            let denominator = number(&point["denominator"], 4.0).max(1.0) as u32;
-            if signatures
-                .last()
-                .is_some_and(|s| s.numerator == numerator && s.denominator == denominator)
-            {
-                continue;
-            }
-            signatures.push(Signature {
-                start: clock.beat(number(&point["seconds"], 0.0)),
-                numerator,
-                denominator,
-            });
+    for point in array(&metadata["signatures"]) {
+        let numerator = number(&point["numerator"], 4.0).max(1.0) as u32;
+        let denominator = number(&point["denominator"], 4.0).max(1.0) as u32;
+        if signatures
+            .last()
+            .is_some_and(|s| s.numerator == numerator && s.denominator == denominator)
+        {
+            continue;
         }
+        signatures.push(Signature {
+            start: clock.beat(number(&point["seconds"], 0.0)),
+            numerator,
+            denominator,
+        });
     }
     View {
         tracks,
         end: end.max(4.0),
         playing: state["isPlaying"] == true,
         loop_end,
-        playhead: clock.beat(if looping {
-            number(&loop_data["positionSamples"], 0.0) / sr
-        } else {
-            number(&state["playheadSamples"], 0.0) / sr
-        }),
+        loop_start,
+        playhead: clock.beat(number(&state["playheadSamples"], 0.0) / sr),
         signatures,
     }
 }

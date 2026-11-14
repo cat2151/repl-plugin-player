@@ -23,7 +23,6 @@ fn mutate(app: &mut Control, script: &Script, title: &str) -> Result<(), String>
 }
 
 pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
-    app.loop_checks()?;
     let initial = app.read_timeline()?;
     let view = super::projection::project(&initial);
     if view.tracks.len() != 1 || view.tracks[0].plugins.is_empty() {
@@ -61,14 +60,10 @@ pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
     while Instant::now() < until {
         app.poll()?;
         let data = app.read_timeline()?;
-        if data["view"]["loop"]["ready"] == false {
-            continue;
-        }
         let view = super::projection::project(&data);
         if view.tracks[0].clips.len() != 2
             || view.tracks[0].clips[1].notes.len() != 4
             || view.loop_end.is_none_or(|end| (end - 4.0).abs() > 0.001)
-            || data["tracks"] != clips["tracks"]
         {
             return Err(
                 "Playing loop visualization omitted notes or changed ordinary clips".into(),
@@ -101,7 +96,7 @@ pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
     let restored = super::projection::project(&app.read_timeline()?);
     if restored.tracks[0].clips.len() != 2
         || restored.tracks[0].clips[1].notes.len() != 4
-        || restored.loop_end != stopped.loop_end
+        || restored.loop_end.is_some()
     {
         return Err("Project restoration omitted the loop from the timeline".into());
     }
@@ -110,8 +105,7 @@ pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
     loop {
         let data = app.read_timeline()?;
         let view = super::projection::project(&data);
-        if data["view"]["loop"]["ready"] == true
-            && view.playing
+        if view.playing
             && view.tracks[0].clips.len() == 2
             && view.tracks[0].clips[1].notes.len() == 4
         {
@@ -127,9 +121,9 @@ pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
     if super::projection::project(&app.read_timeline()?).tracks[0]
         .clips
         .len()
-        != 1
+        != 2
     {
-        return Err("Cleared loop remained visible".into());
+        return Err("Disabling transport loop removed ordinary clips".into());
     }
     app.run(script.cell("loop on track 1")?)?;
     if super::projection::project(&app.read_timeline()?)

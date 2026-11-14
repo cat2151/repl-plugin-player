@@ -1,4 +1,4 @@
-"""Real regression: ordinary playback -> first loop publication -> live updates.
+"""Real regression: ordinary playback -> standard loop clips -> immediate live updates.
 
 Run after cargo build --release. Exercises a one-part and a two-part loop in fresh sessions.
 The normal user data/log paths are used, as in scripts/e2e.py.
@@ -48,13 +48,13 @@ def check(session_type, name):
                 };
             }""")
         session.request('eval', code=entry)
-        # Native status.revision changes only on boundary replacement, not initial adoption.
+        # The loop range is UAPMD transport state.
         session.request('wait', code='uapmd.timeline.getState().loopEnabled && uapmd.timeline.getState().isPlaying')
-        assert session.evaluate('[entryStops,entryStarts]') == [1, 1]
-        assert session.evaluate(CLIPS) == before
+        assert session.evaluate('[entryStops,entryStarts]') == [0, 0]
+        assert len(session.evaluate(CLIPS)) == len(before) + 1
         # Reloading the helper and the snippet must keep the running loop intact.
         session.request('eval', code=entry)
-        assert session.evaluate('[entryStops,entryStarts]') == [1, 1]
+        assert session.evaluate('[entryStops,entryStarts]') == [0, 0]
         assert session.evaluate('uapmd.timeline.getState().isPlaying') is True
         # Observe an actual period change rather than diagnostic revision bookkeeping.
         period = session.evaluate('uapmd.timeline.getState().loopEndSamples')
@@ -67,17 +67,18 @@ def check(session_type, name):
         assert new_beats != old_beats
         expected_period = round(period * new_beats / old_beats)
         session.request('wait', code=f'uapmd.timeline.getState().loopEndSamples === {expected_period}')
-        assert session.evaluate('[entryStops,entryStarts]') == [1, 1]
+        assert session.evaluate('[entryStops,entryStarts]') == [0, 0]
         saved = session.evaluate('JSON.stringify(loopParts)')
-        error = session.request('eval', ok=False, code="""var invalid = Object.assign({},loopParts);
-            invalid.main = prepareLoopPart(loopParts.main.trackIndex,'t90 c4'); publishLoopParts(invalid, 120);""")
-        assert 'tempo' in error, error
+        clips = session.evaluate(CLIPS)
+        error = session.request('eval', ok=False, code="""publishLoopParts({
+            main:{trackIndex:entryTrack,filepath:'X:/missing-loop.mid',beats:4}}, 120);""")
+        assert 'file' in error.lower(), error
         assert session.evaluate('JSON.stringify(loopParts)') == saved
-        assert session.evaluate('[entryStops,entryStarts]') == [1, 1]
+        assert session.evaluate('[entryStops,entryStarts]') == [0, 0]
         assert session.evaluate('uapmd.timeline.getState().isPlaying') is True
-        assert session.evaluate(CLIPS) == before
+        assert session.evaluate(CLIPS) == clips
         session.finish(failure=True)
-        print(f'PASS {name}: first entry stops once; reload/update keeps playing; invalid update preserves map and clips', flush=True)
+        print(f'PASS {name}: entry/reload/update keeps playing; invalid import preserves clips', flush=True)
     finally:
         session.kill()
 

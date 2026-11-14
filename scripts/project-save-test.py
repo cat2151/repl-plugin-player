@@ -103,18 +103,18 @@ def main():
                 else:
                     session.evaluate(load_cells['load'])
                     session.evaluate(cells['save'])
+                assert session.evaluate('uapmd.timeline.getState().loopEnabled') is (attempt == 0)
                 with zipfile.ZipFile(loop_path) as archive:
-                    loop_data = json.loads(archive.read('extensions/repl-loop/loop.json'))
-                signature = {key: loop_data[key] for key in ('bpm', 'sampleRate', 'lengthSamples', 'parts')}
-                assert len(signature['parts']) == 1 and len(signature['parts'][0]['events']) > 0, signature
+                    assert not any(name.startswith('extensions/repl-loop/') for name in archive.namelist())
+                    assert any(name.startswith('clips/') and name.endswith('.midi2') for name in archive.namelist())
+                signature = session.evaluate(cells['snapshot'])
+                assert signature['clips'] and signature['clips'][0]['events'], signature
                 if attempt == 0:
                     expected_loop = signature
                     session.evaluate(load_cells['change'])
                     session.evaluate(load_cells['load'])
-                    session.evaluate(cells['save'])
-                    with zipfile.ZipFile(loop_path) as archive:
-                        restored = json.loads(archive.read('extensions/repl-loop/loop.json'))
-                    assert {key: restored[key] for key in signature} == expected_loop
+                    assert not session.evaluate('uapmd.timeline.getState().loopEnabled')
+                    assert session.evaluate(cells['snapshot']) == expected_loop
                     session.evaluate(cells['play snippet smoke'])
                 else:
                     assert signature == expected_loop, signature
