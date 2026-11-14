@@ -31,3 +31,19 @@ repl.timeline.clearLoop()
 // %% loop on track 1
 // Using an initially empty track for a loop also makes it a user-used track.
 repl.timeline.publishLoopClips([{trackIndex:1,filepath:tvPath}],4,120)
+
+// %% save and reload loop
+{
+    const path = getGeneratedMidiPath() + '.uapmdz';
+    repl.project.saveArchive(path);
+    repl.timeline.clearLoop();
+    repl.project.load(path);
+}
+
+// %% play restored loop
+uapmd.audio.setEngineEnabled(true);
+uapmd.sequencer.startPlayback();
+
+// %% stop restored loop
+uapmd.sequencer.stopPlayback();
+uapmd.audio.setEngineEnabled(false);

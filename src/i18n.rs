@@ -238,6 +238,8 @@ pub fn snippet_name(name: &str) -> &str {
         "show-instrument-ui" => t("name_show_instrument_ui"),
         "show-effect-ui" => t("name_show_effect_ui"),
         "set-track-volume" => t("name_set_track_volume"),
+        "save-project" => t("name_save_project"),
+        "load-project" => t("name_load_project"),
         "api-list" => t("name_api_list"),
         _ => name,
     }

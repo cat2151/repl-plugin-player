@@ -43,6 +43,8 @@ const BUILTIN_ORDER: &[&str] = &[
     "set-track-volume",
     "close-parameter-ui",
     "add-midi-clip",
+    "save-project",
+    "load-project",
 ];
 
 #[derive(Clone, Debug)]

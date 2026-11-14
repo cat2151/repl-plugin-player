@@ -26,6 +26,7 @@ struct Plan {
 };
 class Playback final : public uapmd::PlaybackEngineExtension {
     friend struct Regression;
+    friend class Project;
     using Publisher = uapmd::RtSnapshotPublisher<Plan, 4>;
     Publisher plans;
     std::array<Publisher::Guard, 4> guards;
@@ -107,6 +108,14 @@ public:
             state.loopEnabled = false;
             state.loopStart.samples = 0;
             state.loopEnd.samples = 0;
+        });
+    }
+    // A loaded project owns its transport state; discard only the outgoing plan.
+    void projectReplaced(uapmd::SequencerEngine& engine) {
+        engine.resetTrackProcessingState(0, false, [&] {
+            playbackStopped();
+            plans.publish(std::make_unique<const Plan>());
+            period.store(0);
         });
     }
     uint64_t publish(const choc::value::ValueView& input, uapmd::SequencerEngine& engine,

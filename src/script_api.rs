@@ -97,6 +97,11 @@ fn dispatch(input: &Value) -> Result<Value, String> {
             Ok(Value::Null)
         }
         "generatedMidiPath" => Ok(json!(generated_midi_path()?)),
+        "projectsDirectory" => {
+            let directory = crate::resources::user_directory()?.join("projects");
+            std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+            Ok(json!(directory))
+        }
         "patchState" => Ok(json!(crate::patch_state::file(
             argument(input, "format")?,
             argument(input, "pluginId")?,

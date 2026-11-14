@@ -14,8 +14,10 @@
 #include "plugin_windows.hpp"
 #include "parameter_safety.hpp"
 #include "loop_playback.hpp"
+#include "loop_project.hpp"
 #include "timeline_view.hpp"
 #include "piano_roll_api.hpp"
+#include "project_api.hpp"
 #include "scope_capture.hpp"
 #include "../patches/uapmd/loop-playback/native_regression.hpp"
 
@@ -62,6 +64,7 @@ extern "C" const char* repl_script_api(const char* request) {
     if (auto result = loop_api(request)) return result;
     if (auto result = control_api(request)) return result;
     if (auto result = piano_roll_api(request, session_open())) return result;
+    if (auto result = project_api(request, session_open())) return result;
     if (!script_api) return "{\"ok\":false,\"error\":\"Script API is not registered\"}";
     return script_api(request);
 }
@@ -91,6 +94,7 @@ class ControlLoop final : public remidy::EventLoop {
 };
 struct Session {
     repl_loop::Playback loop_playback;
+    repl_loop::Project loop_project{loop_playback};
     TimelineView timeline_view;
     ControlLoop loop;
     remidy::EventLoop* previous{};
@@ -120,6 +124,10 @@ struct Session {
         timeline_view.captureInitial(*model.sequencer().engine());
         repl_loop::instance = &loop_playback;
         model.sequencer().engine()->addPlaybackEngineExtension(loop_playback);
+        loop_project.attach(*model.sequencer().engine());
+        model.projectLoaded.push_back([this] {
+            loop_project.projectReplaced();
+        });
         windows.attach();
         model.scanningCompleted.push_back([this](bool ok, std::string error) {
             remidy::EventLoop::enqueueTaskOnMainThread([this, ok, error] {
@@ -191,6 +199,7 @@ struct Session {
             remidy::EventLoop::processQueuedTasks();
             windows.closeAll();
             model.sequencer().engine()->removePlaybackEngineExtension(loop_playback);
+            loop_project.detach();
             repl_loop::instance = nullptr;
             if (runtime) {
                 runtime->unregisterAllParameterListeners();

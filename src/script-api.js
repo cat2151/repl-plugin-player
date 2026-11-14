@@ -54,6 +54,17 @@ globalThis.repl = {text: function(key, values) { return __replCall('text', {key:
 
 repl.processEvents = function() { return __replCall('control.processEvents', {}); };
 repl.audio = {isProcessing: function() { return __replCall('audio.isProcessing', {}); }};
+// UAPMD's self-contained archive, including MIDI and plugin states.
+repl.project = {
+    directory: function() { return __replCall('projectsDirectory', {}); },
+    saveArchive: function(filepath) { return __replCall('project.saveArchive', {filepath:filepath}); },
+    // Returns after UAPMD has restored the timeline and plugin states.
+    load: function(filepath) {
+        const path = __replCall('project.load', {filepath:filepath});
+        delete globalThis.loopParts;
+        return path;
+    }
+};
 // The track's volume as a linear gain (1 keeps the level, 0 silences it), as uapmd's track slider sets it.
 // setVolume also takes decibels as a string such as '-3dB'.
 // Both return the volume the track now has, as a linear gain.

@@ -97,6 +97,32 @@ pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
     if stopped.tracks[0].clips.len() != 2 || stopped.playing {
         return Err("Stopped loop disappeared from the display".into());
     }
+    app.run(script.cell("save and reload loop")?)?;
+    let restored = super::projection::project(&app.read_timeline()?);
+    if restored.tracks[0].clips.len() != 2
+        || restored.tracks[0].clips[1].notes.len() != 4
+        || restored.loop_end != stopped.loop_end
+    {
+        return Err("Project restoration omitted the loop from the timeline".into());
+    }
+    app.run(script.cell("play restored loop")?)?;
+    let until = Instant::now() + Duration::from_secs(5);
+    loop {
+        let data = app.read_timeline()?;
+        let view = super::projection::project(&data);
+        if data["view"]["loop"]["ready"] == true
+            && view.playing
+            && view.tracks[0].clips.len() == 2
+            && view.tracks[0].clips[1].notes.len() == 4
+        {
+            break;
+        }
+        if Instant::now() >= until {
+            return Err("Restored loop did not enter playback".into());
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    app.run(script.cell("stop restored loop")?)?;
     app.run(script.cell("clear the loop")?)?;
     if super::projection::project(&app.read_timeline()?).tracks[0]
         .clips
