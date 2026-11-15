@@ -18,6 +18,7 @@
 #include "piano_roll_api.hpp"
 #include "project_api.hpp"
 #include "scope_capture.hpp"
+#include "freeze_transport.hpp"
 
 using ScopeCallback = void (*)(void*, const void*, const void*, size_t, uint32_t, const uint32_t*, size_t);
 static ScopeCallback scope_callback{};
@@ -319,6 +320,7 @@ static const char* control_api(const char* request) {
             value = choc::value::createFloat64(engine.tracks()[static_cast<size_t>(trackIndex)]->trackGain());
         } else if (api == "control.processEvents") {
             remidy::EventLoop::processQueuedTasks();
+            repl_finish_pending_freeze();
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         } else if (api == "scope.target") {
             value = choc::value::createInt32(repl_notes::target.load(std::memory_order_relaxed));
@@ -368,6 +370,7 @@ extern "C" __declspec(dllexport) const char* repl_request(const char* request) n
             if (!session || !session->runtime) throw std::runtime_error(repl_localized("native_04"));
             remidy::EventLoop::processQueuedTasks();
             session->windows.pump();
+            repl_finish_pending_freeze();
             if (command == "cli-pump") {
                 // CLI has no winit event loop. Drain this control thread's
                 // windows (including plugin-owned hidden callback windows).

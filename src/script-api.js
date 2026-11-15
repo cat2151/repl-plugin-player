@@ -60,8 +60,25 @@ repl.project = {
     saveArchive: function(filepath) { return __replCall('project.saveArchive', {filepath:filepath}); },
     // Returns after UAPMD has restored the timeline and plugin states.
     load: function(filepath) {
+        const previousId = repl.scope.target();
+        const previousTracks = uapmd.sequencer.getTrackInfos();
+        const previousTrack = previousId < 0 ? undefined
+            : previousTracks.find(track => track.nodes.some(node => node.instanceId === previousId));
+        const previousNode = previousTrack
+            && previousTrack.nodes.find(node => node.instanceId === previousId);
         const path = __replCall('project.load', {filepath:filepath});
         delete globalThis.loopParts;
+        // Instances are recreated, but document track/node identities survive a load.
+        const tracks = uapmd.sequencer.getTrackInfos();
+        const track = previousTrack && tracks.find(track => track.trackId === previousTrack.trackId);
+        const node = track && track.nodes.find(node => node.nodeId === previousNode.nodeId && node.instanceId >= 0);
+        let target = node ? node.instanceId : -1;
+        if (target < 0) {
+            const plugins = include('builtin/lib/plugins.js');
+            for (let track = 0; track < tracks.length && target < 0; ++track)
+                target = plugins.instrumentOn(track);
+        }
+        repl.scope.setTarget(target);
         return path;
     }
 };

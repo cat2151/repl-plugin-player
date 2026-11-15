@@ -41,6 +41,9 @@ const BUILTIN_ORDER: &[&str] = &[
     "stop-playback",
     "show-instrument-ui",
     "show-effect-ui",
+    "list-scope-targets",
+    "set-scope-target",
+    "show-scope-target",
     "set-track-volume",
     "close-parameter-ui",
     "add-midi-clip",
@@ -48,6 +51,9 @@ const BUILTIN_ORDER: &[&str] = &[
     "load-project",
     "show-project-requirements",
     "uapmd-samples",
+    "freeze-track",
+    "unfreeze-track",
+    "show-track-freeze",
 ];
 
 #[derive(Clone, Debug)]

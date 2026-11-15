@@ -14,12 +14,18 @@ def main():
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--workers", type=int, choices=range(33), help="Diagnostic override of the worker count")
     parser.add_argument("--frames", type=int, choices=(256, 512, 1024, 2048, 4096), help="Diagnostic device period override")
+    parser.add_argument("--freeze", action="store_true", help="Freeze tracks with clips before real-device playback")
+    parser.add_argument("--loop", type=float, help="Repeat the first N seconds and check each complete pass")
     args = parser.parse_args()
-    if not args.project.is_file() or args.repeats < 1:
-        parser.error("Supply an existing project archive and positive repeat count")
+    if not args.project.is_file() or args.repeats < 1 or (args.loop is not None and not 0.5 <= args.loop <= 7):
+        parser.error("Supply an existing project archive, positive repeat count, and --loop between 0.5 and 7 seconds")
     archive = args.project.resolve()
     original = hashlib.sha256(archive.read_bytes()).digest()
     options = {"path": str(archive), "seconds": 15}
+    if args.freeze:
+        options["freeze"] = True
+    if args.loop is not None:
+        options["loopSeconds"] = args.loop
     if args.workers is not None:
         options["workers"] = args.workers
     if args.frames is not None:
@@ -31,10 +37,11 @@ def main():
     ]
     try:
         for repeat in range(args.repeats):
+            timeout = 300 if args.freeze else 90
             result = subprocess.run(
-                [str(ROOT / "target/release/repl-plugin-player.exe"), "--automation", "--timeout", "90"],
+                [str(ROOT / "target/release/repl-plugin-player.exe"), "--automation", "--timeout", str(timeout)],
                 cwd=ROOT, input="".join(json.dumps(r) + "\n" for r in requests),
-                capture_output=True, text=True, encoding="utf-8", timeout=100,
+                capture_output=True, text=True, encoding="utf-8", timeout=timeout + 10,
             )
             replies = [json.loads(line) for line in result.stdout.splitlines()]
             if result.returncode or any(not r.get("ok") for r in replies):

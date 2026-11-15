@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 EXE = ROOT / "target/release/repl-plugin-player.exe"
 LOGS = Path(os.environ["LOCALAPPDATA"]) / "repl-plugin-player/logs"
 CASES = ["cold", "sample", "rerun", "stop", "close", "syntax", "missing",
-         "close-preparing", "close-creating", "mutation-close",
+         "close-preparing", "close-creating", "mutation-close", "scope-load",
          "syntax-sustain", "runtime-error", "stop-run", "timeline", "timeline-view", "piano-roll-cut-paste", "note-monitor", "scope", "partial-run", "snippets", "tutorials", "demo-play", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-browse", "state-load", "track-use", "reset-first-note", "dock", "dock-script-ui"]
 
 
@@ -45,6 +45,9 @@ def main():
             elif case == "scope":
                 assert len(note_on) == 4, paths[0]
                 assert [e["details"]["note"] for e in events if e["event"] == "scope_verified"] == [60, 72, 67, 64, 60], paths[0]
+            elif case == "scope-load":
+                assert not note_on, paths[0]
+                assert [e["details"]["note"] for e in events if e["event"] == "scope_verified"] == [67, 69], paths[0]
             else:
                 assert len(note_on) == 1, paths[0]
             # Run/error must never inject audio calls. Explicit test scripts

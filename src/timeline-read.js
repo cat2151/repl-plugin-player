@@ -3,8 +3,10 @@
 (() => ({
     state: uapmd.timeline.getState(),
     sampleRate: uapmd.sequencer.getSampleRate(),
+    scopeTarget: repl.scope.target(),
     tracks: uapmd.sequencer.getTrackInfos().map((track, trackIndex) => ({
         trackIndex,
+        trackId: track.trackId,
         nodes: track.nodes,
         clips: uapmd.timeline.getClips(track.trackId).map(clip => ({
             ...clip,

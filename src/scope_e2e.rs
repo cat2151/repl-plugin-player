@@ -22,7 +22,17 @@ fn wait_note(app: &mut Control, note: u8) -> Result<(), String> {
             }
         }
         if Instant::now() >= deadline {
-            return Err(format!("No scope waveform for note {note}"));
+            let frame = app.scope().and_then(|s| s.display());
+            return Err(format!(
+                "No scope waveform for note {note}; latest {:?}",
+                frame.map(|f| (
+                    f.note,
+                    f.samples
+                        .iter()
+                        .flatten()
+                        .fold(0.0_f32, |p, v| p.max(v.abs()))
+                ))
+            ));
         }
         std::thread::sleep(Duration::from_millis(10));
     }
@@ -86,6 +96,40 @@ pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
         "signal_check",
         serde_json::json!({"startupInstrument":first, "replacedInstrument":replaced}),
     )?;
+    Ok(())
+}
+
+pub fn run_load(app: &mut Control, script: &Script) -> Result<(), String> {
+    scope_on_instrument(app, script)?;
+    let archive = std::env::temp_dir().join(format!("repl-scope-{}.uapmdz", std::process::id()));
+    app.eval(
+        &format!(
+            "globalThis.scopeProjectPath = {}",
+            serde_json::json!(archive)
+        ),
+        "E2E: scope archive path",
+    )?;
+    let loaded = app.run(script.cell("reload project")?);
+    let _ = std::fs::remove_file(&archive);
+    let _ = std::fs::remove_file(format!("{}.empty.uapmdz", archive.display()));
+    loaded?;
+    scope_on_instrument(app, script)?;
+    app.run(script.cell("play loaded project")?)?;
+    wait_held(app, 67)?;
+    wait_note(app, 67)?;
+    stop(app)?;
+    app.run(script.cell("freeze loaded project")?)?;
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while app.eval(script.cell("frozen ready")?, "E2E: freeze ready")? != "true" {
+        app.poll()?;
+        if Instant::now() >= deadline {
+            return Err("Scope track freeze timed out".into());
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    app.run(script.cell("play loaded project")?)?;
+    wait_held(app, 69)?;
+    wait_note(app, 69)?;
     Ok(())
 }
 

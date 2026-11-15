@@ -25,6 +25,7 @@ fn rust_case(case: &str) -> bool {
         "timeline-view",
         "piano-roll-cut-paste",
         "scope",
+        "scope-load",
         "partial-run",
         "snippets",
         "tutorials",
@@ -40,7 +41,7 @@ fn rust_case(case: &str) -> bool {
 
 pub fn run(case: &str) -> Result<(), String> {
     let rust = rust_case(case);
-    let script = Script::load(case, !rust)?;
+    let script = Script::load(if case == "scope-load" { "scope" } else { case }, !rust)?;
     let log = log::Log::new()?;
     let mut app = Control::open(log, &script.init)?;
     let mut result = (|| {
@@ -70,6 +71,7 @@ pub fn run(case: &str) -> Result<(), String> {
             "timeline-view" => crate::timeline::regression::run(app, &script),
             "piano-roll-cut-paste" => crate::piano_roll_e2e::run(app, &script),
             "scope" => crate::scope_e2e::run(app, &script),
+            "scope-load" => crate::scope_e2e::run_load(app, &script),
             "partial-run" => crate::execution_e2e::run(app, &script),
             "snippets" => crate::snippets_e2e::run(app, &script),
             "tutorials" => crate::tutorials_e2e::run(app, &script),

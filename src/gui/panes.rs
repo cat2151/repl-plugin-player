@@ -93,7 +93,46 @@ impl Editor {
         }
     }
 
-    pub(super) fn scope_pane(&self, ui: &mut egui::Ui) {
+    pub(super) fn scope_pane(&mut self, ui: &mut egui::Ui) {
+        let ready = self
+            .control
+            .as_ref()
+            .is_some_and(|control| control.ready && !control.stopping)
+            && !self.snippet_execution.is_pending();
+        let mut cycle = None;
+        ui.horizontal(|ui| {
+            for (symbol, command) in [
+                ("◀", "include('builtin/lib/scope.js').cycleTrack(-1)"),
+                ("▶", "include('builtin/lib/scope.js').cycleTrack(1)"),
+            ] {
+                if ui.add_enabled(ready, egui::Button::new(symbol)).clicked() {
+                    cycle = Some(command);
+                }
+            }
+            if let Some(snapshot) = &self.timeline {
+                if let Some(target) = snapshot["scopeTarget"].as_i64().filter(|id| *id >= 0) {
+                    if let Some(track) = snapshot["tracks"].as_array().and_then(|tracks| {
+                        tracks.iter().find(|track| {
+                            track["nodes"].as_array().is_some_and(|nodes| {
+                                nodes
+                                    .iter()
+                                    .any(|node| node["instanceId"].as_i64() == Some(target))
+                            })
+                        })
+                    }) {
+                        if let Some(id) = track["trackId"].as_str() {
+                            ui.monospace(id);
+                        }
+                    }
+                }
+            }
+        });
+        if let (Some(command), Some(control)) = (cycle, &mut self.control) {
+            if let Err(error) = control.eval(command, "Scope track") {
+                self.error("Scope track", error);
+            }
+            self.refresh_timeline();
+        }
         crate::scope_ui::show(ui, self.control.as_ref().and_then(Control::scope));
     }
 
