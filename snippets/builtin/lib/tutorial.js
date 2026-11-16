@@ -18,8 +18,10 @@
         uapmd.audio.setEngineEnabled(false);
         waitFor(() => !repl.audio.isProcessing());
     }
-    function reset() {
+    function reset({keepEvolution=false}={}) {
+        if (!keepEvolution) include('builtin/lib/evolution-mode.js').end();
         stop();
+        repl.sequence.clear();
         repl.timeline.clearLoop();
         // Discard script references to the previous clips.
         delete globalThis.loopParts;
@@ -75,6 +77,7 @@
     }
 
     function replaceMml(trackIndex, mml, bpm) {
+        repl.sequence.clear();
         // @text demo_replace
         for (var clip of uapmd.timeline.getClips(tracks.idOf(trackIndex))) {
             if (!uapmd.timeline.removeClip(clip.clipId))

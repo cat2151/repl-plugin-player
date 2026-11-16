@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = [".", "extensions/*", "extension-api"]
-default-members = [".", "extensions/*"]
+members = [".", "extensions/*", "extension-api", "sequence-dll"]
+default-members = [".", "extensions/*", "sequence-dll"]
 
 [workspace.dependencies]
 eframe = { version = "=0.37.0", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "glow", "links", "system_fonts", "wayland", "web_screen_reader", "x11"] }
@@ -21,6 +21,12 @@ serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 syntect = { version = "=5.3.0", default-features = false, features = ["default-syntaxes", "regex-fancy"] }
 cmrt-chord = { path = "../clap-mml-render-tui/chord" }
+cmrt-patches = { path = "../clap-mml-render-tui/patches" }
+cmrt-tui-core = { path = "../clap-mml-render-tui/tui-core" }
 mmlabc-to-smf = { git = "https://github.com/cat2151/mmlabc-to-smf-rust.git", features = ["parser"], default-features = false }
 toml = "=1.2.1"
 egui_tiles = "=0.18.0"
+
+[patch."https://github.com/cat2151/clap-mml-play-server"]
+cmrt-core = { path = "../clap-mml-play-server/core-lib" }
+cmrt-server-config = { path = "../clap-mml-play-server/server-config" }

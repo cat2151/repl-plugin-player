@@ -141,5 +141,21 @@ pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
     {
         return Err("Previously used loop track vanished when its notes were cleared".into());
     }
+    app.run(script.cell("live sequence projection")?)?;
+    let view = super::projection::project(&app.read_timeline()?);
+    let clip = view.tracks[0].clips.last().ok_or("Missing live sequence")?;
+    if clip.notes.iter().map(|n| n.pitch).collect::<Vec<_>>() != [60, 64, 62, 65] {
+        return Err("Live JavaScript sequence numbers did not reach the timeline".into());
+    }
+    app.run(script.cell("update live sequence projection")?)?;
+    let view = super::projection::project(&app.read_timeline()?);
+    let clip = view.tracks[0]
+        .clips
+        .last()
+        .ok_or("Missing updated sequence")?;
+    if clip.notes.iter().map(|n| n.pitch).collect::<Vec<_>>() != [67, 71, 69, 72] {
+        return Err("Live sequence update did not reach the timeline".into());
+    }
+    app.run(script.cell("clear live sequence projection")?)?;
     Ok(())
 }

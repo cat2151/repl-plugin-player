@@ -159,9 +159,10 @@ impl Capture {
     }
 }
 
-// Called only by the selected plugin's processing thread. Native close waits for
+// Called only by the selected plugin, or the final realtime master tap. Native close waits for
 // processing to finish before Bridge releases this producer. Buffers are planar,
 // remain valid for this call, and contain `frames` f32/f64 samples per channel.
+// Format flags: bit 0 selects f64, bit 1 selects the unpitched master mix.
 pub type Callback = unsafe extern "C" fn(
     *mut Capture,
     *const std::ffi::c_void,
@@ -187,8 +188,13 @@ pub unsafe extern "C" fn record_native(
         unsafe { std::slice::from_raw_parts(events, words) }
     };
     let capture = unsafe { &mut *capture };
+    let note = if doubles & 2 != 0 { 129 } else { 128 };
+    if (capture.note == 129) != (note == 129) {
+        capture.reset();
+        capture.note = note;
+    }
     capture.record_samples(frames, events, |i| unsafe {
-        if doubles != 0 {
+        if doubles & 1 != 0 {
             [
                 *left.cast::<f64>().add(i) as f32,
                 *right.cast::<f64>().add(i) as f32,
@@ -202,6 +208,33 @@ pub unsafe extern "C" fn record_native(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn master_capture_needs_no_midi_and_switching_back_requires_a_new_note() {
+        let queue = Queue::new();
+        let mut capture = Capture::new(Arc::clone(&queue));
+        capture.record(&[0.1], 1, &[0x20903c64]);
+        let pitched = queue.pop().unwrap();
+        let audio = [0.25_f32, -0.5];
+        for flags in [2, 0] {
+            unsafe {
+                record_native(
+                    &mut capture,
+                    audio.as_ptr().cast(),
+                    audio.as_ptr().cast(),
+                    2,
+                    flags,
+                    std::ptr::null(),
+                    0,
+                );
+            }
+            let first = queue.pop().unwrap();
+            let second = queue.pop().unwrap();
+            assert_eq!(first.note, if flags == 2 { 129 } else { 128 });
+            assert_eq!(first.stereo, [0.25, 0.25]);
+            assert_eq!(second.stereo, [-0.5, -0.5]);
+            assert!(first.epoch > pitched.epoch);
+        }
+    }
     #[test]
     fn note_changes_at_timestamp_and_note_off_retains_tail_reference() {
         let queue = Queue::new();

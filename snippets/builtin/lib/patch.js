@@ -34,18 +34,19 @@
         }
     }
 
-    // The track's instrument becomes the plugin: the instrument itself when it
-    // is that plugin already, else a new instance in its place, also on the scope.
-    function instrumentFor(trackIndex, entry) {
+    function instrumentFor(trackIndex, entry, reuseOnly = false) {
         const before = plugins.connectionsOf(trackIndex);
         const previous = plugins.instrumentOn(trackIndex);
         const node = tracks.info(trackIndex).nodes.find(n => n.instanceId === previous);
         if (node && node.format === entry.format && node.pluginId === entry.pluginId) return previous;
+        if (reuseOnly) throw new Error('Prepared plugin instance is missing: ' + entry.pluginId);
         const next = uapmd.instancing.create(entry.format, entry.pluginId, tracks.idOf(trackIndex));
         if (next < 0) throw new Error(repl.text('snippet_02'));
         wireInstead(trackIndex, previous, next, before);
         if (previous >= 0 && repl.scope.target() === previous) repl.scope.setTarget(next);
-        if (previous >= 0) uapmd.instance(previous).dispose();
+        if (previous >= 0) {
+            uapmd.instance(previous).dispose();
+        }
         return next;
     }
 
@@ -53,11 +54,14 @@
         const trackIndex = options.track;
         if (!Number.isInteger(trackIndex)) throw new Error(repl.text('patch_use_02'));
         tracks.info(trackIndex);
-        const entry = plugins.catalogEntry(options.format, options.plugin);
+        const entry = options.pluginId === undefined ? plugins.catalogEntry(options.format, options.plugin)
+            : Array.from({length:uapmd.catalog.getCount()}, (_, i) => uapmd.catalog.getPluginAt(i))
+                .find(p => p.format === options.format && p.pluginId === options.pluginId);
+        if (!entry) throw new Error('Catalog plugin is not installed: ' + options.pluginId);
         // A patch that cannot be restored fails before any instance is created.
         var file = options.patch === undefined ? undefined
             : repl.patchState({format:entry.format, pluginId:entry.pluginId, patch:options.patch});
-        const instanceId = instrumentFor(trackIndex, entry);
+        const instanceId = instrumentFor(trackIndex, entry, options.reuseOnly);
         if (file !== undefined) loadState(instanceId, file);
         uapmd.sequencer.setPluginBypassed(instanceId, false);
         return {instanceId, trackIndex};
@@ -109,5 +113,32 @@
         });
     }
 
-    return {use, browse, change};
+    function random({tracks: targets, role, kind, attempts = 8, exclude = [], instruments, load = use}) {
+        if (!Number.isInteger(attempts) || attempts < 1) throw new Error('Invalid patch selection attempts');
+        if (new Set(targets).size !== targets.length) throw new Error('Expected distinct tracks');
+        targets.forEach(track => tracks.info(track));
+        const installed = Array.from({length:uapmd.catalog.getCount()}, (_, i) => uapmd.catalog.getPluginAt(i));
+        const candidates = repl.patchCatalog({role, kind}).filter(p => installed.some(
+            plugin => plugin.format === p.format && plugin.pluginId === p.pluginId)
+            && (!instruments || instruments.some(plugin => plugin.format === p.format && plugin.pluginId === p.pluginId)));
+        const key = p => JSON.stringify([p.format,p.pluginId,p.patch]);
+        const excluded = new Set(exclude.map(key));
+        const unique = [...new Map(candidates.filter(p => !excluded.has(key(p))).map(p => [key(p),p])).values()];
+        if (unique.length < targets.length) throw new Error('Not enough distinct catalog patches for ' + role + ' / ' + kind);
+        return targets.map(track => {
+            const failures = [];
+            for (let attempt = 0; attempt < attempts && unique.length; ++attempt) {
+                const selected = unique.splice(Math.floor(Math.random() * unique.length), 1)[0];
+                try { return {...selected, ...load({...selected, track})}; }
+                catch (error) {
+                    const failure = selected.plugin + ' / ' + selected.patch + ': ' + error.message;
+                    failures.push(failure);
+                    console.log(failure);
+                }
+            }
+            throw new Error('Could not load ' + role + ' / ' + kind + ':\n' + failures.join('\n'));
+        });
+    }
+
+    return {use, browse, change, random};
 })();

@@ -49,3 +49,12 @@ uapmd.sequencer.startPlayback();
 // %% stop restored loop
 uapmd.sequencer.stopPlayback();
 uapmd.audio.setEngineEnabled(false);
+
+// %% live sequence projection
+repl.sequence.set({track:0,steps:[[60,64],[62,65]],beats:4,bpm:120,gate:1,velocity:18000});
+
+// %% update live sequence projection
+repl.sequence.set({track:0,steps:[[67,71],[69,72]],beats:4,bpm:120,gate:1,velocity:18000});
+
+// %% clear live sequence projection
+repl.sequence.clear();

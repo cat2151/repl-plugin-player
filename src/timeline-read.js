@@ -4,6 +4,7 @@
     state: uapmd.timeline.getState(),
     sampleRate: uapmd.sequencer.getSampleRate(),
     scopeTarget: repl.scope.target(),
+    sequence: repl.sequence.view || null,
     tracks: uapmd.sequencer.getTrackInfos().map((track, trackIndex) => ({
         trackIndex,
         trackId: track.trackId,

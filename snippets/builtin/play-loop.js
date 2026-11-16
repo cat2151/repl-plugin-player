@@ -1,5 +1,6 @@
 // %% @text name_play_loop
 {
+    include('builtin/lib/evolution-mode.js').end();
     const clips = uapmd.sequencer.getTrackInfos()
         .flatMap(track => uapmd.timeline.getClips(track.trackId));
     const endSamples = clips.reduce((end, clip) =>

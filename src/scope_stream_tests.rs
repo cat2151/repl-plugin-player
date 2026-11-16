@@ -1,6 +1,21 @@
 use super::*;
 use crate::scope::Display;
 
+#[test]
+fn master_mix_uses_fixed_windows_and_resets_on_source_change() {
+    let mut stream = Stream::new(8_000);
+    feed(&mut stream, 1, 69, 0, 10);
+    let frames = feed(&mut stream, 2, 129, 10, 320);
+    assert_eq!(frames.len(), 2);
+    for frame in frames {
+        assert_eq!(frame.samples.len(), 160);
+        assert_eq!(frame.shift_samples, 0.0);
+        assert!(frame.samples.iter().any(|s| s[0] != 0.0));
+    }
+    let width = crate::scope_trigger::width(8_000, 69);
+    assert_eq!(feed(&mut stream, 3, 69, 330, width).len(), 1);
+}
+
 fn feed(stream: &mut Stream, epoch: u64, note: u8, serial: u64, count: usize) -> Vec<Display> {
     (0..count)
         .filter_map(|i| {

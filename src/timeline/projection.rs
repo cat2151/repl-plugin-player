@@ -167,6 +167,46 @@ pub fn project(snapshot: &Value) -> View {
                 }),
             });
         }
+        let sequence = &snapshot["sequence"];
+        // JavaScript numbers arrive as JSON floats, including integral indices.
+        if sequence["track"]
+            .as_f64()
+            .is_some_and(|target| Some(target) == track["trackIndex"].as_f64())
+            || array(&sequence["tracks"]).iter().any(|target| {
+                target
+                    .as_f64()
+                    .is_some_and(|target| Some(target) == track["trackIndex"].as_f64())
+            })
+        {
+            let beats = number(&sequence["beats"], 1.0);
+            let steps = array(&sequence["steps"]);
+            clips.push(Clip {
+                label: String::new(),
+                start: 0.0,
+                end: beats * steps.len() as f64,
+                muted: false,
+                notes: steps
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(i, step)| {
+                        array(step).iter().filter_map(move |pitch| {
+                            let pitch = pitch
+                                .as_f64()
+                                .filter(|p| (0.0..128.0).contains(p) && p.fract() == 0.0)?
+                                as u8;
+                            Some(Note {
+                                pitch,
+                                group: 0,
+                                channel: 0,
+                                start: i as f64 * beats,
+                                end: (i as f64 + number(&sequence["gate"], 1.0)) * beats,
+                                open: false,
+                            })
+                        })
+                    })
+                    .collect(),
+            });
+        }
         let plugins: Vec<String> = array(&track["nodes"])
             .iter()
             .filter(|n| n["isPlugin"] == true)

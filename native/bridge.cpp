@@ -19,6 +19,8 @@
 #include "project_api.hpp"
 #include "scope_capture.hpp"
 #include "freeze_transport.hpp"
+#include "live_sequence_api.hpp"
+#include "evolution_api.hpp"
 
 using ScopeCallback = void (*)(void*, const void*, const void*, size_t, uint32_t, const uint32_t*, size_t);
 static ScopeCallback scope_callback{};
@@ -36,14 +38,19 @@ void repl_capture_scope(int32_t instance, uapmd::AudioProcessContext& process) n
     const void* right = channels > 1
         ? (doubles ? static_cast<const void*>(process.getDoubleOutBuffer(0, 1)) : process.getFloatOutBuffer(0, 1)) : left;
     if (!left || !right) return;
-    scope_callback(scope_context, left, right, static_cast<size_t>(process.frameCount()), doubles ? 1u : 0u,
-        static_cast<const uint32_t*>(process.eventIn().getMessages()), process.eventIn().position() / sizeof(uint32_t));
+    const bool master = instance == -2;
+    scope_callback(scope_context, left, right, static_cast<size_t>(process.frameCount()),
+        (doubles ? 1u : 0u) | (master ? 2u : 0u),
+        master ? nullptr : static_cast<const uint32_t*>(process.eventIn().getMessages()),
+        master ? 0 : process.eventIn().position() / sizeof(uint32_t));
 }
 
 using ScriptApi = const char* (*)(const char*);
 static ScriptApi script_api{};
 static const char* control_api(const char* request);
 static bool session_open();
+static const char* sequence_api(const char* request);
+static const char* evolution_api(const char* request);
 extern "C" const char* repl_localized(const char* key) {
     static thread_local std::string value;
     value = key; // Standalone native harnesses register the same catalog callback.
@@ -59,6 +66,8 @@ extern "C" __declspec(dllexport) void repl_set_script_api(ScriptApi callback) {
 }
 // Called synchronously on the control thread; copy the Rust-owned reply immediately.
 extern "C" const char* repl_script_api(const char* request) {
+    if (auto result = evolution_api(request)) return result;
+    if (auto result = sequence_api(request)) return result;
     if (auto result = timeline_api(request, session_open())) return result;
     if (auto result = control_api(request)) return result;
     if (auto result = piano_roll_api(request, session_open())) return result;
@@ -104,6 +113,8 @@ struct Session {
     std::string preparation_error;
     std::vector<uint8_t> state;
     std::unique_ptr<uapmd_app::UapmdJSRuntime> runtime;
+    std::array<std::unique_ptr<LiveSequence>, 8> sequences;
+    std::unique_ptr<Evolution> evolution;
     PluginWindows windows;
     Session(const std::string& data) {
         previous = remidy::getEventLoop();
@@ -188,6 +199,9 @@ struct Session {
             }
             remidy::EventLoop::processQueuedTasks();
             windows.closeAll();
+            while (evolution && evolution->busy()) remidy::EventLoop::processQueuedTasks();
+            evolution.reset();
+            for (auto& sequence : sequences) sequence.reset();
             if (runtime) {
                 runtime->unregisterAllParameterListeners();
                 runtime->unregisterAllMetadataListeners();
@@ -204,6 +218,91 @@ std::string reply;
 }
 static bool session_open() { return session != nullptr; }
 
+static const char* evolution_api(const char* request) {
+    static thread_local std::string reply;
+    try {
+        const auto args=choc::json::parse(request);
+        const auto api=args["api"].get<std::string>();
+        if (api!="evolution.open" && api!="evolution.close" && api!="evolution.load" && api!="evolution.status") return nullptr;
+        if (!session) throw std::runtime_error("No session");
+        auto value=choc::value::Value();
+        if (api=="evolution.open") {
+            if (session->evolution) throw std::runtime_error("Evolution is already open");
+            auto& engine=*uapmd_app::AppModel::instance().sequencer().engine();
+            const auto selected=args["tracks"];
+            if (!selected.isArray() || selected.size()!=2) throw std::runtime_error("Expected two evolution tracks");
+            std::array<int32_t,2> tracks;
+            for (uint32_t i=0;i<2;++i) {
+                tracks[i]=selected[i].get<int32_t>();
+                if (selected[i].get<double>()!=tracks[i] || tracks[i]<0 || static_cast<size_t>(tracks[i])>=engine.tracks().size() ||
+                    !engine.tracks()[tracks[i]]->orderedInstanceIds().empty())
+                    throw std::runtime_error("Evolution requires empty dedicated tracks");
+            }
+            if (tracks[1]<=tracks[0]) throw std::runtime_error("Expected ordered distinct tracks");
+            session->evolution=std::make_unique<Evolution>(engine,tracks,args["holdMs"].get<double>()/1000,args["fadeMs"].get<double>()/1000);
+        } else if (api=="evolution.close") {
+            if (session->evolution && session->evolution->busy()) throw std::runtime_error("Evolution is still loading");
+            session->evolution.reset();
+        } else {
+            if (!session->evolution) throw std::runtime_error("Evolution is not open");
+            if (api=="evolution.status") value=session->evolution->status();
+            else {
+                const auto slot=args["slot"].get<int32_t>();
+                if (slot<0 || slot>1 || args["slot"].get<double>()!=slot) throw std::runtime_error("Invalid evolution slot");
+                session->evolution->load(slot,args["format"].get<std::string>(),args["pluginId"].get<std::string>(),args["file"].get<std::string>());
+            }
+        }
+        reply=choc::json::toString(choc::value::createObject("","ok",true,"value",value));
+    } catch (const std::exception& error) {
+        reply=choc::json::toString(choc::value::createObject("","ok",false,"error",error.what()));
+    }
+    return reply.c_str();
+}
+
+static const char* sequence_api(const char* request) {
+    static thread_local std::string result;
+    try {
+        const auto args = choc::json::parse(request);
+        const auto api = args["api"].get<std::string>();
+        if (api != "sequence.set" && api != "sequence.clear" && api != "sequence.pending") return nullptr;
+        if (!session) throw std::runtime_error("No session");
+        if (session->evolution) {
+            if (api == "sequence.set") session->evolution->set(args);
+            const auto value = api == "sequence.pending" ? choc::value::createBool(session->evolution->pending()) : choc::value::Value();
+            result = choc::json::toString(choc::value::createObject("", "ok",true,"value",value));
+            return result.c_str();
+        }
+        if (api == "sequence.set") {
+            const auto tracks = args["tracks"];
+            if (!tracks.isVoid() && (!tracks.isArray() || tracks.size() < 1 || tracks.size() > session->sequences.size()))
+                throw std::runtime_error("Expected one to eight distinct sequence tracks");
+            const auto count = tracks.isArray() ? tracks.size() : 1u;
+            for (uint32_t i = 0; i < count; ++i)
+                for (uint32_t j = 0; j < i; ++j)
+                    if (tracks[i] == tracks[j]) throw std::runtime_error("Expected distinct sequence tracks");
+            for (uint32_t i = 0; i < session->sequences.size(); ++i) {
+                if (i < count) {
+                    if (!session->sequences[i]) session->sequences[i] = std::make_unique<LiveSequence>(
+                        *uapmd_app::AppModel::instance().sequencer().engine());
+                    auto plan = args;
+                    if (tracks.isArray()) plan.setMember("track", tracks[i]);
+                    session->sequences[i]->set(plan);
+                } else if (session->sequences[i]) session->sequences[i]->clear();
+            }
+        }
+        else if (api == "sequence.clear") {
+            for (auto& sequence : session->sequences) if (sequence) sequence->clear();
+        }
+        const auto pending = std::any_of(session->sequences.begin(), session->sequences.end(),
+            [](const auto& sequence) { return sequence && sequence->pending(); });
+        result = choc::json::toString(choc::value::createObject("", "ok", true, "value",
+            api == "sequence.pending" ? choc::value::createBool(pending) : choc::value::Value()));
+    } catch (const std::exception& error) {
+        result = choc::json::toString(choc::value::createObject("", "ok", false, "error", error.what()));
+    }
+    return result.c_str();
+}
+
 // The master output's latest 256 samples (before soft clip / device mute) and the engine counters.
 static void observe_into(choc::value::Value& result) {
     auto& model = uapmd_app::AppModel::instance();
@@ -211,7 +310,16 @@ static void observe_into(choc::value::Value& result) {
     engine->audioPerformanceCounter().setEnabled(true);
     const auto counters = engine->audioPerformanceCounter().counters();
     uapmd::AudioProcessingTiming timing;
-    while (engine->audioPerformanceCounter().tryDequeue(timing)) {}
+    auto processingTimings = choc::value::createEmptyArray();
+    while (engine->audioPerformanceCounter().tryDequeue(timing)) {
+        if (timing.offline) continue;
+        processingTimings.addArrayElement(choc::value::createObject("", "stage", static_cast<int32_t>(timing.stage),
+            "track", timing.track_index, "durationMs", static_cast<double>(timing.duration_nanoseconds) / 1e6,
+            "frames", timing.frame_count, "sampleRate", timing.sample_rate,
+            "block", static_cast<int64_t>(timing.block_number)));
+    }
+    result.setMember("processingTimings", processingTimings);
+    result.setMember("evolutionBoostedThreads",static_cast<int32_t>(repl_evolution::api ? repl_evolution::api->boosted_threads() : 0));
     std::array<float, 256> samples{};
     auto* analyser = engine->outputAnalyser();
     if (!analyser) throw std::runtime_error(repl_localized("native_08"));
@@ -227,6 +335,8 @@ static void observe_into(choc::value::Value& result) {
     result.setMember("peak", finite ? peak : 0.0);
     result.setMember("rms", finite ? std::sqrt(energy / samples.size()) : 0.0);
     result.setMember("blocks", static_cast<int64_t>(counters.realtime_blocks));
+    result.setMember("playbackPositionSamples", engine->playbackPosition());
+    result.setMember("renderPositionSamples", engine->renderPlaybackPosition());
     result.setMember("engineEnabled", model.isAudioEngineEnabled());
     result.setMember("dispatcherPlaying", model.sequencer().isAudioPlaying() != 0);
     result.setMember("observationPoint", "master graph before soft clip / device mute; history snapshot");
@@ -293,7 +403,7 @@ static const char* control_api(const char* request) {
             api != "test.observe" && api != "test.notes" &&
             api != "test.loopTrace" &&
             api != "test.pluginState" && api != "track.volume" &&
-            api != "track.setVolume") return nullptr;
+            api != "track.setVolume" && api != "track.setDormant") return nullptr;
         if (!session) throw std::runtime_error("No session");
         auto value = choc::value::Value();
         if (api == "test.observe") {
@@ -306,12 +416,28 @@ static const char* control_api(const char* request) {
             loop_trace_into(value, args["start"].getWithDefault<bool>(false));
         } else if (api == "test.pluginState") {
             value = choc::value::createString(session->readState(args["instanceId"].get<int32_t>()));
-        } else if (api == "track.volume" || api == "track.setVolume") {
+        } else if (api == "track.volume" || api == "track.setVolume" || api == "track.setDormant") {
             // The same track gain as uapmd's track volume slider.
             auto& engine = *uapmd_app::AppModel::instance().sequencer().engine();
             const auto trackIndex = args["trackIndex"].get<int32_t>();
             if (trackIndex < 0 || static_cast<size_t>(trackIndex) >= engine.tracks().size())
                 throw std::runtime_error("Invalid track index");
+            if (api == "track.setDormant") {
+                const auto dormant = args["dormant"].get<bool>();
+                if (engine.tracks()[trackIndex]->trackGain() != 0)
+                    throw std::runtime_error("Dormancy changes require a silent track");
+                // CLAP stopProcessing resets held voices/tails. Exclude callbacks
+                // while clearing queued host input/output and changing bypass.
+                engine.resetTrackProcessingState(trackIndex, dormant, [&] {
+                    for (auto& sequence : session->sequences)
+                        if (sequence) sequence->synthReset(trackIndex);
+                    for (const auto& [id, node] : engine.tracks()[trackIndex]->graph().plugins()) {
+                        node->clearQueuedEvents();
+                        node->requestStopFlush();
+                        node->bypassed(dormant);
+                    }
+                });
+            }
             if (api == "track.setVolume") {
                 if (!engine.commands().setTrackGain(trackIndex, args["volume"].get<double>()))
                     throw std::runtime_error("Track volume was not changed");

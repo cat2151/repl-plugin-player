@@ -41,6 +41,8 @@ include("${REPL_PROJECT_ROOT}/patches/uapmd/frozen-loop-playback/apply.cmake")
 include("${REPL_PROJECT_ROOT}/patches/uapmd/freeze-monitor/apply.cmake")
 include("${REPL_PROJECT_ROOT}/patches/uapmd/freeze-project-load/apply.cmake")
 include("${REPL_PROJECT_ROOT}/patches/uapmd/frozen-loop-prefetch/apply.cmake")
+include("${REPL_PROJECT_ROOT}/patches/uapmd/evolution-graphs/apply.cmake")
+include("${REPL_PROJECT_ROOT}/patches/uapmd/master-scope/apply.cmake")
 add_library(repl_bridge SHARED bridge.cpp)
 target_link_libraries(repl_bridge PRIVATE uapmd-app-model remidy-gui ResEmbed)
 execute_process(COMMAND git -C "${UAPMD_DIR}" rev-parse HEAD

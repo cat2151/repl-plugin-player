@@ -30,6 +30,8 @@ const BUILTIN_ORDER: &[&str] = &[
     "try-mml",
     "try-loop-mml",
     "try-loop-mml-multi-track",
+    "try-evolving-sequencer",
+    "try-end-evolve",
     "try-instrument",
     "try-parameter-ui",
     "try-patch-browse",

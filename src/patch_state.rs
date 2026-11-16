@@ -36,6 +36,18 @@ pub fn file(format: &str, plugin_id: &str, patch: &str) -> Result<PathBuf, Strin
     restore(&player, &reference)
 }
 
+pub fn background_file(format: &str, plugin_id: &str, patch: &str) -> Result<PathBuf, String> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let player = crate::patch_browser::player()?;
+    let reference = lookup(&player, format, plugin_id, patch)?;
+    let name = format!(
+        "patch-job-{}-{}.bin",
+        std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+    restore_named(&player, &reference, &name)
+}
+
 /// The effect preset file `path` as a cell names it: relative to the one root
 /// of the plugin holding it, its parts joined by `/`. A plugin whose presets
 /// are built in names its root itself, which is empty.
@@ -130,11 +142,17 @@ pub fn effect_reference(
 
 /// The player's state for `reference`, written to this process's state file.
 fn restore(player: &Path, reference: &PatchReference) -> Result<PathBuf, String> {
+    restore_named(
+        player,
+        reference,
+        &format!("patch-state-{}.bin", std::process::id()),
+    )
+}
+
+fn restore_named(player: &Path, reference: &PatchReference, name: &str) -> Result<PathBuf, String> {
     let input = serde_json::to_vec(reference).map_err(|e| e.to_string())?;
     let state = ask(player, "--restore-state", &input)?;
-    let path = std::env::temp_dir()
-        .join("repl-plugin-player")
-        .join(format!("patch-state-{}.bin", std::process::id()));
+    let path = std::env::temp_dir().join("repl-plugin-player").join(name);
     std::fs::create_dir_all(path.parent().expect("joined")).map_err(|e| e.to_string())?;
     std::fs::write(&path, state).map_err(|e| e.to_string())?;
     Ok(path)

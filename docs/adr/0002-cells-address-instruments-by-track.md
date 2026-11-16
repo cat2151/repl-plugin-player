@@ -10,8 +10,8 @@
 - snippet の cell は `{ ... }` で包み、track 番号は `const loopTrack = 0;` のような説明変数を経由して lib に渡す。
 - uapmd の JS API は track・clip を文字列の `trackId`・`clipId` で受ける。track 番号から `trackId` への変換は `lib/tracks.js` の1関数（`getTrackInfos()` の並びの位置で引き、無ければ `patch_browse_00` のエラー）だけが持ち、lib は uapmd を呼ぶ直前に変換する。cell と lib の引数は track 番号のまま。repl 独自の API（`repl.track.*`・timeline view の読取）も track 番号のまま。
 - track の楽器は `lib/plugins.js` の `instrumentOn(track)` で引く。`ensureDagGraph(track)` の後の track graph の接続で、graphInput からの event 接続の先の plugin、無ければ audio 接続の先の plugin。
-- `lib/patch.js` の `use({format, plugin, patch, track})` は track を必須にする。track の楽器が同じ plugin ならそれに state を読ませる。別の plugin なら同じ track に新しい instance を作り、古い楽器が持っていた接続を新しい楽器へ付け替えて張り直し（graph のつなぎ直し）、古い楽器を dispose する。
-- 起動時の楽器は init script `snippets/builtin/init.js` が `ensureInstrument(startTrack, {format, plugin})`（track に楽器が無いときだけ作る）で用意する。Rust は scan の後にこの cell を1回評価する。plugin 名は init script に書き、lib には書かない。
+- `lib/patch.js` の `use({format, plugin, patch, track})` は track を必須にする。同じ track の楽器が選ばれたpluginなら再利用し、別pluginなら作って接続を付け替え、古い楽器を破棄する。
+- 起動時の楽器は init script `snippets/builtin/init.js` とlibが用意する。Rust は scan の後にこの cell を1回評価する。plugin 名とtrackの配置は init script に書き、lib には書かない。evolveの専用音源は通常起動には含めず、[0017](0017-evolving-loop-prototypes.md)のmode内で準備する。
 - Rust は init script の失敗のうち、`catalogEntry` が `missingPlugin` を付けたエラーだけを「plugin が catalog に無い」として full scan・install 画面へ回す。他の失敗はそのままエラーにする。
 - scope（オシロスコープ）の対象は script から `repl.scope.setTarget` で付け替える。`ensureInstrument` は対象が無いとき作った楽器を、`use` は古い楽器が対象なら新しい楽器を対象にする。
 
@@ -22,6 +22,7 @@
 - cell は1つずつ別の global script として評価される。トップレベルの `const`/`let` は同じ cell の再実行で `redeclaration` エラーになり、`var` は global に漏れて cell 同士を暗黙につなぐ。ブロックで包めば `const` のまま再実行でき、最後の式の値も結果に出る。
 - `getTrackInfos()` の `nodes` は nodeId の文字列順で信号の順ではなく、catalog に instrument か effect かの区別も無い。JS から信号の順を読めるのは track graph の接続だけ。
 - graph のつなぎ直しは effect を作り直さないので、effect の残響が切れず、effect の state を保存する必要も無い。実測で、つなぎ直した後の新しい楽器に effect が掛かった。
+- evolveの無音対策として音源を保持する要件を通常の音源交換にも広げたが、userの目的はevolveのsnippetを使ったときだけ専用modeに入ることだった。通常の交換は古い楽器を破棄する方針へ戻し、演奏中の再利用はevolveの専用trackに閉じる。
 - 起動時の楽器も「track N の楽器」として同じ lib で扱え、起動直後に音が出る UX を保てる。
 - どれが楽器かは native では決まらない。scope の対象を script から付け替えれば、楽器の決め方を JS と native の2か所に持たずに済む。
 - `missingPlugin` の目印で分岐すると、Rust は plugin 名もエラー文言も知らずに済み、init script の書き間違いで full scan や install 画面へ誘導しない。
@@ -40,8 +41,8 @@
 ## 結果
 
 - `instrumentOn` を通った track は DAG の graph になる（変換しただけでは音も `create` の挙動も変わらない）。`use` で別 plugin に置き換えた track は接続を編集した custom topology になる。custom topology の track に lib を通さず `create(track)` した plugin はどこにもつながらない。lib の `prepareEffect` と browse の試聴は、作った plugin がつながっていなければ自分でつなぐ。
-- 置き換えの間、uapmd は plugin の作成・削除のために transport を止め、loop の音が一瞬（約150ms）途切れる。
+- 別pluginへの置き換えでは、生成・破棄によるtransportの停止で約150ms途切れる。同じ楽器の音色だけを変えるときは生成・破棄をしない。
 - 古い楽器の出力のうち bus 0 以外は引き継がない。新しい楽器にその bus があるとは限らないため。
 - effect だけの track では、先頭の effect を楽器として扱う。
 - init script の plugin が catalog に無いときの install 画面と CLI のエラーは Surge XT 用の文言のまま。
-- E2E は init script の内容（plugin・音色）を前提にせず、テスト専用の init cell で起動する。本物の init script は「track 0 に楽器が1つでき、音符が届き、scope の対象になる」だけを見る。
+- E2E は init script の内容（plugin・音色）を前提にせず、テスト専用の init cell で起動する。本物の init script と編集可能なsnippetは、実行がエラーにならないことを確認する。

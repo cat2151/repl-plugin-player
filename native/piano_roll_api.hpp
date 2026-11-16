@@ -21,6 +21,20 @@ inline void commit(uapmd_app::PianoRollSession& session) {
         throw std::runtime_error("Piano roll edit was not saved: " + session.edit_error);
 }
 
+// Only pitches change; UAPMD retains identities, timing and other note data.
+inline void revoice(const std::string& clipId, const choc::value::ValueView& pitches) {
+    auto session = open(clipId);
+    if (!pitches.isArray() || pitches.size() != session->editNotes.size())
+        throw std::runtime_error("Expected one pitch per clip note");
+    for (uint32_t i = 0; i < pitches.size(); ++i) {
+        const auto pitch = pitches[i].get<int32_t>();
+        if (pitch < 0 || pitch > 127 || pitches[i].get<double>() != pitch)
+            throw std::runtime_error("Invalid MIDI pitch");
+    }
+    for (uint32_t i = 0; i < pitches.size(); ++i) session->editNotes[i].note = pitches[i].get<int32_t>();
+    commit(*session);
+}
+
 // Selects the notes `noteIds` names and cuts them; returns how many were cut.
 inline int64_t cut(const std::string& clipId, const choc::value::ValueView& noteIds) {
     auto session = open(clipId);
@@ -71,7 +85,8 @@ static const char* piano_roll_api(const char* request, bool open) {
         if (!open) throw std::runtime_error("No session");
         const auto clipId = args["clipId"].get<std::string>();
         auto value = choc::value::Value();
-        if (api == "pianoRoll.cut") value = choc::value::createInt64(repl_piano_roll::cut(clipId, args["noteIds"]));
+        if (api == "pianoRoll.revoice") repl_piano_roll::revoice(clipId, args["pitches"]);
+        else if (api == "pianoRoll.cut") value = choc::value::createInt64(repl_piano_roll::cut(clipId, args["noteIds"]));
         else if (api == "pianoRoll.paste") value = repl_piano_roll::paste(clipId, args["tick"].get<int64_t>());
         else throw std::runtime_error("Unknown piano roll API");
         result = choc::json::toString(choc::value::createObject("", "ok", true, "value", value));

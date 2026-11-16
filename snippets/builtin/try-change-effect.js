@@ -1,5 +1,6 @@
 // %% @text name_try_change_effect
 {
+    include('builtin/lib/evolution-mode.js').end();
     const loopTrack = 0;
     const {prepareLoopPart, playLoopParts} = include('builtin/lib/loop.js');
     const loopNext = Object.assign({}, globalThis.loopParts || {});

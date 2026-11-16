@@ -30,7 +30,7 @@ impl Stream {
         if self
             .serial
             .is_some_and(|s| sample.serial != s.wrapping_add(1))
-            || sample.note >= 128
+            || sample.note == 128
         {
             self.samples.clear();
             self.boundary.reset();
@@ -38,7 +38,7 @@ impl Stream {
             self.key = None;
         }
         self.serial = Some(sample.serial);
-        if sample.note >= 128 {
+        if sample.note == 128 {
             return None;
         }
         let key = (sample.epoch, sample.note);
@@ -46,10 +46,25 @@ impl Stream {
             self.samples.clear();
             self.key = Some(key);
         }
-        let width = scope_trigger::width(self.rate, sample.note);
+        // Master mixes have no single reference pitch: show 20 ms without
+        // running the pitched similarity/drift analysis.
+        let master = sample.note == 129;
+        let width = if master {
+            (self.rate as usize / 50).max(2)
+        } else {
+            scope_trigger::width(self.rate, sample.note)
+        };
         self.samples.push(sample.stereo);
         if self.samples.len() < width {
             return None;
+        }
+        if master {
+            return Some(Display {
+                samples: std::mem::take(&mut self.samples),
+                note: sample.note,
+                sample_rate: self.rate,
+                shift_samples: 0.0,
+            });
         }
         let record = self.boundary.observe(
             sample.epoch,

@@ -11,6 +11,43 @@ fn snapshot() -> Value {
 }
 
 #[test]
+fn live_sequence_projects_one_pass_without_creating_document_clips() {
+    let mut data = snapshot();
+    data["sequence"] = json!({"track":0.0,"steps":[[48.0,52.0],[50,53]],"beats":4,"gate":1});
+    let view = project(&data);
+    let clip = &view.tracks[0].clips[0];
+    assert_eq!((clip.start, clip.end), (0.0, 8.0));
+    assert_eq!(
+        clip.notes
+            .iter()
+            .map(|n| (n.pitch, n.start, n.end))
+            .collect::<Vec<_>>(),
+        [
+            (48, 0.0, 4.0),
+            (52, 0.0, 4.0),
+            (50, 4.0, 8.0),
+            (53, 4.0, 8.0)
+        ]
+    );
+    assert!(data["tracks"][0]["clips"].as_array().unwrap().is_empty());
+    data["sequence"] = Value::Null;
+    assert_eq!(project(&data).tracks.len(), 1);
+}
+
+#[test]
+fn paired_sequence_projects_on_each_selected_track() {
+    let mut data = snapshot();
+    data["sequence"] = json!({"tracks":[0.0,3.0],"steps":[[48,52],[50,53]],"beats":4,"gate":1});
+    let view = project(&data);
+    assert_eq!(view.tracks.len(), 2);
+    for track in &view.tracks {
+        assert_eq!(track.clips.len(), 1);
+        assert_eq!(track.clips[0].notes.len(), 4);
+        assert_eq!(track.clips[0].end, 8.0);
+    }
+}
+
+#[test]
 fn only_unused_bootstrap_tracks_are_hidden_and_identity_survives_reindexing() {
     let mut data = snapshot();
     let first = project(&data);

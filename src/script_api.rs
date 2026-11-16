@@ -11,6 +11,13 @@ use std::{
 
 thread_local! {
     static REPLY: RefCell<CString> = RefCell::new(CString::default());
+    static SEQUENCE_CHOOSE: std::cell::Cell<Option<repl_extension_api::sequence::Choose>> = const { std::cell::Cell::new(None) };
+}
+pub fn set_sequence_choose(choose: repl_extension_api::sequence::Choose) {
+    SEQUENCE_CHOOSE.set(Some(choose));
+}
+pub fn clear_sequence_choose() {
+    SEQUENCE_CHOOSE.set(None);
 }
 
 // The native caller copies this pointer before another call. No panic crosses FFI.
@@ -43,6 +50,10 @@ fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
 
 fn dispatch(input: &Value) -> Result<Value, String> {
     match argument(input, "api")? {
+        api if api.starts_with("patchJob.") => crate::patch_jobs::dispatch(api, input),
+        "patchCatalog" => {
+            crate::patch_catalog::list(argument(input, "role")?, argument(input, "kind")?)
+        }
         "snippet.source" => Ok(json!(
             crate::snippets::Library::default().source(argument(input, "name")?)?
         )),
@@ -59,6 +70,27 @@ fn dispatch(input: &Value) -> Result<Value, String> {
         "cmrt_chord.resolve_chord_or_mml" => {
             let resolved = cmrt_chord::resolve_chord_or_mml(argument(input, "input")?);
             Ok(json!({"mml":resolved.mml,"from_chord":resolved.from_chord}))
+        }
+        "cmrt_chord.note_progression" => Ok(json!(cmrt_chord::note_progression(argument(
+            input, "input"
+        )?)?)),
+        "sequence.choose" => {
+            let candidates =
+                serde_json::from_value::<Vec<Vec<Vec<u8>>>>(input["candidates"].clone())
+                    .map_err(|e| e.to_string())?;
+            let previous = serde_json::from_value::<Vec<Vec<u8>>>(input["previous"].clone())
+                .map_err(|e| e.to_string())?;
+            let max = serde_json::from_value::<u8>(input["maxLeap"].clone())
+                .map_err(|e| e.to_string())?;
+            let pin = serde_json::from_value::<Option<usize>>(input["pin"].clone())
+                .map_err(|e| e.to_string())?;
+            SEQUENCE_CHOOSE
+                .get()
+                .ok_or("Rust sequence DLL is not loaded")?(
+                &candidates, &previous, max, pin
+            )
+            .map(|path| json!(path))
+            .ok_or_else(|| "No voicing satisfies the maximum leap".into())
         }
         "mmlabc_to_smf.mml_to_smf_bytes" => {
             let bytes = mmlabc_to_smf::mml_to_smf_bytes(argument(input, "mml")?)

@@ -99,6 +99,30 @@ pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
     Ok(())
 }
 
+pub fn run_master(app: &mut Control, script: &Script) -> Result<(), String> {
+    app.run(script.cell("play evolve master")?)?;
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        app.poll()?;
+        if app.scope().and_then(|s| s.display()).is_some_and(|frame| {
+            frame.note == 129
+                && frame.samples.len() == frame.sample_rate as usize / 50
+                && frame.samples.iter().flatten().all(|v| v.is_finite())
+                && frame.samples.iter().flatten().any(|v| v.abs() > 0.001)
+        }) {
+            app.log
+                .event("master_scope_verified", serde_json::json!({}))?;
+            break;
+        }
+        if Instant::now() >= deadline {
+            return Err("No final master scope waveform".into());
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    app.run(script.cell("restore scope")?)?;
+    Ok(())
+}
+
 pub fn run_load(app: &mut Control, script: &Script) -> Result<(), String> {
     scope_on_instrument(app, script)?;
     let archive = std::env::temp_dir().join(format!("repl-scope-{}.uapmdz", std::process::id()));

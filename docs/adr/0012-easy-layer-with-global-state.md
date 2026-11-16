@@ -8,7 +8,7 @@
 
 - snippet を2層に分ける。従来の層は ADR 0002 と AGENTS.md の snippets 節のまま（cell を `{ ... }` で包み、track は説明変数で渡し、「今の track」の global を作らない）。easy の層だけが global な関数を持つ。easy の層も track の状態は持たない。
 - easy の層は `lib/easy.js` の `create({format, plugin, patch, bpm})` が返す `play`・`playLoop`・`reset`・`changePatch`・`changeEffect` を、前置きの cell（`easy-init`）が `Object.assign(globalThis, ...)` で global に出し、続けて `reset()` する。plugin・patch・tempo の既定値は前置きの cell に書き、lib には書かない。
-- `reset()` は全 track の再生・loop・clip・plugin（楽器も effect も）を消す。track の数は変えない。
+- `reset()` は全 track の再生・loop・clip・plugin（楽器も effect も）を消す。通常trackの数は変えない。evolve modeがあれば先に終了し、その専用trackも片付ける（[0017](0017-evolving-loop-prototypes.md)）。
 - `play(...inputs)`・`playLoop(...inputs)` は i 番目の引数を track i に置き、引数に入らない track は鳴らさない。 両者は同じ標準clipを使い、反復はtransport設定とする（[0014](0014-loop-in-project-archive.md)）。`changePatch(track)`/`changeEffect(track)` は引数の track（0 が先頭）で browser を開く。楽器の無い track にだけ `ensureInstrument` で前置きの plugin を patch つきで置き、楽器のある track の patch には触れない。
 - patch・effect の browser は `repl.patchBrowser.open({track, kind, cell})` の1本で開く。`kind` は `'patch'`（既定）か `'effect'`、`cell:false` なら最後の選択を cell にしない。`lib/patch.js` と `lib/effect.js` の `change({track, cell})` は選ぶたびに track へ適用し、閉じても戻さない。easy の `changePatch`/`changeEffect` は `cell:false` で呼ぶ。
 - snippet は `easy-init` が関数を定義して関数名の文字列を返し、`easy-play` などの `easy-<機能>` が関数呼び出し1行の cell 1つで1機能ずつ使い方を見せる。`easy-<機能>` は冪等にせず、上に並ぶ snippet を先に選んだ状態（定義済み・loop 中）に頼る。一覧は `easy-`、`try-`、その他の順に並ぶ。
@@ -22,6 +22,7 @@
 - track の状態を持たないのは、対象 track を状態で持ち `selectTrack` で変える形を検証した結果、そのほうが使いやすいと user が判断したから。
 - user が easy の層に求めたのは1行で済む短さで、`try-` の冪等性（何度選んでも同じ状態）とは両立しない。前提を作る cell を各 snippet に入れると1行でなくなるので、前提は一覧の並び順に持たせ、名前で `try-` と分けて規則を分ける。
 - easy を始めたら全部まっさらになる、が user の想定だった。`play` が楽器のある track の patch に触れないので、`changePatch` で選んだ patch は `reset` するまで残る。
+- evolve用音源の再利用を通常起動とeasy初期化へ広げた結果、起動時から8音源が存在し、resetでも残るようになった。userが求めたのはevolveのsnippet内だけのmodeだったため、この例外を撤回し、easyの初期化は従来どおり全pluginを消す。
 - 既定値を前置きの cell に書けば、AGENTS.md の「lib に plugin・tempo を決め打ちしない」を守ったまま、user が cell を直すだけで既定値を変えられる。
 - browser の開き方を `kind` と `cell` の引数にすれば、Rust 側は player への `Open` の種類と cell の有無を変えるだけで済み、適用の仕方（試聴して戻す・即座に変える・patch・effect）は lib に書ける。
 - player の `--patch-roots` は effect の plugin（Surge XT Effects・Dragonfly）の root も返し、`--restore-state` は effect の参照も state にする。root からの相対パスで書けば cell にマシン固有の絶対パスが入らない。
@@ -32,7 +33,7 @@
 - **`easy-<機能>` のそれぞれに定義の cell を入れる。** 単独で選んでも動くが、定義の cell が毎回貼られて記述量が増え、定義のたびに全部が reset される。関数名を console に出せるのも最後の値が定義の snippet だけになる。
 - **`try-easy-<機能>` の名前のまま冪等にする（`changePatch(0)` の前に `playLoop` の cell を足す）。** 1行でなくなり、user の求めた短さと逆になる。
 - **`try-easy` の名前のまま定義を残す。** `easy-` が `try-` より前に並ぶので、定義がそれを使う snippet より下に来る。
-- **初期化で plugin を残す。** user の想定（easy を始めたら patch は Init Saw、effect も消える）と違う。
+- **初期化で全 plugin を残す。** user の想定（easy を始めたら patch は Init Saw、effect も消える）と違う。evolve用音源を残す例外も、modeの外へ要件を広げたものとして撤回する。
 - **関数名を `init` にする。** `lib/tutorial.js` の `init(options)` と名前がかぶり、意味も違う。
 - **`var play = ...` を前置きの cell に直接書く。** 既定値の置き場所が global に別々に増える。closure に閉じれば global に出るのは関数名だけになる。
 - **init.js で easy の関数を起動時から生やす。** 前置きの cell を1回実行すれば済み、全 E2E の起動経路を変えずに済む。

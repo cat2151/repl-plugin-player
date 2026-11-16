@@ -1,5 +1,6 @@
 use crate::{bridge::Bridge, catalog_refresh::Refresh, log::Log, resources::Source};
 use serde_json::{json, Value};
+mod tasks;
 use std::{
     path::PathBuf,
     time::{Duration, Instant},
@@ -170,6 +171,9 @@ impl Control {
     pub fn poll(&mut self) -> Result<(), String> {
         let state = self.bridge.call(json!({"command":"poll"}))?;
         self.observe_refresh(&state)?;
+        if self.ready && !self.stopping {
+            self.poll_tasks()?;
+        }
         if self.missing_surge {
             return Ok(());
         }
@@ -350,6 +354,7 @@ impl Control {
         }
         self.stop("normal exit")?;
         let result = self.bridge.call(json!({"command":"close"}));
+        crate::patch_jobs::cleanup();
         self.closed = true;
         if self.gui_mode {
             crate::script_ui::enable(false);

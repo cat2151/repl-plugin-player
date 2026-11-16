@@ -55,7 +55,8 @@ globalThis.patchUse = (() => {
         assert(node, `Instance ${first.instanceId} is not on any track`);
         const onTrack = afterSecond.filter(n => n.trackIndex === track).length;
         assert(node.format === format && node.displayName === plugin && node.trackIndex === track
-            && first.trackIndex === track && onTrack === 1,
+            && first.trackIndex === track && onTrack === 1
+            && include('builtin/lib/plugins.js').instrumentOn(track)===first.instanceId,
             `Track ${track} is not one ${format} ${plugin}: ${JSON.stringify([first, afterSecond])}`);
         return {result:first, node, firstMs};
     }
@@ -98,6 +99,7 @@ globalThis.patchUse = (() => {
     const start = patchUse.instances();
     const surge = patchUse.restores('Surge XT', 'patches_factory/Basses/Attacky.fxp', track);
     const reused = surge.use.result.instanceId;
+    patchUse.firstSurgeId=reused;
     e2e.assert(surge.use.node.pluginId === 'org.surge-synth-team.surge-xt'
         && start.some(n => n.instanceId === reused),
         `CLAP use did not reuse the track's instrument: ${JSON.stringify([surge, start])}`);
@@ -111,6 +113,19 @@ globalThis.patchUse = (() => {
     e2e.assert(dexed.use.node.pluginId === 'com.digital-suburban.dexed',
         `Dexed did not replace the instrument: ${JSON.stringify(dexed)}`);
     dexed;
+}
+
+// %% ordinary switching back replaces the previous instrument without caching
+{
+    const synthTrack=0;
+    repl.processEvents();
+    const before=patchUse.instances();
+    const previous=include('builtin/lib/plugins.js').instrumentOn(synthTrack);
+    const selected=include('builtin/lib/patch.js').use({track:synthTrack,format:'CLAP',plugin:'Surge XT'});
+    repl.processEvents();
+    e2e.assert(selected.instanceId!==patchUse.firstSurgeId && patchUse.instances().length===before.length,
+        'Ordinary switching retained a disconnected instrument');
+    e2e.assert(!patchUse.instances().some(n=>n.instanceId===previous), 'Replaced instrument survived');
 }
 
 // %% a missing patch or plugin fails without touching instances

@@ -62,6 +62,7 @@
                 uapmd.timeline.removeClip(clipId);
             throw error;
         }
+        repl.sequence.clear();
         const previous = Object.values(globalThis.loopParts || {}).map(p => p.clipId);
         for (const track of uapmd.sequencer.getTrackInfos()) {
             for (const clip of uapmd.timeline.getClips(track.trackId)) {

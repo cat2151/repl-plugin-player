@@ -50,7 +50,9 @@
     function effectsOn(trackIndex) {
         const track = tracks.info(trackIndex);
         const instrument = instrumentOn(trackIndex);
-        return track.nodes.map(n => n.instanceId).filter(id => id >= 0 && id !== instrument);
+        const connections = connectionsOf(trackIndex);
+        return track.nodes.map(n => n.instanceId).filter(id => id >= 0 && id !== instrument
+            && connections.some(c=>c.source.instanceId===id || c.target.instanceId===id));
     }
 
     // A plugin created on a track whose connections were edited joins nothing
@@ -73,7 +75,10 @@
     function ensureInstrument(trackIndex, options) {
         const trackId = tracks.idOf(trackIndex);
         const present = instrumentOn(trackIndex);
-        if (present >= 0) return present;
+        if (present >= 0) {
+            if (repl.scope.target() === -1) repl.scope.setTarget(present);
+            return present;
+        }
         const entry = catalogEntry(options.format, options.plugin);
         // A patch that cannot be restored fails before any instance is created.
         const file = options.patch === undefined ? undefined
@@ -82,7 +87,7 @@
         if (created < 0) throw new Error(repl.text('snippet_02'));
         joinAlone(trackIndex, created);
         if (file !== undefined) loadState(created, file);
-        if (repl.scope.target() < 0) repl.scope.setTarget(created);
+        if (repl.scope.target() === -1) repl.scope.setTarget(created);
         return created;
     }
 

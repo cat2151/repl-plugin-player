@@ -18,6 +18,7 @@ globalThis.include = function(name) {
     }
 };
 globalThis.cmrt_chord = {
+    note_progression: function(input) { return __replCall('cmrt_chord.note_progression', {input:input}); },
     resolve_chord_or_mml: function(input) {
         return __replCall('cmrt_chord.resolve_chord_or_mml', {input: input});
     }
@@ -52,7 +53,40 @@ function getGeneratedMidiPath() {
 
 globalThis.repl = {text: function(key, values) { return __replCall('text', {key:key, values:values}); }};
 
-repl.processEvents = function() { return __replCall('control.processEvents', {}); };
+repl.processEvents = function() {
+    const result = __replCall('control.processEvents', {});
+    const errors = __replTick();
+    if (errors.length) throw new Error(errors.join('\n'));
+    return result;
+};
+// Control-thread updates only. Missed periods coalesce; audio has its own clock.
+(() => {
+    const tasks = new Map();
+    let ticking = false;
+    repl.tasks = {
+        every(id, milliseconds, callback) {
+            if (!Number.isFinite(milliseconds) || milliseconds < 10 || typeof callback !== 'function')
+                throw new Error('Expected a callback and period >= 10ms');
+            tasks.set(id, {milliseconds, callback, next:Date.now() + milliseconds});
+        },
+        cancel(id) { tasks.delete(id); }
+    };
+    globalThis.__replTick = () => {
+        if (ticking) return [];
+        ticking = true;
+        const errors = [];
+        try {
+            const now = Date.now();
+            for (const [id, task] of [...tasks]) {
+                if (tasks.get(id) !== task || now < task.next) continue;
+                task.next = now + task.milliseconds;
+                try { task.callback(); }
+                catch (error) { tasks.delete(id); errors.push(id + ': ' + String(error)); }
+            }
+        } finally { ticking = false; }
+        return errors;
+    };
+})();
 repl.audio = {isProcessing: function() { return __replCall('audio.isProcessing', {}); }};
 // UAPMD's self-contained archive, including MIDI and plugin states.
 repl.project = {
@@ -60,6 +94,8 @@ repl.project = {
     saveArchive: function(filepath) { return __replCall('project.saveArchive', {filepath:filepath}); },
     // Returns after UAPMD has restored the timeline and plugin states.
     load: function(filepath) {
+        include('builtin/lib/evolution-mode.js').end();
+        repl.sequence.clear();
         const previousId = repl.scope.target();
         const previousTracks = uapmd.sequencer.getTrackInfos();
         const previousTrack = previousId < 0 ? undefined
@@ -127,6 +163,10 @@ repl.test = {
 repl.patchState = function(options) {
     return __replCall('patchState', {format:options.format, pluginId:options.pluginId, patch:options.patch});
 };
+// cat-plugin-player's shared catalog and Role / Kind classifier. Selection stays in JS.
+repl.patchCatalog = function(options) {
+    return __replCall('patchCatalog', {role:options.role, kind:options.kind});
+};
 // The effect preset file `preset` (relative to the plugin's root) with the player's
 // selector `value` inside it, as a state file for `pluginId`.
 repl.effectState = function(options) {
@@ -162,10 +202,36 @@ repl.timeline = {
     clearLoop: function() { return __replCall('timeline.clearLoop', {}); }
 };
 
+// Experimental session-only native source. Owns the selected track's MIDI input.
+// set({track, steps:[[MIDI pitches]], bpm, beats, gate:(0,1], velocity:1..65535})
+// `tracks:[...]` sends the pattern to up to eight distinct tracks instead of `track`.
+// replaces the complete pattern at the next step; initial set starts at step 0.
+// Rust sequence.dll uses the audio sample clock; gate:1 ties common notes.
+// C++ only adapts UAPMD callbacks and UMP JR timestamps.
+// Stop stops playback; clear also removes the pattern. Not part of project save.
+repl.sequence = {
+    pending: function() { return __replCall('sequence.pending', {}); },
+    set: function(plan) {
+        const result = __replCall('sequence.set', plan);
+        repl.sequence.view = JSON.parse(JSON.stringify(plan));
+        return result;
+    },
+    clear: function() {
+        if (globalThis.evolution) globalThis.evolution.stop();
+        const result = __replCall('sequence.clear', {});
+        delete repl.sequence.view;
+        return result;
+    },
+    choose: function(candidates, previous, maxLeap, pin = null) {
+        return __replCall('sequence.choose', {candidates, previous, maxLeap, pin});
+    }
+};
+
 // Notes of the clip `clipId` (a uapmd.timeline clip id), named by getClipNotes' noteId.
 // cut returns how many notes it cut; paste puts the clipboard's first note at `tick`
 // and returns the pasted notes' noteIds. Both save the clip.
 repl.pianoRoll = {
+    revoice: function(clipId, pitches) { return __replCall('pianoRoll.revoice', {clipId, pitches}); },
     cut: function(clipId, noteIds) {
         if (!Array.isArray(noteIds) || !noteIds.every(id => typeof id === 'string')) throw new Error('Invalid note ids');
         return __replCall('pianoRoll.cut', {clipId:clipId, noteIds:noteIds});

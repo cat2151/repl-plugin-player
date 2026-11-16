@@ -23,6 +23,7 @@
 //! 8. Remove the junction with `rmdir extensions\<dll>`. A delete that removes contents
 //!    can delete the extension repo's files through the junction.
 use eframe::egui;
+pub mod sequence;
 
 /// What the app knows when it draws an extension's pane.
 pub struct Frame<'a> {
@@ -60,3 +61,4 @@ pub fn repl_egui_type_id() -> std::any::TypeId {
 
 /// The symbol name of [`repl_egui_type_id`].
 pub const EGUI_TYPE_ID: &[u8] = b"repl_egui_type_id\0";
+pub mod evolution;

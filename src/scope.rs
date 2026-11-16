@@ -67,7 +67,7 @@ fn run(queue: Arc<Queue>, shared: Arc<Shared>, sample_rate: u32) {
             let Some(sample) = queue.pop() else {
                 break;
             };
-            if serial.is_some_and(|s: u64| sample.serial != s.wrapping_add(1)) || sample.note >= 128
+            if serial.is_some_and(|s: u64| sample.serial != s.wrapping_add(1)) || sample.note == 128
             {
                 *shared.display.lock().unwrap() = None;
             }

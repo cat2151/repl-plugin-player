@@ -7,6 +7,7 @@ use std::{
 
 pub struct Bridge {
     _library: Library,
+    _sequence_library: Library,
     _control_thread: std::marker::PhantomData<std::rc::Rc<()>>,
     request: unsafe extern "C" fn(*const std::ffi::c_char) -> *const std::ffi::c_char,
     capture: Option<Box<crate::scope_capture::Capture>>,
@@ -25,8 +26,43 @@ impl Bridge {
                 .get::<unsafe extern "C" fn(Callback)>(b"repl_set_script_api\0")
                 .map_err(|e| e.to_string())?;
             set_api(crate::script_api::call);
+            let sequence_path = crate::resources::extension("sequence")?;
+            let sequence_library = Library::new(&sequence_path)
+                .map_err(|error| format!("{}: {error}", sequence_path.display()))?;
+            let api = sequence_library
+                .get::<unsafe extern "C" fn() -> *const repl_extension_api::sequence::Api>(
+                    b"repl_sequence_api\0",
+                )
+                .map_err(|e| e.to_string())?;
+            let connect = library
+                .get::<unsafe extern "C" fn(*const repl_extension_api::sequence::Api) -> bool>(
+                    b"repl_set_sequence_api\0",
+                )
+                .map_err(|e| e.to_string())?;
+            if !connect(api()) {
+                return Err("Sequence DLL ABI mismatch".into());
+            }
+            let evolution = sequence_library
+                .get::<unsafe extern "C" fn() -> *const repl_extension_api::evolution::Api>(
+                    b"repl_evolution_api\0",
+                )
+                .map_err(|e| e.to_string())?;
+            let connect_evolution = library
+                .get::<unsafe extern "C" fn(*const repl_extension_api::evolution::Api) -> bool>(
+                    b"repl_set_evolution_api\0",
+                )
+                .map_err(|e| e.to_string())?;
+            if !connect_evolution(evolution()) {
+                return Err("Evolution DLL ABI mismatch".into());
+            }
+            crate::script_api::set_sequence_choose(
+                *sequence_library
+                    .get::<repl_extension_api::sequence::Choose>(b"repl_sequence_choose\0")
+                    .map_err(|e| e.to_string())?,
+            );
             Ok(Self {
                 _library: library,
+                _sequence_library: sequence_library,
                 _control_thread: std::marker::PhantomData,
                 request,
                 capture: None,
@@ -81,5 +117,6 @@ impl Bridge {
 impl Drop for Bridge {
     fn drop(&mut self) {
         let _ = self.call(json!({"command":"close"}));
+        crate::script_api::clear_sequence_choose();
     }
 }

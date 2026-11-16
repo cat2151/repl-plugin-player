@@ -1,5 +1,6 @@
 // %% @text name_try_loop_mml_multi_track
 {
+    include('builtin/lib/evolution-mode.js').end();
     // Two independent tracks, one common cycle (120 BPM).
     const melodyTrack = 0;
     const bassTrack = 1;
