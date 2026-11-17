@@ -1,5 +1,58 @@
 use super::*;
 
+#[test]
+fn page_keys_move_ten_matching_rows_and_stop_at_edges() {
+    let ctx = egui::Context::default();
+    let mut panel = SnippetsPanel {
+        open: true,
+        focus_filter: true,
+        filter: "keep".into(),
+        entries: (0..50)
+            .map(|i| Snippet {
+                name: format!("{}-{i:02}", if i % 2 == 0 { "keep" } else { "drop" }),
+                group: "User",
+                code: "42".into(),
+            })
+            .collect(),
+        ..Default::default()
+    };
+    for _ in 0..3 {
+        show_frame(&ctx, &mut panel, vec![], true);
+    }
+    assert_eq!(panel.preview, Some(0));
+    for (key_code, expected) in [
+        (egui::Key::PageDown, 20),
+        (egui::Key::PageDown, 40),
+        (egui::Key::PageDown, 48),
+        (egui::Key::PageDown, 48),
+        (egui::Key::PageUp, 28),
+        (egui::Key::PageUp, 8),
+        (egui::Key::PageUp, 0),
+        (egui::Key::PageUp, 0),
+    ] {
+        assert!(show_frame(
+            &ctx,
+            &mut panel,
+            vec![key(key_code, egui::Modifiers::NONE)],
+            true,
+        )
+        .is_none());
+        assert_eq!(panel.preview, Some(expected));
+        assert_eq!(panel.filter, "keep");
+        assert!(ctx.memory(|memory| memory.has_focus(egui::Id::unique("snippet_filter"))));
+    }
+    show_frame(&ctx, &mut panel, vec![Event::Text("missing".into())], true);
+    for key_code in [egui::Key::PageDown, egui::Key::PageUp] {
+        show_frame(
+            &ctx,
+            &mut panel,
+            vec![key(key_code, egui::Modifiers::NONE)],
+            true,
+        );
+        assert_eq!(panel.preview, None);
+    }
+}
+
 fn show_frame(
     ctx: &egui::Context,
     panel: &mut SnippetsPanel,

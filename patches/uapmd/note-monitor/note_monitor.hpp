@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstddef>
 #include "event_trace.hpp"
+#include "../../../native/note_counter.hpp"
 
 // Every plugin node, observed at its graph input just before processing.
 // Each node publishes its held keys to its own slot; readers take the union.
@@ -27,11 +28,13 @@ inline std::array<uint64_t, 2> read() noexcept {
 }
 
 class InputState {
+    void* counter{};
     repl_trace::Input trace;
     uint64_t held[16][16][2]{};
     uint64_t last_low{}, last_high{};
     int slot = -1;
 public:
+    void enable_count(int32_t instance) { counter = repl_create_note_counter(instance); }
     InputState() noexcept {
         for (size_t i = 0; i < slot_count && slot < 0; ++i) {
             bool free = false;
@@ -39,6 +42,7 @@ public:
         }
     }
     ~InputState() {
+        repl_destroy_note_counter(counter);
         if (slot < 0) return;
         published[slot][0].store(0);
         published[slot][1].store(0);
@@ -47,6 +51,7 @@ public:
     InputState(const InputState&) = delete;
     InputState& operator=(const InputState&) = delete;
     void process(int32_t instance, const uint32_t* words, size_t count, uint32_t frames = 0) noexcept {
+        repl_process_note_counter(counter, words, count);
         trace.process(instance, words, count, frames);
         if (slot < 0 || count == 0) return;
         // UMP message lengths, including utility, SysEx and stream messages.

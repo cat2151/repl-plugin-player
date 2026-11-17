@@ -5,6 +5,13 @@ UAPMD `4ec5c3b1c30130fdd3b7d4b375082273247e561f` discards `bufferSize` in
 AppModel requests 1024 frames, but parallel track rendering gets only an 80% deadline
 of 256 frames (4.267 ms at 48 kHz). Overruns silence output until workers finish.
 
+`MiniAudioIODevice::reconfigure` also always starts the device after reinitializing it.
+When the audio engine is disabled, `RealtimeSequencer::reconfigureAudioDevice` does not
+restart it, but the device runs anyway. `setEngineEnabled(false)` then never stops it
+because the plugins were already stopped, so a script waiting for `!repl.audio.isProcessing()`
+times out (e.g. `try-evolving-sequencer` after `set-buffer-multiplier`). The patch restarts
+the device only when it was running before reconfiguring.
+
 The generated source passes the requested size through the existing preferred-size
 member before reconfigure and uses it both for the device period and context allocation.
 A zero request retains the upstream 256-frame fallback. It does not change worker
@@ -17,7 +24,8 @@ Fresh checkouts and existing caches follow the same path. Source anchor mismatch
 missing CMake target entries stop configuration with the patch, file, condition,
 upstream revision and this document. Inspect upstream changes before updating anchors;
 do not bypass the check. Remove the include and this directory after verifying upstream
-honors bufferSize through device initialization and context allocation.
+honors bufferSize through device initialization and context allocation, and keeps a
+stopped device stopped across reconfigure.
 
 Run `python patches/uapmd/device-buffer-size/test_generate.py` and the normal
 `python scripts/build.py`. Then run

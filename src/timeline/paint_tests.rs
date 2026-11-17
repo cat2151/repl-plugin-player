@@ -7,6 +7,7 @@ fn fixture() -> View {
             id: "fixture".into(),
             index: 0,
             plugins: vec!["Instrument".into()],
+            plugins_serial: true,
             low: 58,
             high: 73,
             clips: vec![Clip {
@@ -45,6 +46,38 @@ fn rectangles(shape: &egui::Shape, fill: Color32, output: &mut Vec<Rect>) {
         egui::Shape::Rect(rect) if rect.fill == fill => output.push(rect.rect),
         egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| rectangles(s, fill, output)),
         _ => {}
+    }
+}
+
+#[test]
+fn header_uses_arrows_only_for_serial_connections() {
+    fn texts(shape: &egui::Shape, output: &mut Vec<String>) {
+        match shape {
+            egui::Shape::Text(text) => output.push(text.galley.text().to_owned()),
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| texts(s, output)),
+            _ => {}
+        }
+    }
+    for (serial, expected) in [
+        (true, "Track 0 · Instrument → Effect"),
+        (false, "Track 0 · Instrument, Effect"),
+    ] {
+        let ctx = egui::Context::default();
+        let mut view = fixture();
+        view.tracks[0].plugins = vec!["Instrument".into(), "Effect".into()];
+        view.tracks[0].plugins_serial = serial;
+        let mut labels = Vec::new();
+        for _ in 0..2 {
+            let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                egui::CentralPanel::default().show(ui, |ui| show(ui, &view));
+            });
+            labels.clear();
+            for shape in &output.shapes {
+                texts(&shape.shape, &mut labels);
+            }
+            output.drop_without_applying_deltas();
+        }
+        assert!(labels.iter().any(|label| label == expected), "{labels:?}");
     }
 }
 

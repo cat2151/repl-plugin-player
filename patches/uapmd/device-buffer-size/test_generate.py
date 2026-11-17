@@ -13,6 +13,14 @@ class GenerateTests(unittest.TestCase):
         self.assertIn("config.periodSizeInFrames = preferred_callback_frames_ > 0 ? preferred_callback_frames_ : 256;", patched)
         self.assertIn("data.configureMainBus(device->capture.channels, device->playback.channels, config.periodSizeInFrames);", patched)
 
+    def test_reconfigure_restarts_only_a_running_device(self):
+        patched = transform(SOURCE.read_text(encoding="utf-8"))
+        body = patched[patched.index("bool uapmd::MiniAudioIODevice::reconfigure("):]
+        body = body[:body.index("\n}\n")]
+        self.assertIn("const bool wasPlaying = isPlaying();", body)
+        self.assertIn("    if (wasPlaying)\n        start();", body)
+        self.assertNotIn("\n    start();", body)
+
     def test_upstream_change_or_double_application_fails(self):
         source = SOURCE.read_text(encoding="utf-8")
         for changed in (source.replace("    (void) bufferSize;", ""), source + "    (void) bufferSize;", transform(source)):

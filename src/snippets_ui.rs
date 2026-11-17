@@ -142,14 +142,16 @@ impl SnippetsPanel {
         chosen
     }
 
-    /// Arrow keys in the focused filter move the preview through the matching
+    /// Arrow and page keys in the focused filter move the preview through matching
     /// rows; Enter inserts and runs it. Consumed before the filter's TextEdit
     /// would move its cursor or drop focus.
     fn keyboard(&mut self, ctx: &egui::Context, ready: bool) -> Option<Snippet> {
-        let (up, down, enter) = ctx.input_mut(|input| {
+        let (up, down, page_up, page_down, enter) = ctx.input_mut(|input| {
             (
                 input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
                 input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
+                input.consume_key(egui::Modifiers::NONE, egui::Key::PageUp),
+                input.consume_key(egui::Modifiers::NONE, egui::Key::PageDown),
                 input.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
             )
         });
@@ -157,15 +159,17 @@ impl SnippetsPanel {
         let visible: Vec<usize> = (0..self.entries.len())
             .filter(|&i| self.search.matches(&self.entries[i]))
             .collect();
-        if up || down {
+        if up || down || page_up || page_down {
+            let forward = down || page_down;
+            let step = if page_up || page_down { 10 } else { 1 };
             let position = self
                 .preview
                 .and_then(|index| visible.iter().position(|&i| i == index));
-            let next = match (position, down) {
+            let next = match (position, forward) {
                 (None, true) => visible.first(),
                 (None, false) => visible.last(),
-                (Some(p), true) => visible.get(p + 1).or(visible.get(p)),
-                (Some(p), false) => visible.get(p.saturating_sub(1)),
+                (Some(p), true) => visible.get((p + step).min(visible.len() - 1)),
+                (Some(p), false) => visible.get(p.saturating_sub(step)),
             };
             if let Some(&index) = next {
                 self.preview = Some(index);

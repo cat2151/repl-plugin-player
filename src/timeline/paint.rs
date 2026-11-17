@@ -93,7 +93,8 @@ pub fn show(ui: &mut egui::Ui, view: &View) {
                 let name = if track.plugins.is_empty() {
                     format!("Track {}", track.index)
                 } else {
-                    format!("Track {} · {}", track.index, track.plugins.join(" → "))
+                    let separator = if track.plugins_serial { " → " } else { ", " };
+                    format!("Track {} · {}", track.index, track.plugins.join(separator))
                 };
                 painter.text(
                     header.left_center() + egui::vec2(4.0, 0.0),

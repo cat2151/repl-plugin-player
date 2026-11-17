@@ -21,6 +21,22 @@
 #include "freeze_transport.hpp"
 #include "live_sequence_api.hpp"
 #include "evolution_api.hpp"
+#include "note_counter.hpp"
+
+static void* (*note_create)(int32_t){};
+static void (*note_destroy)(void*){};
+static void (*note_process)(void*, const uint32_t*, size_t){};
+static uint64_t (*note_read)(const int32_t*, const uint32_t*, size_t){};
+extern "C" __declspec(dllexport) void repl_set_note_counter(
+    void* (*create)(int32_t), void (*destroy)(void*), void (*process)(void*, const uint32_t*, size_t), uint64_t (*read)(const int32_t*, const uint32_t*, size_t)) {
+    note_create = create; note_destroy = destroy; note_process = process;
+    note_read = read;
+}
+void* repl_create_note_counter(int32_t instance) { return note_create ? note_create(instance) : nullptr; }
+void repl_destroy_note_counter(void* state) { if (note_destroy) note_destroy(state); }
+void repl_process_note_counter(void* state, const uint32_t* words, size_t count) {
+    if (note_process) note_process(state, words, count);
+}
 
 using ScopeCallback = void (*)(void*, const void*, const void*, size_t, uint32_t, const uint32_t*, size_t);
 static ScopeCallback scope_callback{};
@@ -319,6 +335,33 @@ static void observe_into(choc::value::Value& result) {
             "block", static_cast<int64_t>(timing.block_number)));
     }
     result.setMember("processingTimings", processingTimings);
+    result.setMember("deadlineMisses", static_cast<int64_t>(counters.deadline_misses));
+    result.setMember("droppedTimings", static_cast<int64_t>(counters.dropped_records));
+    std::vector<int32_t> noteInputs;
+    std::vector<uint32_t> noteCapabilities;
+    for (auto* track : engine->tracks()) {
+        auto& graph = track->graph();
+        auto* editable = graph.getExtension<uapmd_graph::GraphConnectionExtension>();
+        const auto connections = editable ? editable->connections() : std::vector<uapmd_graph::AudioPluginGraphConnection>{};
+        bool precedingAudio = false;
+        for (const auto id : track->orderedInstanceIds()) {
+            auto* node = graph.getPluginNode(id);
+            auto* buses = node ? node->audioBuses() : nullptr;
+            if (!buses) continue;
+            bool upstreamAudio = precedingAudio;
+            if (editable) upstreamAudio = std::any_of(connections.begin(), connections.end(), [&](const auto& edge) {
+                return edge.bus_type == uapmd_graph::AudioPluginGraphBusType::Audio &&
+                    edge.source.type == uapmd_graph::AudioPluginGraphEndpointType::Plugin &&
+                    edge.target.type == uapmd_graph::AudioPluginGraphEndpointType::Plugin &&
+                    (edge.target.node_id.empty() ? edge.target.instance_id == id : edge.target.node_id == node->nodeId());
+            });
+            noteInputs.push_back(id);
+            noteCapabilities.push_back((buses->hasEventInputs() ? 1u : 0u) |
+                (!buses->audioOutputBuses().empty() ? 2u : 0u) | (upstreamAudio ? 4u : 0u));
+            precedingAudio |= !buses->audioOutputBuses().empty();
+        }
+    }
+    result.setMember("noteCount", static_cast<int64_t>(note_read && model.sequencer().isAudioPlaying() ? note_read(noteInputs.data(), noteCapabilities.data(), noteInputs.size()) : 0));
     result.setMember("evolutionBoostedThreads",static_cast<int32_t>(repl_evolution::api ? repl_evolution::api->boosted_threads() : 0));
     std::array<float, 256> samples{};
     auto* analyser = engine->outputAnalyser();

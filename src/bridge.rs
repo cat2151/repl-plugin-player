@@ -26,9 +26,31 @@ impl Bridge {
                 .get::<unsafe extern "C" fn(Callback)>(b"repl_set_script_api\0")
                 .map_err(|e| e.to_string())?;
             set_api(crate::script_api::call);
+            let register_notes = library
+                .get::<unsafe extern "C" fn(
+                    unsafe extern "C" fn(i32) -> *mut std::ffi::c_void,
+                    unsafe extern "C" fn(*mut std::ffi::c_void),
+                    unsafe extern "C" fn(*mut std::ffi::c_void, *const u32, usize),
+                    unsafe extern "C" fn(*const i32, *const u32, usize) -> u64,
+                )>(b"repl_set_note_counter\0")
+                .map_err(|e| e.to_string())?;
             let sequence_path = crate::resources::extension("sequence")?;
             let sequence_library = Library::new(&sequence_path)
                 .map_err(|error| format!("{}: {error}", sequence_path.display()))?;
+            register_notes(
+                *sequence_library
+                    .get(b"repl_note_counter_create\0")
+                    .map_err(|e| e.to_string())?,
+                *sequence_library
+                    .get(b"repl_note_counter_destroy\0")
+                    .map_err(|e| e.to_string())?,
+                *sequence_library
+                    .get(b"repl_note_counter_process\0")
+                    .map_err(|e| e.to_string())?,
+                *sequence_library
+                    .get(b"repl_note_counter_read\0")
+                    .map_err(|e| e.to_string())?,
+            );
             let api = sequence_library
                 .get::<unsafe extern "C" fn() -> *const repl_extension_api::sequence::Api>(
                     b"repl_sequence_api\0",

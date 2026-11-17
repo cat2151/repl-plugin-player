@@ -17,6 +17,7 @@ mod help;
 mod logs;
 mod panes;
 mod patch;
+mod performance;
 mod player_download;
 mod settings;
 mod snippet_execution;
@@ -74,6 +75,7 @@ struct Editor {
     error: String,
     log_path: PathBuf,
     last_observation: Instant,
+    performance: performance::Performance,
     timeline: Option<serde_json::Value>,
     timeline_error: String,
     startup: startup::Startup,
@@ -112,6 +114,7 @@ impl Editor {
             error: String::new(),
             log_path: PathBuf::new(),
             last_observation: Instant::now(),
+            performance: performance::Performance::default(),
             timeline: None,
             timeline_error: String::new(),
             startup: startup::Startup::default(),
@@ -218,7 +221,9 @@ impl eframe::App for Editor {
         if self.last_observation.elapsed() >= Duration::from_millis(100) {
             if let Some(control) = &mut self.control {
                 if control.ready {
-                    let _ = control.observe("GUI periodic; history snapshot");
+                    if let Ok(observation) = control.observe("GUI periodic; history snapshot") {
+                        self.performance.record(&observation, Instant::now());
+                    }
                 }
             }
             if self.control.as_ref().is_some_and(|control| control.ready) {

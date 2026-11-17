@@ -10,6 +10,12 @@ trackInputEvents直後へ読み取り専用の観測を追加しています。�
 group/channel/pitch別の固定長状態をaudio threadで更新し、lock-free snapshotでGUIへ渡します。
 linear/full DAG両方と直接送信・タイムライン再生を同じ位置で観測できます。
 
+execution欄の負荷診断には、MIDI入力と音声出力があり、他ノードから音声接続がない各インスタンスについて、
+未解除Note Onの総数も必要です。同じ音高の別インスタンスと重ね掛けを潰さず数えます。
+ノード構築時にRust DLLの固定長状態を確保し、同じ入力観測点からUMPを渡してatomic残数を更新します。
+音源内部voice数ではなく入力イベントの対応数で、Note OffとCC120/123により減算します。
+この総数には鍵盤の64slot制約はありません。音声入力付きsynthも、上流の音声接続がなければ対象です。
+
 オシロスコープのため、同じ生成コピーでprocessAudio成功直後の第1busのL/Rと
 入力UMPをアプリの有界queueへ渡すcallbackも追加しています。MIDI音高に合った
 連続窓の表示が目的であり、256sampleのmono出力履歴だけでは代替できません。

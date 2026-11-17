@@ -56,6 +56,7 @@ const BUILTIN_ORDER: &[&str] = &[
     "freeze-track",
     "unfreeze-track",
     "show-track-freeze",
+    "set-buffer-multiplier",
 ];
 
 #[derive(Clone, Debug)]

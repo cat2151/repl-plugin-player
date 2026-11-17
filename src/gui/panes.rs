@@ -74,12 +74,16 @@ impl Editor {
         if !self.error.is_empty() {
             ui.colored_label(egui::Color32::LIGHT_RED, &self.error);
         }
-        if let Some(control) = &self.control {
-            ui.label(crate::i18n::render(
-                "f001",
-                &[("arg0", format!("{}", control.log.execution))],
-            ));
-        }
+        egui::ScrollArea::horizontal()
+            .id_salt("execution_meters")
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    self.performance.show(
+                        ui,
+                        self.control.as_ref().map(|control| control.log.execution),
+                    );
+                });
+            });
         if !self.timeline_error.is_empty() {
             ui.colored_label(
                 egui::Color32::LIGHT_RED,

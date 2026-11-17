@@ -9,6 +9,7 @@
         trackIndex,
         trackId: track.trackId,
         nodes: track.nodes,
+        graph: uapmd.timeline.getTrackGraphConnections(track.trackId),
         clips: uapmd.timeline.getClips(track.trackId).map(clip => ({
             ...clip,
             midi: clip.clipType === 'midi'

@@ -4,6 +4,7 @@ mod activity;
 mod clock;
 mod evolution;
 mod evolution_ffi;
+mod note_count;
 #[cfg(test)]
 mod tests;
 mod thread_priority;

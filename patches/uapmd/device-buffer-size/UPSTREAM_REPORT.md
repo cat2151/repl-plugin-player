@@ -16,3 +16,13 @@ Honoring 1024 frames was verified on the real device, but is not a complete drop
 fix for this project: a sforzando + TONE3000 track still occasionally exceeds the
 80% worker budget. A 2048-frame diagnostic also eventually exceeded that budget.
 The local patch retains upstream's deadline policy and default requested size.
+
+## Reconfigure starts a stopped device
+
+`MiniAudioIODevice::reconfigure` always calls `start()` after reinitializing.
+`RealtimeSequencer::reconfigureAudioDevice` restarts audio only when it was playing,
+but with the audio engine disabled the device starts anyway. AppModel's
+`setAudioEngineEnabled(false)` then cannot stop it, because `completeAudioEngineShutdown`
+returns early once plugin processing is already stopped; `isAudioPlaying()` stays true.
+Please restart the device in `reconfigure` only when it was running before. Our local
+workaround does exactly that.

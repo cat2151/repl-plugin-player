@@ -22,6 +22,7 @@ pub struct Track {
     pub id: String,
     pub index: usize,
     pub plugins: Vec<String>,
+    pub plugins_serial: bool,
     pub clips: Vec<Clip>,
     pub low: u8,
     pub high: u8,
@@ -207,11 +208,7 @@ pub fn project(snapshot: &Value) -> View {
                     .collect(),
             });
         }
-        let plugins: Vec<String> = array(&track["nodes"])
-            .iter()
-            .filter(|n| n["isPlugin"] == true)
-            .filter_map(|n| n["displayName"].as_str().map(String::from))
-            .collect();
+        let (plugins, plugins_serial) = super::plugin_names::project(track);
         if info["implicit"] == true && clips.is_empty() && plugins.is_empty() {
             continue;
         }
@@ -238,6 +235,7 @@ pub fn project(snapshot: &Value) -> View {
             id: id.into(),
             index: number(&track["trackIndex"], index as f64) as usize,
             plugins,
+            plugins_serial,
             clips,
             low,
             high,

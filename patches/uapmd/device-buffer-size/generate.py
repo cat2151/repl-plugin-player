@@ -10,6 +10,12 @@ REPLACEMENTS = (
     ("    deviceConfig.periodSizeInFrames = config.periodSizeInFrames;",
      "    config.periodSizeInFrames = preferred_callback_frames_ > 0 ? preferred_callback_frames_ : 256;\n"
      "    deviceConfig.periodSizeInFrames = config.periodSizeInFrames;"),
+    ("    // Stop the engine if it's running\n    if (isPlaying())\n        stop();\n",
+     "    // Stop the engine if it's running\n    const bool wasPlaying = isPlaying();\n    if (wasPlaying)\n        stop();\n"),
+    ("    // Always start after reinit: noAutoStart = MA_TRUE means ma_engine_init\n"
+     "    // never auto-starts, so we must call start() explicitly here.\n    start();\n",
+     "    // A stopped device stays stopped; the audio engine owns starting it.\n"
+     "    if (wasPlaying)\n        start();\n"),
 )
 
 

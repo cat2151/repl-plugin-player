@@ -1,5 +1,6 @@
 mod notes;
 mod paint;
+mod plugin_names;
 pub(crate) mod projection;
 pub(crate) mod regression;
 
