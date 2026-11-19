@@ -10,7 +10,7 @@ EXE = ROOT / "target/release/repl-plugin-player.exe"
 LOGS = Path(os.environ["LOCALAPPDATA"]) / "repl-plugin-player/logs"
 CASES = ["evolution-pool", "evolution", "evolve2-host", "evolve2-protocol", "evolve2", "evolve2-timbre", "live-sequence", "cold", "sample", "rerun", "stop", "close", "syntax", "missing",
          "close-preparing", "close-creating", "mutation-close", "scope-load", "scope-master",
-         "syntax-sustain", "runtime-error", "stop-run", "timeline", "timeline-view", "piano-roll-cut-paste", "note-monitor", "scope", "partial-run", "snippets", "tutorials", "demo-play", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-timbre", "patch-catalog-reload", "patch-browse", "state-load", "track-use", "reset-first-note", "dock", "dock-script-ui"]
+         "syntax-sustain", "runtime-error", "stop-run", "timeline", "timeline-view", "piano-roll-cut-paste", "note-monitor", "scope", "partial-run", "snippets", "tutorials", "demo-play", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-timbre", "patch-rescan", "patch-catalog-reload", "patch-browse", "state-load", "track-use", "reset-first-note", "dock", "dock-script-ui"]
 
 
 def catalog_stalls(log):
@@ -28,6 +28,19 @@ def catalog_stalls(log):
            if any("patch_catalog" in f for f in stack["frames"])
            and not any("lock_contended" in f for f in stack["frames"])]
     return len(stalls), bad
+
+
+PATCH_STALL_MS = 150
+
+
+def cell_stalls(log, cell):
+    """Frame-monitor stalls of `log` overlapping the cell's wall-clock window, in ms."""
+    frames = log.with_suffix(".frames.jsonl")
+    if not frames.exists():
+        return []
+    stalls = [json.loads(line) for line in frames.read_text(encoding="utf-8").splitlines()]
+    return [round(s["ms"]) for s in stalls
+            if s["endMs"] >= cell["startMs"] and s["startMs"] <= cell["endMs"]]
 
 
 def main():
@@ -51,7 +64,7 @@ def main():
             assert any(e["event"] == "cleanup" and e["details"]["result"]["ok"] for e in events), paths[0]
             calls = [e for e in events if e["event"] == "api"]
             note_on = [e for e in calls if e["details"]["call"]["api"] == "uapmd.sequencer.sendNoteOn"]
-            if case in ("scope-master", "evolution-pool", "evolution", "evolve2-host", "evolve2-protocol", "evolve2-timbre", "live-sequence", "syntax", "missing", "close-preparing", "close-creating", "mutation-close", "timeline", "timeline-view", "piano-roll-cut-paste", "partial-run", "snippets", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-catalog-reload", "patch-browse", "state-load", "track-use", "reset-first-note", "dock", "dock-script-ui"):
+            if case in ("scope-master", "evolution-pool", "evolution", "evolve2-host", "evolve2-protocol", "evolve2-timbre", "live-sequence", "syntax", "missing", "close-preparing", "close-creating", "mutation-close", "timeline", "timeline-view", "piano-roll-cut-paste", "partial-run", "snippets", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-rescan", "patch-catalog-reload", "patch-browse", "state-load", "track-use", "reset-first-note", "dock", "dock-script-ui"):
                 assert not note_on, f"{case}: unexpected NoteOn"
             elif case in ("tutorials", "demo-play", "easy", "browser-change", "evolve2"):
                 pass  # Built-in snippets and lib playback may play notes however they are written.
@@ -97,6 +110,16 @@ def main():
             if catalog:
                 raise RuntimeError(f"{case}: the control thread ran the patch catalog: {catalog}")
             cells = [e["details"]["value"] for e in events if e["event"] == "e2e_cell"]
+            if case == "patch-rescan":
+                for cell in cells:
+                    if isinstance(cell, dict) and "startMs" in cell:
+                        cell_stall = cell_stalls(paths[0], cell)
+                        print(json.dumps({**cell, "stalls": cell_stall}), flush=True)
+                        # Six Sines' own getState twice and stateLoad stay (about 70-100 ms);
+                        # the parameter value walks cost about 3 s.
+                        if cell["pluginId"] == "org.baconpaul.six-sines" and not cell["created"]:
+                            assert max(cell_stall, default=0) < PATCH_STALL_MS, \
+                                f"{case}: patch cell stalled the UI: {cell_stall} ms"
             summary = next((e["details"] for e in events if e["event"] == "signal_check"),
                            cells[-1] if cells else {})
             print(f"PASS {case}: {json.dumps(summary)} | stalls {stalls} | {paths[0]}", flush=True)

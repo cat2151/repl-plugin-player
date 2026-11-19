@@ -2,7 +2,7 @@
 
 - 状態: 採用
 - 決定者: user（UAPMDのCLAP hostを一律に直さず、evolve2が作るinstanceにだけ別のhostを付けること。置き場所をclap-note-dialectの生成物の後段に足す新しい補修にすること。範囲をevolve2に限り、現行evolveの`evolution.load`で読むinstanceは今のhostのまま残すこと）。host名`HeadlessCLAPHost`はAIの提案をuserが承認。印を`thread_local`の深さで渡すこと、変える関数を`paramsRescan`だけにすることはAIの設計
-- 関連: [ADR 0019](0019-evolve2-async-pool.md)、[補修の説明書](../../patches/uapmd/headless-clap-host/README.md)
+- 関連: [ADR 0019](0019-evolve2-async-pool.md)、[ADR 0022](0022-parameter-value-sweeps.md)（trackのinstanceのVALUESのrescan）、[補修の説明書](../../patches/uapmd/headless-clap-host/README.md)
 
 ## 決定と理由
 
