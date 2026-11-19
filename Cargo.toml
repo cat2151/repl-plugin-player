@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = [".", "extensions/*", "extension-api", "sequence-dll"]
-default-members = [".", "extensions/*", "sequence-dll"]
+members = [".", "extensions/*", "extension-api", "sequence-dll", "evolve2-dll"]
+default-members = [".", "extensions/*", "sequence-dll", "evolve2-dll"]
 
 [workspace.dependencies]
 eframe = { version = "=0.37.0", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "glow", "links", "system_fonts", "wayland", "web_screen_reader", "x11"] }
@@ -21,11 +21,15 @@ serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 syntect = { version = "=5.3.0", default-features = false, features = ["default-syntaxes", "regex-fancy"] }
 cmrt-chord = { path = "../clap-mml-render-tui/chord" }
+clap-sys = "0.5"
+cmrt-core = { git = "https://github.com/cat2151/clap-mml-play-server" }
+cmrt-server-config = { git = "https://github.com/cat2151/clap-mml-play-server" }
 cmrt-patches = { path = "../clap-mml-render-tui/patches" }
 cmrt-tui-core = { path = "../clap-mml-render-tui/tui-core" }
 mmlabc-to-smf = { git = "https://github.com/cat2151/mmlabc-to-smf-rust.git", features = ["parser"], default-features = false }
 toml = "=1.2.1"
 egui_tiles = "=0.18.0"
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Kernel", "Win32_System_Threading"] }
 
 [patch."https://github.com/cat2151/clap-mml-play-server"]
 cmrt-core = { path = "../clap-mml-play-server/core-lib" }

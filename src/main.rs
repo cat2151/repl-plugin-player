@@ -11,6 +11,7 @@ mod execution;
 mod execution_e2e;
 mod extension;
 mod external_editor;
+mod frame_monitor;
 mod gui;
 mod host;
 mod i18n;
@@ -72,6 +73,8 @@ fn main() {
             std::process::exit(1);
         }
     };
+    patch_catalog::preload();
+    patch_state::preload();
     let result = if args.get(1).is_some_and(|arg| arg == "--e2e") {
         e2e::run(args.get(2).map_or("sample", String::as_str))
     } else if args.len() > 1 {

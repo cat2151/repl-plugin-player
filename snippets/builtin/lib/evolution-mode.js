@@ -52,14 +52,16 @@
         delete globalThis.evolutionPool;
         delete globalThis.evolutionMode;
     }
-    function enter(slots) {
+    // `pool` is the library that prepares the two slots: evolution-pool.js or evolve2.js.
+    function enter(slots, pool = 'builtin/lib/evolution-pool.js') {
+        const key = JSON.stringify({pool, slots});
         if (globalThis.evolutionMode) {
-            if (globalThis.evolutionMode.slots===JSON.stringify(slots)) return globalThis.evolutionPool;
+            if (globalThis.evolutionMode.slots===key) return globalThis.evolutionPool;
             end();
         }
         const before = uapmd.sequencer.getTrackInfos();
         const mode = {
-            slots:JSON.stringify(slots), trackIds:[], scope:repl.scope.target(), loopParts:globalThis.loopParts,
+            slots:key, trackIds:[], scope:repl.scope.target(), loopParts:globalThis.loopParts,
             tempo:uapmd.timeline.getState().tempo, state:uapmd.timeline.getState(),
             volumes:before.map((t,index)=>({trackId:t.trackId,level:repl.track.volume(index)})),
             masterClips:uapmd.timeline.getClips(uapmd.timeline.getMasterTrackId()).map(c => c.clipId),
@@ -78,7 +80,7 @@
                 mutation(uapmd.sequencer.addTrack());
                 mode.trackIds.push(...uapmd.sequencer.getTrackInfos().filter(t => !ids.includes(t.trackId)).map(t => t.trackId));
             }
-            globalThis.evolutionPool = include('builtin/lib/evolution-pool.js').prepare(
+            globalThis.evolutionPool = include(pool).prepare(
                 [0,1].map(index => ({track:before.length + index})), slots);
             for (const trackId of mode.trackIds) uapmd.sequencer.setTrackFreezePolicy(trackId, 'off');
             repl.scope.setTarget(-2); // Final stereo master mix.

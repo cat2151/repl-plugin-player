@@ -1,0 +1,8 @@
+// Built in the uapmd-plugin-hosting target, where RemidyAudioPluginInstance is visible.
+#include "@handle_upstream_instance@"
+#include "@handle_dir@/clap_plugin_handle.hpp"
+
+const void* repl_clap_plugin_handle::of(uapmd_plugin_hosting::AudioPluginInstanceAPI* instance) {
+    auto* remidy = dynamic_cast<uapmd_plugin_hosting::RemidyAudioPluginInstance*>(instance);
+    return remidy ? ofRemidy(remidy->rawInstance()) : nullptr;
+}

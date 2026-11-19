@@ -31,6 +31,7 @@ const BUILTIN_ORDER: &[&str] = &[
     "try-loop-mml",
     "try-loop-mml-multi-track",
     "try-evolving-sequencer",
+    "try-evolve2",
     "try-end-evolve",
     "try-instrument",
     "try-parameter-ui",
@@ -57,6 +58,7 @@ const BUILTIN_ORDER: &[&str] = &[
     "unfreeze-track",
     "show-track-freeze",
     "set-buffer-multiplier",
+    "reload-patch-catalog",
 ];
 
 #[derive(Clone, Debug)]

@@ -43,5 +43,11 @@ int main() {
         }
     }
     uh::clap_dialect::note([](size_t) -> void* { return nullptr; }, 2, true, 0, 0, 60, 1, 0);
-    std::cout << "dialect policy: single event, On/Off, velocity, port/time, CC PASS\n";
+    // A second instance on a track gets UMP group 1; a single-port plugin must still hear it.
+    CHECK(uh::clap_dialect::port_for_group(1, 1) == 0);
+    CHECK(uh::clap_dialect::port_for_group(15, 1) == 0);
+    CHECK(uh::clap_dialect::port_for_group(0, 1) == 0);
+    CHECK(uh::clap_dialect::port_for_group(1, 2) == 1);
+    CHECK(uh::clap_dialect::port_for_group(2, 2) == 0);
+    std::cout << "dialect policy: single event, On/Off, velocity, port/time, CC, group to port PASS\n";
 }

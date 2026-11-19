@@ -42,6 +42,32 @@ pub unsafe extern "C" fn call(request: *const c_char) -> *const c_char {
     })
 }
 
+/// The catalog patch `patch`, or else the effect preset `preset` with `value`.
+fn named(input: &Value) -> Result<crate::patch_reference::PatchReference, String> {
+    let (format, plugin_id) = (argument(input, "format")?, argument(input, "pluginId")?);
+    match input["patch"].as_str() {
+        Some(patch) => crate::patch_state::patch_reference(format, plugin_id, patch),
+        None => crate::patch_state::effect_reference(
+            &crate::patch_browser::player()?,
+            format,
+            plugin_id,
+            argument(input, "preset")?,
+            argument(input, "value")?,
+        ),
+    }
+}
+
+/// `patchState` and `effectState`: the patch put into the track instance
+/// `instance` when given, else a state file made without one.
+fn patch_state(input: &Value) -> Result<Value, String> {
+    let reference = named(input)?;
+    Ok(json!(match input["instance"].as_i64() {
+        Some(instance) =>
+            crate::patch_state::into_instance(reference, instance as i32, input["created"] == true)?,
+        None => Some(crate::patch_state::state_file(&reference)?),
+    }))
+}
+
 fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
     input[key]
         .as_str()
@@ -53,6 +79,15 @@ fn dispatch(input: &Value) -> Result<Value, String> {
         api if api.starts_with("patchJob.") => crate::patch_jobs::dispatch(api, input),
         "patchCatalog" => {
             crate::patch_catalog::list(argument(input, "role")?, argument(input, "kind")?)
+        }
+        "patchCatalog.reload" => {
+            crate::patch_catalog::reload();
+            Ok(Value::Null)
+        }
+        // A script that blocks the control thread for long (an E2E cell) marks its own passes.
+        "frameMonitor.beat" => {
+            crate::frame_monitor::beat();
+            Ok(Value::Null)
         }
         "snippet.source" => Ok(json!(
             crate::snippets::Library::default().source(argument(input, "name")?)?
@@ -135,17 +170,8 @@ fn dispatch(input: &Value) -> Result<Value, String> {
             std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
             Ok(json!(directory))
         }
-        "patchState" => Ok(json!(crate::patch_state::file(
-            argument(input, "format")?,
-            argument(input, "pluginId")?,
-            argument(input, "patch")?,
-        )?)),
-        "effectState" => Ok(json!(crate::patch_state::effect_file(
-            argument(input, "format")?,
-            argument(input, "pluginId")?,
-            argument(input, "preset")?,
-            argument(input, "value")?,
-        )?)),
+        "patchCheck" => crate::patch_state::check(&named(input)?).map(|()| Value::Null),
+        "patchState" | "effectState" => patch_state(input),
         "sourceRoot" => Ok(json!(crate::resources::source_root())),
         "file.read" => {
             let path = argument(input, "filepath")?;

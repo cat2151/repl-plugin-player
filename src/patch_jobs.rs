@@ -49,7 +49,7 @@ pub fn dispatch(api: &str, input: &Value) -> Result<Value, String> {
             jobs.next += 1;
             let id = jobs.next;
             let worker = std::thread::spawn(move || {
-                crate::patch_state::background_file(&format, &plugin, &patch)
+                crate::patch_state::prepared_file(&format, &plugin, &patch)
             });
             jobs.entries.insert(id, Entry::Preparing(worker));
             Ok(json!(id))

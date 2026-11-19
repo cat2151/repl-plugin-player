@@ -56,7 +56,9 @@ impl Clock {
         0
     }
 
-    // The UAPMD adapter excludes callbacks for lifecycle operations.
+    /// # Safety
+    /// Audio callbacks of this clock are excluded; the UAPMD adapter does so
+    /// for lifecycle operations.
     pub unsafe fn reset(&self) {
         self.read
             .store(self.written.load(Ordering::Acquire), Ordering::Release);
@@ -64,6 +66,8 @@ impl Clock {
             *self.playback.get() = Playback::default();
         }
     }
+    /// # Safety
+    /// Audio callbacks of this clock are excluded.
     pub unsafe fn rewind(&self) {
         let state = unsafe { &mut *self.playback.get() };
         state.held = Step::default();
@@ -72,11 +76,16 @@ impl Clock {
         state.next = 0.0;
         state.release = 0.0;
     }
+    /// # Safety
+    /// The caller serializes the audio callbacks of this clock.
     pub unsafe fn held(&self) -> Step {
         unsafe { (*self.playback.get()).held }
     }
 
-    // The host reset the synth, but the sequence must retain its transport phase.
+    /// The host reset the synth, but the sequence must retain its transport phase.
+    ///
+    /// # Safety
+    /// The caller serializes the audio callbacks of this clock.
     pub unsafe fn release(&self) {
         unsafe { (*self.playback.get()).held = Step::default() };
     }
@@ -92,6 +101,8 @@ impl Clock {
     }
 
     #[cfg(test)]
+    /// # Safety
+    /// The caller serializes the audio callbacks of this clock.
     pub unsafe fn render(
         &self,
         track: i32,
@@ -102,6 +113,8 @@ impl Clock {
         unsafe { self.render_enabled(track, frames, rate, true, &mut emit) };
     }
 
+    /// # Safety
+    /// The caller serializes the audio callbacks of this clock.
     pub unsafe fn render_enabled(
         &self,
         track: i32,

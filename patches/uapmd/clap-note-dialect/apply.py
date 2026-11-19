@@ -41,6 +41,10 @@ def generate(source, output, metadata=None):
              "        uint32_t inputNoteDialects(uint16_t port) const {\n"
              "            if (!has_note_ports) return CLAP_NOTE_DIALECT_CLAP;\n"
              "            return port < input_note_dialects.size() ? input_note_dialects[port] : 0;\n"
+             "        }\n"
+             "        uint16_t inputNotePort(uint16_t group) const {\n"
+             "            if (!has_note_ports) return group;\n"
+             "            return uh::clap_dialect::port_for_group(group, input_note_dialects.size());\n"
              "        }\n        CLAPUmpInputDispatcher ump_input_dispatcher{this};")
         once("PluginInstanceCLAP.cpp", "            activated_ = plugin->activate(configuration.sampleRate, 1, configuration.bufferSizeInSamples);",
              "            // Main thread, before activation: never query in the audio callback.\n"
@@ -58,18 +62,19 @@ def generate(source, output, metadata=None):
         for method, call in [("onNoteOn", "note"), ("onNoteOff", "note"), ("onCC", "cc")]:
             pattern = rf"(    void PluginInstanceCLAP::CLAPUmpInputDispatcher::{method}\([^\n]+\) \{{)\n.*?\n    \}}"
             if method == "onCC":
-                args = "group, channel, index, data, timestamp()"
+                args = "port, channel, index, data, timestamp()"
             else:
-                args = f"{'true' if method == 'onNoteOn' else 'false'}, group, channel, note, velocity, timestamp()"
-            replacement = (rf"\1\n        uh::clap_dialect::{call}([&](size_t size) -> void* {{\n"
+                args = f"{'true' if method == 'onNoteOn' else 'false'}, port, channel, note, velocity, timestamp()"
+            replacement = (rf"\1\n        const auto port = owner->inputNotePort(group);\n"
+                           rf"        uh::clap_dialect::{call}([&](size_t size) -> void* {{\n"
                            "            return owner->events_in->tryAllocate(alignof(void*), size);\n"
-                           "        }, owner->inputNoteDialects(group), " + args + ");\n    }")
+                           "        }, owner->inputNoteDialects(port), " + args + ");\n    }")
             texts[name], count = re.subn(pattern, replacement, texts[name], flags=re.S)
             if count != 1:
                 raise ValueError(f"{name}: {method}: expected one method, found {count}")
-        texts["PluginFormatCLAP.hpp"] += f'\n#include "{(HERE / "note_dialect.h").as_posix()}"\n'
-        # Policy constants must be visible in the class declaration too.
-        texts["PluginFormatCLAP.hpp"] = '#include <clap/ext/note-ports.h>\n' + texts["PluginFormatCLAP.hpp"]
+        # Policy constants and the group-to-port helper are used in the class declaration.
+        texts["PluginFormatCLAP.hpp"] = (f'#include "{(HERE / "note_dialect.h").as_posix()}"\n'
+                                         + texts["PluginFormatCLAP.hpp"])
         for name, text in list(texts.items()):
             def include(match):
                 path = match[1]

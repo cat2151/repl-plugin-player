@@ -1,6 +1,7 @@
 #pragma once
 #include "evolution_dll.hpp"
 #include "../patches/uapmd/evolution-graphs/graphs.hpp"
+#include "patch_into.hpp"
 #include <fstream>
 
 // Unpublished UAPMD graphs supply the plugin ABI only. Rust owns clocks,
@@ -81,22 +82,34 @@ public:
                 [this,slot,bytes=std::move(bytes)](int32_t id,std::string error) mutable {
                     if (id<0) { complete(slot,std::move(error)); return; }
                     instances[slot]=id;
-                    auto* instance=voices[slot]->pluginInstance(id);
-                    instance->bypassed(true);
-                    instance->stopProcessing();
-                    instance->loadState(std::move(bytes),uapmd_plugin_hosting::StateContextType::Project,false,nullptr,
-                        [this,slot](std::string error,void*) {
-                            remidy::EventLoop::enqueueTaskOnMainThread([this,slot,error=std::move(error)]() mutable {
-                                if (error.empty()) {
-                                    auto* instance=voices[slot]->pluginInstance(instances[slot]);
-                                    if (instance->startProcessing()!=0) error="Cannot start evolution plugin";
-                                    else instance->bypassed(false);
-                                }
-                                complete(slot,std::move(error));
+                    // Patches go into instances on the main thread only.
+                    auto apply=[this,slot,bytes=std::move(bytes)]() mutable {
+                        auto* instance=voices[slot] ? voices[slot]->pluginInstance(instances[slot]) : nullptr;
+                        if (!instance) { complete(slot,"The evolution instance was destroyed"); return; }
+                        instance->bypassed(true);
+                        instance->stopProcessing();
+                        auto patched=repl_patch_into::into(instance,bytes,true);
+                        if (!patched.error.empty() || patched.state.empty()) { loaded(slot,std::move(patched.error)); return; }
+                        instance->loadState(std::move(patched.state),uapmd_plugin_hosting::StateContextType::Project,false,nullptr,
+                            [this,slot](std::string error,void*) {
+                                remidy::EventLoop::enqueueTaskOnMainThread([this,slot,error=std::move(error)]() mutable {
+                                    loaded(slot,std::move(error));
+                                });
                             });
-                        });
+                    };
+                    if (remidy::EventLoop::runningOnMainThread()) apply();
+                    else remidy::EventLoop::enqueueTaskOnMainThread(std::move(apply));
                 });
         } catch (const std::exception& error) { complete(slot,error.what()); }
+    }
+    // Main thread: restarts the slot's instance after its state was loaded.
+    void loaded(uint32_t slot,std::string error) {
+        if (error.empty()) {
+            auto* instance=voices[slot]->pluginInstance(instances[slot]);
+            if (instance->startProcessing()!=0) error="Cannot start evolution plugin";
+            else instance->bypassed(false);
+        }
+        complete(slot,std::move(error));
     }
     void complete(uint32_t slot,std::string error) {
         errors[slot]=std::move(error);

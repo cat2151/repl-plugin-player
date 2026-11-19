@@ -61,12 +61,17 @@
 
     // As cat-smf-editor places an effect: an effect of the same plugin takes the
     // state; else the last effect is replaced; a track without effects gets one.
-    function place(trackIndex, entry, stateFile) {
+    // `stateFile(id, created)` is the file for the placed instance (null when
+    // the preset went in directly), `created` telling it is new; `check()` runs
+    // before an instance is created.
+    function place(trackIndex, entry, stateFile, check = () => {}) {
         const nodes = tracks.info(trackIndex).nodes;
         const same = plugins.effectsOn(trackIndex).find(id => nodes.some(n => n.instanceId === id
             && n.format === entry.format && n.pluginId === entry.pluginId));
         let id = same;
-        if (id === undefined) {
+        const created = id === undefined;
+        if (created) {
+            check();
             const last = lastEffect(trackIndex);
             if (last >= 0) {
                 id = replace(trackIndex, last, entry);
@@ -75,7 +80,8 @@
                 joinBeforeOutput(trackIndex, id);
             }
         }
-        plugins.loadState(id, stateFile);
+        const file = stateFile(id, created);
+        if (file !== null) plugins.loadState(id, file);
         uapmd.sequencer.setPluginBypassed(id, false);
         return id;
     }
@@ -86,10 +92,10 @@
         if (!Number.isInteger(trackIndex)) throw new Error(repl.text('patch_use_02'));
         tracks.info(trackIndex);
         const entry = plugins.catalogEntry(options.format, options.plugin);
+        const preset = {format:entry.format, pluginId:entry.pluginId, preset:options.preset, value:options.value};
+        const fileFor = (id, created) => repl.effectState({...preset, instance:id, created});
         // A preset that cannot be restored fails before any instance is created.
-        const file = repl.effectState({format:entry.format, pluginId:entry.pluginId,
-            preset:options.preset, value:options.value});
-        return {instanceId:place(trackIndex, entry, file), trackIndex};
+        return {instanceId:place(trackIndex, entry, fileFor, () => repl.patchCheck(preset)), trackIndex};
     }
 
     // Each preset chosen in the player's effect browser goes onto the track at
@@ -99,7 +105,7 @@
         const trackIndex = options.track;
         tracks.info(trackIndex);
         include('builtin/lib/browser.js').run({track:trackIndex, kind:'effect', cell:options.cell},
-            event => place(trackIndex, {format:event.format, pluginId:event.pluginId}, event.stateFile));
+            event => place(trackIndex, {format:event.format, pluginId:event.pluginId}, () => event.stateFile));
     }
 
     return {joinBeforeOutput, use, change};

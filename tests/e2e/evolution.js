@@ -27,8 +27,10 @@
     };
     const console = {log:message=>failures.push(message)};
     const include = path => path.endsWith('/plugins.js') ? {
-        loadState:(id,file)=>loaded.push([id,file]),connectionsOf:()=>[],instrumentOn:track=>track+100
-    } : {info:track=>({nodes:[{...entry,instanceId:track+100}]})};
+        checkPatch:(entry,patch)=>repl.patchState({patch}),
+        loadPatch:(id,created,entry,patch)=>loaded.push([id,repl.patchState({patch})]),
+        connectionsOf:()=>[],instrumentOn:track=>track+100
+    } :{info:track=>({nodes:[{...entry,instanceId:track+100}]})};
     const library = eval(source);
     const originalRandom = Math.random;
     Math.random = ()=>0;

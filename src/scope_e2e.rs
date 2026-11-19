@@ -89,6 +89,9 @@ pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
     app.run(script.cell("note 64")?)?;
     wait_held(app, 64)?;
     wait_note(app, 64)?;
+    app.run(script.cell("master scope")?)?;
+    wait_master(app)?;
+    app.run(script.cell("instrument scope")?)?;
     app.run(script.cell("easy reset and play")?)?;
     scope_on_instrument(app, script)?;
     wait_note(app, 60)?;
@@ -101,6 +104,13 @@ pub fn run(app: &mut Control, script: &Script) -> Result<(), String> {
 
 pub fn run_master(app: &mut Control, script: &Script) -> Result<(), String> {
     app.run(script.cell("play evolve master")?)?;
+    wait_master(app)?;
+    app.run(script.cell("restore scope")?)?;
+    Ok(())
+}
+
+/// The scope shows a sounding final master mix.
+fn wait_master(app: &mut Control) -> Result<(), String> {
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
         app.poll()?;
@@ -112,15 +122,13 @@ pub fn run_master(app: &mut Control, script: &Script) -> Result<(), String> {
         }) {
             app.log
                 .event("master_scope_verified", serde_json::json!({}))?;
-            break;
+            return Ok(());
         }
         if Instant::now() >= deadline {
             return Err("No final master scope waveform".into());
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    app.run(script.cell("restore scope")?)?;
-    Ok(())
 }
 
 pub fn run_load(app: &mut Control, script: &Script) -> Result<(), String> {

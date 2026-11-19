@@ -1,0 +1,30 @@
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(headless_host_dir "${CMAKE_CURRENT_LIST_DIR}")
+set(headless_host_input "${REPL_PROJECT_ROOT}/target/shim/generated/clap-note-dialect/PluginFormatCLAP.cpp")
+set(headless_host_output "${REPL_PROJECT_ROOT}/target/shim/headless-clap-host")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${headless_host_input}"
+    "${headless_host_dir}/apply.py" "${headless_host_dir}/headless_scope.hpp" "${headless_host_dir}/headless_host.hpp")
+execute_process(COMMAND "${Python3_EXECUTABLE}" -B "${headless_host_dir}/apply.py"
+    "${headless_host_input}" "${headless_host_output}" "${UAPMD_DIR}"
+    RESULT_VARIABLE headless_host_result OUTPUT_VARIABLE headless_host_generated
+    ERROR_VARIABLE headless_host_error OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT headless_host_result EQUAL 0)
+    message(FATAL_ERROR "${headless_host_error}")
+endif()
+get_target_property(headless_host_before remidy SOURCES)
+set(headless_host_sources "")
+set(headless_host_removed 0)
+foreach(headless_host_source IN LISTS headless_host_before)
+    if(headless_host_source STREQUAL headless_host_input)
+        list(APPEND headless_host_sources "${headless_host_generated}")
+        math(EXPR headless_host_removed "${headless_host_removed} + 1")
+    else()
+        list(APPEND headless_host_sources "${headless_host_source}")
+    endif()
+endforeach()
+if(NOT headless_host_removed EQUAL 1)
+    execute_process(COMMAND git -C "${UAPMD_DIR}" rev-parse HEAD
+        OUTPUT_VARIABLE headless_host_revision OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    message(FATAL_ERROR "[headless-clap-host] target: ${headless_host_input}; expected one remidy source, found ${headless_host_removed}; UAPMD revision: ${headless_host_revision}; instructions: ${headless_host_dir}/README.md")
+endif()
+set_property(TARGET remidy PROPERTY SOURCES "${headless_host_sources}")

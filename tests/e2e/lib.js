@@ -3,10 +3,12 @@
 // `error` is a runner directive, while `stop,` or `error:` is not. Use other words
 // (`initialize`, `a Run after the failure`) in titles that are not directives.
 globalThis.e2e = (() => {
-    // Keeps the host's main thread serviced while a cell waits.
+    // Keeps the host's main thread serviced while a cell waits. Each wait is one pass of
+    // the control loop for the frame monitor, so a long call between waits is a stall.
     function wait(ms) {
         const end = Date.now() + ms;
         while (Date.now() < end) repl.processEvents();
+        __replCall('frameMonitor.beat', {});
     }
 
     // The first truthy `probe()` within `ms`, else the last value it returned.

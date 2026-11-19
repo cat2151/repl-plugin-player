@@ -95,6 +95,7 @@ fn session(options: &Options, deadline: Instant, output: &mut File) -> Result<()
     };
     let log = Log::new()?;
     let log_path = log.path.clone();
+    let _frames = crate::frame_monitor::start(&log_path);
     let mut app = Control::open(log, INIT)?;
     let execution = (|| {
         while !app.ready {
@@ -239,6 +240,7 @@ fn pump(app: &mut Control, deadline: Instant) -> Result<(), String> {
     if Instant::now() >= deadline {
         return Err(crate::i18n::t("m082").into());
     }
+    crate::frame_monitor::beat();
     app.pump_cli_messages()?;
     app.poll()?;
     std::thread::sleep(Duration::from_millis(10));

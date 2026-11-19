@@ -62,3 +62,4 @@ pub fn repl_egui_type_id() -> std::any::TypeId {
 /// The symbol name of [`repl_egui_type_id`].
 pub const EGUI_TYPE_ID: &[u8] = b"repl_egui_type_id\0";
 pub mod evolution;
+pub mod evolve2;

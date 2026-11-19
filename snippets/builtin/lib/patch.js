@@ -34,11 +34,16 @@
         }
     }
 
+    // Whether the track's instrument `previous` is of the plugin `entry`.
+    function reusable(trackIndex, previous, entry) {
+        const node = tracks.info(trackIndex).nodes.find(n => n.instanceId === previous);
+        return node !== undefined && node.format === entry.format && node.pluginId === entry.pluginId;
+    }
+
     function instrumentFor(trackIndex, entry, reuseOnly = false) {
         const before = plugins.connectionsOf(trackIndex);
         const previous = plugins.instrumentOn(trackIndex);
-        const node = tracks.info(trackIndex).nodes.find(n => n.instanceId === previous);
-        if (node && node.format === entry.format && node.pluginId === entry.pluginId) return previous;
+        if (reusable(trackIndex, previous, entry)) return previous;
         if (reuseOnly) throw new Error('Prepared plugin instance is missing: ' + entry.pluginId);
         const next = uapmd.instancing.create(entry.format, entry.pluginId, tracks.idOf(trackIndex));
         if (next < 0) throw new Error(repl.text('snippet_02'));
@@ -58,11 +63,11 @@
             : Array.from({length:uapmd.catalog.getCount()}, (_, i) => uapmd.catalog.getPluginAt(i))
                 .find(p => p.format === options.format && p.pluginId === options.pluginId);
         if (!entry) throw new Error('Catalog plugin is not installed: ' + options.pluginId);
-        // A patch that cannot be restored fails before any instance is created.
-        var file = options.patch === undefined ? undefined
-            : repl.patchState({format:entry.format, pluginId:entry.pluginId, patch:options.patch});
+        const previous = plugins.instrumentOn(trackIndex);
+        // A patch that cannot be restored fails before an instance is created.
+        if (options.patch !== undefined && !reusable(trackIndex, previous, entry)) plugins.checkPatch(entry, options.patch);
         const instanceId = instrumentFor(trackIndex, entry, options.reuseOnly);
-        if (file !== undefined) loadState(instanceId, file);
+        if (options.patch !== undefined) plugins.loadPatch(instanceId, instanceId !== previous, entry, options.patch);
         uapmd.sequencer.setPluginBypassed(instanceId, false);
         return {instanceId, trackIndex};
     }

@@ -1,4 +1,5 @@
-// Fixed states and four-note input; never reads snippet music.
+// Fixed states (plugin states for tracks, prepared patches for the evolve hosts)
+// and four-note input; never reads snippet music.
 // %% catalog
 () => {
     const names=['Surge XT','Vaporizer2','TyrellN6','Six Sines'];
@@ -13,17 +14,29 @@
     });
 }
 
+// %% prepared
+// The file patchJob prepares for a catalog sound, which the evolve hosts read.
+({format,pluginId,patch}) => {
+    const id=__replCall('patchJob.start',{format,pluginId,patch});
+    let value;
+    while ((value=__replCall('patchJob.get',{jobId:id})).state==='pending') repl.processEvents();
+    if (value.state!=='completed') throw new Error('Not prepared: '+JSON.stringify(value));
+    return value.file;
+}
+
 // %% create
-({sounds,workers,evolve,fadeMs=1000}) => {
+// `api` is 'evolution', 'evolve2', or null for two ordinary tracks.
+({sounds,workers,api,fadeMs=1000}) => {
     include('builtin/lib/tutorial.js').stop();
-    globalThis.fixedFixture={sounds,evolve};
+    globalThis.fixedFixture={sounds,api};
     const fixture=globalThis.fixedFixture;
     __remidy_configure_audio_workers(workers);
-    if (evolve) {
+    if (api) {
         const pool=include('builtin/lib/evolution-mode.js').enter(
-            sounds.map(s=>({format:s.format,plugin:s.plugin})));
+            sounds.map(s=>({format:s.format,plugin:s.plugin})),
+            api==='evolve2'?'builtin/lib/evolve2.js':undefined);
         fixture.tracks=pool.buffers.map(b=>b.track);
-        __replCall('evolution.open',{tracks:fixture.tracks,holdMs:5000,fadeMs});
+        __replCall(api+'.open',{tracks:fixture.tracks,holdMs:5000,fadeMs});
     } else {
         const plugins=include('builtin/lib/plugins.js');
         for (const track of uapmd.sequencer.getTrackInfos())
@@ -56,7 +69,9 @@
 
 // %% observe
 ({signal:repl.test.observe(),diagnostics:__remidy_audio_worker_diagnostics(),
-    slots:fixedFixture.evolve?__replCall('evolution.status',{}):[]})
+    outcomes:fixedFixture.api==='evolve2'?__replCall('evolve2.poll',{}):[],
+    slots:fixedFixture.api?__replCall(fixedFixture.api+'.status',{}):[],
+    instances:repl.test.instances()})
 
 // %% signal
 repl.test.observe()
@@ -67,7 +82,11 @@ repl.test.loopTrace()
 // %% cleanup
 {
     include('builtin/lib/tutorial.js').stop();
-    if (fixedFixture.evolve) {
+    if (fixedFixture.api==='evolve2') {
+        __replCall('evolve2.close',{});
+        include('builtin/lib/evolution-mode.js').end();
+    }
+    if (fixedFixture.api==='evolution') {
         const deadline=Date.now()+120000;
         while (__replCall('evolution.status',{}).some(s=>s.loading)) {
             if (Date.now()>deadline) throw new Error('Load did not finish');
@@ -81,10 +100,11 @@ repl.test.loopTrace()
 }
 
 // %% status
-__replCall('evolution.status',{})
+__replCall(fixedFixture.api+'.status',{});
 
 // %% load
-({slot,sound}) => __replCall('evolution.load',{slot,format:sound.format,pluginId:sound.pluginId,file:sound.file})
+// evolve2 returns the request id at once; evolution returns after the load.
+({slot,sound}) => __replCall(fixedFixture.api==='evolve2'?'evolve2.submit':'evolution.load',{slot,format:sound.format,pluginId:sound.pluginId,file:sound.prepared})
 
 // %% pause
 uapmd.sequencer.pausePlayback();

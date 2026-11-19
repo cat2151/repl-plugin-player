@@ -1,0 +1,25 @@
+// Built in the remidy target with the CLAP class header every CLAP unit is built with.
+#include "@handle_clap_header@"
+#include "@handle_dir@/clap_plugin_handle.hpp"
+
+namespace {
+    // PluginInstanceCLAP keeps its proxy private and has no accessor without ARA.
+    // Access checks do not apply to the names in an explicit instantiation, so the
+    // member pointer reaches this friend without editing the class.
+    struct ProxyMember {
+        using type = std::unique_ptr<remidy::CLAPPluginProxy> remidy::PluginInstanceCLAP::*;
+        friend type proxyMember(ProxyMember);
+    };
+    template <typename Tag, typename Tag::type Member>
+    struct Expose {
+        friend typename Tag::type proxyMember(Tag) { return Member; }
+    };
+    template struct Expose<ProxyMember, &remidy::PluginInstanceCLAP::plugin>;
+}
+
+const void* repl_clap_plugin_handle::ofRemidy(remidy::PluginInstance* instance) {
+    auto* clap = dynamic_cast<remidy::PluginInstanceCLAP*>(instance);
+    if (!clap) return nullptr;
+    auto& proxy = clap->*proxyMember(ProxyMember{});
+    return proxy ? proxy->clapPlugin() : nullptr;
+}

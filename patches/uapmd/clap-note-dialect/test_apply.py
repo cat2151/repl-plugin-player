@@ -49,7 +49,10 @@ crlf = snapshot(source)
 assert repair.generate(source, output) == names
 assert snapshot(source) == crlf and snapshot(output) == first, "CRLF input was not reproducible/nonmutating"
 header = (output / "PluginFormatCLAP.hpp").read_text(encoding="utf-8")
-assert "inputNoteDialects" in header and "has_note_ports" in header
+assert "inputNoteDialects" in header and "has_note_ports" in header and "inputNotePort" in header
+events = (output / "PluginInstanceCLAP.Events.cpp").read_text(encoding="utf-8")
+assert events.count("owner->inputNotePort(group)") == 3, "note/CC must map the UMP group to a note port"
+assert "inputNoteDialects(group)" not in events, "a group past the plugin's note ports drops the event"
 for name in names:
     assert str(output.resolve().as_posix()) in (output / name).read_text(encoding="utf-8")
 changed = source / "PluginInstanceCLAP.Events.cpp"

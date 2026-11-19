@@ -1,62 +1,163 @@
 //! Read the same cache and exclusive Role / Kind classifier as cat-plugin-player.
+//!
+//! `list` runs synchronously on the UI/control thread, so the catalog is read and classified once
+//! and held for the whole process.
 use cmrt_patches::{PatchRole, PatchRoleIndex, PatchRoleInput};
 use cmrt_tui_core::patch_catalog_cache;
 use serde_json::{json, Value};
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::{mpsc, Arc, Mutex, PoisonError},
+};
 
 type Groups = BTreeMap<(String, String), Vec<(String, Option<String>)>>;
+
+struct Entry {
+    id: String,
+    plugin: String,
+    patch: String,
+    role: Option<PatchRole>,
+    kind: Option<&'static str>,
+}
+
+type Held = Mutex<Option<Arc<Vec<Entry>>>>;
+
+static HELD: Held = Mutex::new(None);
+
+struct Sources {
+    cache: Option<PathBuf>,
+    fallback: PathBuf,
+    presets: PathBuf,
+}
+
+impl Sources {
+    fn current() -> Result<Self, String> {
+        let player = std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .ok_or("LOCALAPPDATA is unavailable")?
+            .join("cat-plugin-player");
+        Ok(Self {
+            cache: patch_catalog_cache::cache_file_path(),
+            fallback: player.join("patch-catalog/surge-xt.json"),
+            presets: player.join("patch-filter-presets.json"),
+        })
+    }
+
+    fn read(&self) -> Result<Vec<Entry>, String> {
+        let loaded = match self.cache.as_deref().filter(|p| p.exists()) {
+            Some(_) => patch_catalog_cache::load(),
+            None => patch_catalog_cache::load_from(&self.fallback),
+        }
+        .map_err(|e| format!("{e:#}"))?;
+        let users: Vec<(String, String)> = match std::fs::read(&self.presets) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| e.to_string())?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(e) => return Err(e.to_string()),
+        };
+        let (snapshot, _) = loaded.into_parts();
+        let mut groups = Groups::new();
+        for patch in snapshot.audio_patches() {
+            let plugin = snapshot
+                .patch_plugins()
+                .audio_info_for_ref(&patch.reference)
+                .map_err(|e| e.to_string())?;
+            let Some(id) = plugin.plugin_id.as_deref() else {
+                continue;
+            };
+            if !cmrt_patches::supports_catalog_clap_plugin(id)
+                || !Path::new(&plugin.plugin_path)
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("clap"))
+            {
+                continue;
+            }
+            groups
+                .entry((id.to_owned(), plugin.name.clone()))
+                .or_default()
+                .push((
+                    patch.reference.display.clone(),
+                    patch.selector_category.clone(),
+                ));
+        }
+        Ok(classify(groups, &users))
+    }
+}
 
 pub fn list(role: &str, kind: &str) -> Result<Value, String> {
     let role = PatchRole::ALL
         .into_iter()
         .find(|r| r.key() == role)
         .ok_or_else(|| format!("Unknown catalog role: {role}"))?;
-    let local = std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .ok_or("LOCALAPPDATA is unavailable")?;
-    let player = local.join("cat-plugin-player");
-    let loaded = if patch_catalog_cache::cache_file_path().is_some_and(|p| p.exists()) {
-        patch_catalog_cache::load()
-    } else {
-        patch_catalog_cache::load_from(&player.join("patch-catalog/surge-xt.json"))
-    }
-    .map_err(|e| format!("{e:#}"))?;
-    let users: Vec<(String, String)> = match std::fs::read(player.join("patch-filter-presets.json"))
-    {
-        Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| e.to_string())?,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-        Err(e) => return Err(e.to_string()),
-    };
-    let (snapshot, _) = loaded.into_parts();
-    let mut groups = Groups::new();
-    for patch in snapshot.audio_patches() {
-        let plugin = snapshot
-            .patch_plugins()
-            .audio_info_for_ref(&patch.reference)
-            .map_err(|e| e.to_string())?;
-        let Some(id) = plugin.plugin_id.as_deref() else {
-            continue;
-        };
-        if !cmrt_patches::supports_catalog_clap_plugin(id)
-            || !std::path::Path::new(&plugin.plugin_path)
-                .extension()
-                .is_some_and(|e| e.eq_ignore_ascii_case("clap"))
-        {
-            continue;
-        }
-        groups
-            .entry((id.to_owned(), plugin.name.clone()))
-            .or_default()
-            .push((
-                patch.reference.display.clone(),
-                patch.selector_category.clone(),
-            ));
-    }
-    Ok(select(groups, &users, role, kind))
+    let entries = held(&HELD, read_current)?;
+    Ok(filter(&entries, role, kind))
 }
 
-fn select(groups: Groups, users: &[(String, String)], role: PatchRole, kind: &str) -> Value {
-    let mut result = Vec::new();
+fn read_current() -> Result<Vec<Entry>, String> {
+    Sources::current()?.read()
+}
+
+/// Builds the held catalog on another thread. A `list` that arrives meanwhile waits on the same
+/// lock instead of reading again; a failure is left for `list` to report.
+pub fn preload() {
+    std::thread::spawn(|| {
+        let _ = held(&HELD, read_current);
+    });
+}
+
+/// Drops the held catalog and reads it again on another thread. Returns once that thread holds
+/// the lock, so the next `list` waits for the new catalog instead of reading it itself; a failure
+/// is left for `list` to report.
+pub fn reload() {
+    let (locked, wait) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = rebuild(
+            &HELD,
+            || {
+                let _ = locked.send(());
+            },
+            read_current,
+        );
+    });
+    let _ = wait.recv();
+}
+
+/// A failed read leaves the slot empty so the next call reads again.
+fn held(
+    slot: &Held,
+    read: impl FnOnce() -> Result<Vec<Entry>, String>,
+) -> Result<Arc<Vec<Entry>>, String> {
+    let mut slot = slot.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(entries) = slot.as_ref() {
+        return Ok(entries.clone());
+    }
+    fill(&mut slot, read)
+}
+
+/// Empties the slot and reads into it, calling `locked` once the lock is held.
+fn rebuild(
+    slot: &Held,
+    locked: impl FnOnce(),
+    read: impl FnOnce() -> Result<Vec<Entry>, String>,
+) -> Result<Arc<Vec<Entry>>, String> {
+    let mut slot = slot.lock().unwrap_or_else(PoisonError::into_inner);
+    *slot = None;
+    locked();
+    fill(&mut slot, read)
+}
+
+fn fill(
+    slot: &mut Option<Arc<Vec<Entry>>>,
+    read: impl FnOnce() -> Result<Vec<Entry>, String>,
+) -> Result<Arc<Vec<Entry>>, String> {
+    let entries = Arc::new(read()?);
+    *slot = Some(entries.clone());
+    Ok(entries)
+}
+
+/// Roles are exclusive within one plugin, so each plugin's patches are classified together.
+fn classify(groups: Groups, users: &[(String, String)]) -> Vec<Entry> {
+    let mut entries = Vec::new();
     for ((id, name), patches) in groups {
         let normalized: Vec<_> = patches
             .iter()
@@ -75,46 +176,25 @@ fn select(groups: Groups, users: &[(String, String)], role: PatchRole, kind: &st
             users,
         );
         for (display, _) in patches {
-            if index.role_of(&display) == Some(role)
-                && index.preset_label_of(&display) == Some(kind)
-            {
-                result
-                    .push(json!({"format":"CLAP", "pluginId":id, "plugin":name, "patch":display}));
-            }
+            entries.push(Entry {
+                role: index.role_of(&display),
+                kind: index.preset_label_of(&display),
+                id: id.clone(),
+                plugin: name.clone(),
+                patch: display,
+            });
         }
     }
-    json!(result)
+    entries
+}
+
+fn filter(entries: &[Entry], role: PatchRole, kind: &str) -> Value {
+    entries
+        .iter()
+        .filter(|e| e.role == Some(role) && e.kind == Some(kind))
+        .map(|e| json!({"format":"CLAP", "pluginId":e.id, "plugin":e.plugin, "patch":e.patch}))
+        .collect()
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn pad_kind_uses_exclusive_roles_and_keeps_plugin_identity() {
-        let groups = [
-            (
-                ("alpha".into(), "Alpha".into()),
-                vec![
-                    ("Pads/Soft".into(), None),
-                    ("Bass/Pad Bass".into(), None),
-                    ("Leads/Pad Lead".into(), None),
-                ],
-            ),
-            (
-                ("beta".into(), "Beta".into()),
-                vec![("Pads/Soft".into(), None)],
-            ),
-        ]
-        .into();
-        let selected = select(groups, &[], PatchRole::Chord, "pad");
-        assert_eq!(
-            selected,
-            json!([
-                {"format":"CLAP","pluginId":"alpha","plugin":"Alpha","patch":"Pads/Soft"},
-                {"format":"CLAP","pluginId":"alpha","plugin":"Alpha","patch":"Leads/Pad Lead"},
-                {"format":"CLAP","pluginId":"beta","plugin":"Beta","patch":"Pads/Soft"}
-            ])
-        );
-    }
-}
+mod tests;

@@ -49,6 +49,7 @@
 - `repl_bridge.dll` の C++ は、Rust では実現できない UAPMD との接続・patch・shim に限定する。それ以外のアプリ固有の処理・アルゴリズム・状態管理は Rust で実装し、独立した機能は keyboard と同様に Rust DLL に置く。C++ で実装できることや既存 bridge に追加しやすいことを、Rust で実装しない理由にしない。
 - JS は user が編集する script と既存 API の組み立てを担当する。JS に演奏の発音時計や音声 callback のリアルタイム処理を持たせない。
 - 既存 C++ の責務違反に気づいた場合は報告し、別途指定された範囲から一歩ずつ Rust へ移す。新しい依頼を理由に無関係な既存処理まで一括移行しない。
+- `repl.*` の API（`src/script_api.rs` から呼ぶ Rust）は UI/control thread 上で同期に走る。file の読込・全件の分類・子 process の待ちを呼び出しのたびに置かず、起動時の別 thread か1回だけの控えにする。理由: 切り替えのたびに catalog を読み直して UI が約1.5秒止まった。
 
 # API追加
 - 追加するuapmd APIや、repl APIは、極力薄いwrapを小さく作るだけ（どうしてもそれがないと動かない or 遅すぎて音が途切れてしまう というときだけ作る）にして、基本的にはscript側の記述で組み立てる。

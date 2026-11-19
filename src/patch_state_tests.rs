@@ -1,16 +1,16 @@
 use super::*;
 
-struct Dir(PathBuf);
+pub(super) struct Dir(pub(super) PathBuf);
 
 impl Dir {
-    fn new(name: &str) -> Self {
+    pub(super) fn new(name: &str) -> Self {
         let dir =
             std::env::temp_dir().join(format!("repl-patch-state-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         Self(dir)
     }
-    fn file(&self, relative: &str) -> PathBuf {
+    pub(super) fn file(&self, relative: &str) -> PathBuf {
         let path = self.0.join(relative);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, b"x").unwrap();
@@ -95,4 +95,105 @@ fn the_reference_takes_the_bundle_from_the_players_table() {
     assert_eq!(found.display, "p.fxp");
     assert!(found.validate().is_ok());
     assert!(reference(&table, "VST3", "id", "p.fxp").is_err());
+}
+
+pub(super) fn catalog(id: &str, path: PathBuf) -> PatchReference {
+    PatchReference {
+        plugin: PluginKey {
+            format: "CLAP".into(),
+            id: id.into(),
+            name: String::new(),
+            vendor: String::new(),
+            bundle_path: "D:/plugin.clap".into(),
+        },
+        source: Source::Catalog {
+            file: path.clone(),
+            path,
+        },
+        display: "p".into(),
+    }
+}
+
+#[test]
+fn converted_formats_are_made_here_without_the_player() {
+    let dir = Dir::new("converted");
+    let six_sines = dir.0.join("p.sxsnp");
+    let patch = br#"<patch id="org.baconpaul.six-sines"><params/></patch>"#;
+    std::fs::write(&six_sines, patch).unwrap();
+    let made = state(&catalog("org.baconpaul.six-sines", six_sines), None, |_| {
+        panic!("asked the player")
+    });
+    assert_eq!(made.unwrap(), patch);
+    for (id, file) in [
+        ("org.surge-synth-team.surge-xt", "p.fxp"),
+        ("com.u-he.TyrellN6", "p.h2p"),
+        ("com.u-he.Zebralette3", "p.h2p"),
+        ("com.vastdynamics.VAST2", "p.vvp"),
+    ] {
+        let invalid = state(&catalog(id, dir.file(file)), None, |_| {
+            panic!("asked the player")
+        });
+        assert!(invalid.is_err(), "{id}");
+    }
+}
+
+#[test]
+fn formats_needing_an_instance_are_asked_of_the_player() {
+    let dir = Dir::new("instance");
+    for id in NEEDS_INSTANCE {
+        let reference = catalog(id, dir.file("p.bin"));
+        let mut asked = None;
+        let made = state(&reference, None, |input| {
+            asked = Some(serde_json::from_slice::<PatchReference>(input).unwrap());
+            Ok(vec![1])
+        });
+        assert_eq!(made.unwrap(), [1]);
+        assert_eq!(asked.unwrap(), reference);
+        assert!(cmrt_patches::supports_catalog_clap_plugin(id));
+    }
+}
+
+#[test]
+fn a_plugin_with_a_template_builds_on_it_without_the_player() {
+    let dir = Dir::new("template");
+    let reference = catalog(built::SFORZANDO_PLUGIN_ID, dir.file("p.sfz"));
+    let made = state(&reference, Some(b"template"), |_| {
+        panic!("asked the player")
+    });
+    assert!(made.is_err());
+}
+
+pub(super) fn effect(id: &str, path: PathBuf, value: &str) -> PatchReference {
+    PatchReference {
+        source: Source::Effect {
+            path,
+            value: value.into(),
+        },
+        ..catalog(id, PathBuf::new())
+    }
+}
+
+#[test]
+fn effect_presets_with_a_template_are_built_without_the_player() {
+    let dir = Dir::new("effect");
+    let shu = effect("audio.mikey.Shu", dir.file("Shu.clap"), "Ether");
+    assert!(templated(&shu));
+    let template = vec![0; 35 * 8];
+    let made = state(&shu, Some(&template), |_| panic!("asked the player")).unwrap();
+    assert_eq!(made.len(), template.len());
+    assert_ne!(made, template);
+    let voyage = effect("com.MusicalEntropy.VoyageVoyagex1", dir.file("p.pst"), "p");
+    let made = state(&voyage, Some(b"template"), |_| panic!("asked the player"));
+    assert!(made.is_err());
+    assert!(built::check("audio.mikey.Shu", &shu.source).is_ok());
+    let missing = effect("audio.mikey.Shu", dir.file("Shu.clap"), "Missing");
+    assert!(built::check("audio.mikey.Shu", &missing.source).is_err());
+}
+
+#[test]
+fn effect_presets_without_a_template_are_asked_of_the_player() {
+    let dir = Dir::new("effect-ask");
+    let shu = effect("audio.mikey.Shu", dir.file("Shu.clap"), "Ether");
+    let made = state(&shu, None, |_| Ok(vec![1]));
+    assert_eq!(made.unwrap(), [1]);
 }

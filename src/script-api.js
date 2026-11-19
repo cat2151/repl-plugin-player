@@ -153,24 +153,40 @@ repl.scope = {
 // loopTrace(start): {events:[{frame, note, on, instance}], overflow, programChanges, timing}
 // of plugin input since the last loopTrace(true); start needs a stopped device.
 // pluginState(instanceId): the instance's whole state as a hex string, within five seconds.
+// instances(): the ids of every plugin instance the host holds, unpublished graphs' included.
 repl.test = {
     observe: function() { return __replCall('test.observe', {}); },
     notes: function() { return __replCall('test.notes', {}); },
     loopTrace: function(start) { return __replCall('test.loopTrace', {start:start === true}); },
-    pluginState: function(instanceId) { return __replCall('test.pluginState', {instanceId:instanceId}); }
+    pluginState: function(instanceId) { return __replCall('test.pluginState', {instanceId:instanceId}); },
+    instances: function() { return __replCall('test.instances', {}); }
 };
-// The player's catalog patch `patch` (its display path) as a state file for `pluginId`.
+// The player's catalog patch `patch` (its display path) for `pluginId`. Given `instance`
+// (a track instance of the plugin; `created:true` when it is new), the patch goes into
+// it: null when it went in directly (finishing after the call returns), else a state
+// file to load into the instance. Without `instance`, a state file made without one.
 repl.patchState = function(options) {
-    return __replCall('patchState', {format:options.format, pluginId:options.pluginId, patch:options.patch});
+    return __replCall('patchState', {format:options.format, pluginId:options.pluginId, patch:options.patch,
+        instance:options.instance, created:options.created === true});
+};
+// Fails on a patch ({format, pluginId, patch}) or effect preset ({format, pluginId,
+// preset, value}) that repl.patchState or repl.effectState could not read.
+repl.patchCheck = function(options) {
+    return __replCall('patchCheck', {format:options.format, pluginId:options.pluginId, patch:options.patch,
+        preset:options.preset, value:options.value});
 };
 // cat-plugin-player's shared catalog and Role / Kind classifier. Selection stays in JS.
 repl.patchCatalog = function(options) {
     return __replCall('patchCatalog', {role:options.role, kind:options.kind});
 };
+// Reads the catalog again in the background; the next patchCatalog waits for it.
+repl.reloadPatchCatalog = function() { return __replCall('patchCatalog.reload', {}); };
 // The effect preset file `preset` (relative to the plugin's root) with the player's
-// selector `value` inside it, as a state file for `pluginId`.
+// selector `value` inside it, for `pluginId`. `instance` and `created` are as in
+// repl.patchState.
 repl.effectState = function(options) {
-    return __replCall('effectState', {format:options.format, pluginId:options.pluginId, preset:options.preset, value:options.value});
+    return __replCall('effectState', {format:options.format, pluginId:options.pluginId, preset:options.preset,
+        value:options.value, instance:options.instance, created:options.created === true});
 };
 
 // cat-plugin-player's patch or effect browser. poll() returns what arrived since the last call:

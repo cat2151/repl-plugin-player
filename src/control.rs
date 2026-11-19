@@ -433,7 +433,7 @@ impl Drop for Control {
         let _ = self.close();
     }
 }
-fn decode_hex(hex: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn decode_hex(hex: &str) -> Result<Vec<u8>, String> {
     if !hex.len().is_multiple_of(2) || !hex.is_ascii() {
         return Err(crate::i18n::t("m063").into());
     }

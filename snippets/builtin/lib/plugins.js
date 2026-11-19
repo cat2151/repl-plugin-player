@@ -80,13 +80,11 @@
             return present;
         }
         const entry = catalogEntry(options.format, options.plugin);
-        // A patch that cannot be restored fails before any instance is created.
-        const file = options.patch === undefined ? undefined
-            : repl.patchState({format:entry.format, pluginId:entry.pluginId, patch:options.patch});
+        if (options.patch !== undefined) checkPatch(entry, options.patch);
         const created = uapmd.instancing.create(entry.format, entry.pluginId, trackId);
         if (created < 0) throw new Error(repl.text('snippet_02'));
         joinAlone(trackIndex, created);
-        if (file !== undefined) loadState(created, file);
+        if (options.patch !== undefined) loadPatch(created, true, entry, options.patch);
         if (repl.scope.target() === -1) repl.scope.setTarget(created);
         return created;
     }
@@ -97,5 +95,16 @@
         if (!result.success) throw new Error(result.error);
     }
 
-    return {trackFor, catalogEntry, pluginEnd, connectionsOf, instrumentOn, effectsOn, joinAlone, ensureInstrument, loadState};
+    // A patch that cannot be restored fails here, before any instance is created.
+    function checkPatch(entry, patch) {
+        repl.patchCheck({format:entry.format, pluginId:entry.pluginId, patch});
+    }
+
+    // Puts the catalog patch into the instance; `created` tells the instance is new.
+    function loadPatch(instanceId, created, entry, patch) {
+        const file = repl.patchState({format:entry.format, pluginId:entry.pluginId, patch, instance:instanceId, created});
+        if (file !== null) loadState(instanceId, file);
+    }
+
+    return {trackFor, catalogEntry, pluginEnd, connectionsOf, instrumentOn, effectsOn, joinAlone, ensureInstrument, loadState, checkPatch, loadPatch};
 })();

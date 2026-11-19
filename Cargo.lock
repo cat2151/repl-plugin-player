@@ -1835,6 +1835,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "evolve2"
+version = "0.1.0"
+dependencies = [
+ "repl-extension-api",
+ "sequence",
+]
+
+[[package]]
 name = "extended"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4300,8 +4308,11 @@ dependencies = [
 name = "repl-plugin-player"
 version = "0.1.0"
 dependencies = [
+ "clap-sys",
  "cmrt-chord",
+ "cmrt-core",
  "cmrt-patches",
+ "cmrt-server-config",
  "cmrt-tui-core",
  "eframe",
  "egui_tiles",
@@ -4315,6 +4326,7 @@ dependencies = [
  "sha2",
  "syntect",
  "toml",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

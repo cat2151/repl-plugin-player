@@ -1,9 +1,16 @@
 #pragma once
 #include <clap/events.h>
 #include <clap/ext/note-ports.h>
+#include <cstddef>
 #include <cstdint>
 
 namespace uh::clap_dialect {
+// A UMP group addresses an instance within a track, so a plugin with fewer note
+// ports than the group receives the note on port 0 instead of losing it.
+inline uint16_t port_for_group(uint16_t group, size_t ports) {
+    return group < ports ? group : 0;
+}
+
 // Zero means an explicitly unsupported port. Missing extension is handled by
 // the caller's legacy CLAP fallback, not by guessing MIDI here.
 template<class Allocate>

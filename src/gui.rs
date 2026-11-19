@@ -93,6 +93,7 @@ struct Editor {
     help: help::Help,
     player_download: player_download::Offer,
     extensions: crate::extension::Extensions,
+    frames: Option<crate::frame_monitor::Monitor>,
 }
 impl Editor {
     /// `layout` is `layout_file`'s, or the first layout without a file.
@@ -129,11 +130,13 @@ impl Editor {
             help: help::Help::default(),
             player_download: player_download::Offer::default(),
             extensions: crate::extension::Extensions::default(),
+            frames: None,
         }
     }
     fn initialize(&mut self) {
         let result = Log::new().and_then(|log| {
             self.log_path = log.path.clone();
+            self.frames = Some(crate::frame_monitor::start(&log.path));
             Control::open(log, INIT)
         });
         match result {
@@ -189,6 +192,7 @@ impl Editor {
 }
 impl eframe::App for Editor {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+        crate::frame_monitor::beat();
         let ctx = ui.ctx().clone();
         self.script_editor.tab_to_editor(&ctx);
         self.settings.shortcut(&ctx);

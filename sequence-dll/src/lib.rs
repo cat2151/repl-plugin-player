@@ -10,7 +10,7 @@ mod tests;
 mod thread_priority;
 mod voicing;
 
-use clock::Clock;
+pub use clock::Clock;
 use repl_extension_api::sequence::{Api, Emit, Plan, Step};
 use std::ffi::c_void;
 

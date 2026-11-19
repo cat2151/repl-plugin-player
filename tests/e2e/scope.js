@@ -52,6 +52,13 @@ uapmd.sequencer.sendNoteOff(include('builtin/lib/plugins.js').instrumentOn(0), 6
 // %% note 64
 uapmd.sequencer.sendNoteOn(include('builtin/lib/plugins.js').instrumentOn(0), 64);
 
+// %% master scope
+// The replaced instrument is audible: the final master mix carries note 64.
+repl.scope.setTarget(-2)
+
+// %% instrument scope
+repl.scope.setTarget(include('builtin/lib/plugins.js').instrumentOn(0))
+
 // %% easy reset and play
 // After the easy layer's reset disposed every instrument, the one play creates goes on the scope.
 {

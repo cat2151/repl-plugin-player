@@ -1,7 +1,13 @@
-"""Measure ordinary/two-voice evolve with fixed hashed states and four-note input.
+"""Measure ordinary/two-voice evolve and evolve2 with fixed hashed states and four-note input.
 
 Generated state, output observations and timing records stay outside the repository.
 The diagnostic deliberately delays B beyond five seconds; product selection is untouched.
+`--sounds 3` requests one plugin only (every switch reuses that plugin); the default
+rotates through all fixed sounds. Each request is labelled `state` (evolve2 reloaded the
+slot's own instance), `swap` (evolve2 attached an instance that existed before the
+request), or `create` (an instance made for the request; every evolve load), and `cold`
+for the first request of its plugin in the session. UI stalls come from the session's
+frame monitor file (`<log>.frames.jsonl`).
 """
 import argparse
 from collections import Counter
@@ -16,6 +22,7 @@ import shutil
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+APIS = {'ordinary': None, 'evolve': 'evolution', 'evolve2': 'evolve2'}
 
 
 def cpu_seconds(child):
@@ -52,12 +59,39 @@ def phase_timings(observations, evolve):
             for key, values in groups.items()}
 
 
+def ui_stalls(log, since, until):
+    """Frame-monitor stalls overlapping [since, until] (wall seconds)."""
+    path = log.with_suffix('.frames.jsonl')
+    stalls = [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines()] if path.exists() else []
+    return [s for s in stalls if s['endMs'] / 1000 >= since and s['startMs'] / 1000 <= until]
+
+
+def stalled_ms(stalls, since, until):
+    return sum(max(0, min(s['endMs'] / 1000, until) - max(s['startMs'] / 1000, since)) for s in stalls) * 1000
+
+
+def request_summary(loads):
+    groups = {}
+    for load in loads:
+        if 'settledWall' in load:
+            groups.setdefault(f"{load['kind']}/{load['temperature']}", []).append(load)
+    return {key: dict(count=len(group),
+                      plugins=sorted({g['plugin'] for g in group}),
+                      meanMs=sum(g['elapsedMs'] for g in group) / len(group),
+                      maxMs=max(g['elapsedMs'] for g in group),
+                      maxReturnedMs=max(g['returnedMs'] for g in group),
+                      meanUiStallMs=sum(g['uiStallMs'] for g in group) / len(group),
+                      maxUiStallMs=max(g['uiStallMs'] for g in group))
+            for key, group in sorted(groups.items())}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--workers', type=int, nargs='+', default=[0, 6])
     parser.add_argument('--seconds', type=float, default=30)
     parser.add_argument('--fade-ms', type=float, default=1000)
-    parser.add_argument('--topologies', nargs='+', choices=['ordinary', 'evolve'], default=['ordinary', 'evolve'])
+    parser.add_argument('--topologies', nargs='+', choices=list(APIS), default=['ordinary', 'evolve'])
+    parser.add_argument('--sounds', type=int, nargs='+', help='Indices into the fixed sounds to request')
     parser.add_argument('--fixture-directory', type=Path)
     parser.add_argument('--require-clean', action='store_true',
                         help='Fail on discarded batches or deadline misses in evolve worker runs')
@@ -73,40 +107,88 @@ def main():
         try:
             sounds = session.evaluate('(' + cells['catalog'] + ')()')
             for index, sound in enumerate(sounds):
-                source = session.evaluate('repl.patchState(' + json.dumps(sound) + ')')
-                target = directory / f'state-{index}.bin'
-                shutil.copyfile(source, target)
-                sound.update(file=str(target), sha256=hashlib.sha256(target.read_bytes()).hexdigest())
+                for key, cell, name in (('file', 'repl.patchState', 'state'), ('prepared', cells['prepared'], 'prepared')):
+                    source = session.evaluate('(' + cell + ')(' + json.dumps(sound) + ')')
+                    target = directory / f'{name}-{index}.bin'
+                    shutil.copyfile(source, target)
+                    sound.update({key: str(target), key + 'Sha256': hashlib.sha256(target.read_bytes()).hexdigest()})
             manifest.write_text(json.dumps(sounds, ensure_ascii=False, indent=2), encoding='utf-8')
             session.finish()
         finally:
             session.kill()
     sounds = json.loads(manifest.read_text(encoding='utf-8'))
     for sound in sounds:
-        assert hashlib.sha256(Path(sound['file']).read_bytes()).hexdigest() == sound['sha256'], sound
+        for key in ('file', 'prepared'):
+            assert hashlib.sha256(Path(sound[key]).read_bytes()).hexdigest() == sound[key + 'Sha256'], sound
+    if args.sounds:
+        sounds = [sounds[index] for index in args.sounds]
     results = []
     try:
         for topology in args.topologies:
             for workers in args.workers:
                 session = Session(seconds=300)
                 observations, loads = [], []
-                result = dict(topology=topology, workers=workers, fadeMs=args.fade_ms, observations=observations, loads=loads)
+                result = dict(topology=topology, workers=workers, fadeMs=args.fade_ms,
+                              sounds=[s['plugin'] for s in sounds], observations=observations, loads=loads)
                 results.append(result)
                 try:
-                    evolve = topology == 'evolve'
-                    session.evaluate('(' + cells['create'] + ')(' + json.dumps(dict(sounds=sounds,workers=workers,evolve=evolve,fadeMs=args.fade_ms)) + ')')
-                    def load(slot, index):
+                    api = APIS[topology]
+                    evolve = api is not None
+                    pending, first_seen, requested = {}, {}, set()
+                    began = time.time()
+                    session.evaluate('(' + cells['create'] + ')(' + json.dumps(dict(sounds=sounds,workers=workers,api=api,fadeMs=args.fade_ms)) + ')')
+
+                    def absorb(observation):
+                        """Settles drained evolve2 outcomes; returns the slots settled now."""
+                        now = time.time()
+                        for instance in observation['instances']:
+                            first_seen.setdefault(instance, now)
+                        settled = set()
+                        for outcome in observation['outcomes']:
+                            request = next(r for r in loads if r.get('requestId') == outcome['requestId'])
+                            assert not outcome['error'] and not outcome['stale'], outcome
+                            after = observation['slots'][request['slot']]
+                            before = request.pop('before')
+                            if before['instance'] and before['instance'] == after['instance']:
+                                kind = 'state'
+                            elif first_seen.get(after['instanceId'], now) < request['submittedWall']:
+                                kind = 'swap'
+                            else:
+                                kind = 'create'
+                            request.update(settledWall=now, elapsedMs=outcome['elapsedMs'], kind=kind,
+                                           instanceId=after['instanceId'])
+                            del pending[request['slot']]
+                            settled.add(request['slot'])
+                        return settled
+
+                    def load(slot, index, before):
+                        sound = sounds[index % len(sounds)]
+                        record = dict(slot=slot, index=index, plugin=sound['plugin'],
+                                      temperature='warm' if sound['pluginId'] in requested else 'cold',
+                                      submittedWall=time.time())
+                        requested.add(sound['pluginId'])
                         start = time.perf_counter()
-                        session.evaluate('(' + cells['load'] + ')(' + json.dumps(dict(slot=slot,sound=sounds[index % len(sounds)])) + ')')
-                        loads.append(dict(slot=slot, index=index, returnedMs=1000*(time.perf_counter()-start), at=start))
+                        value = session.evaluate('(' + cells['load'] + ')(' + json.dumps(dict(slot=slot,sound=sound)) + ')')
+                        record.update(returnedMs=1000*(time.perf_counter()-start), at=start)
+                        if api == 'evolve2':
+                            record.update(requestId=value, before=dict(instance=before['instance']))
+                            pending[slot] = record
+                        else:
+                            record.update(settledWall=time.time(), elapsedMs=record['returnedMs'], kind='create')
+                        loads.append(record)
                     if evolve:
-                        load(0, 0)
+                        observation = session.evaluate(cells['observe'])
+                        absorb(observation)
+                        load(0, 0, observation['slots'][0])
                         deadline = time.monotonic()+120
-                        while session.evaluate(cells['status'])[0]['state'] != 2:
+                        while observation['slots'][0]['state'] not in ([2, 3] if api == 'evolve2' else [2]):
                             assert time.monotonic() < deadline, 'Initial A did not become ready'
                             time.sleep(.025)
+                            observation = session.evaluate(cells['observe'])
+                            absorb(observation)
                     session.evaluate(cells['start'])
                     before = session.evaluate(cells['observe'])
+                    absorb(before)
                     start = time.perf_counter()
                     used_cpu = cpu_seconds(session.child)
                     sound_index = 1
@@ -116,14 +198,16 @@ def main():
                         elapsed = time.perf_counter()-start
                         observation['elapsed'] = elapsed
                         observations.append(observation)
+                        settled = absorb(observation)
                         assert observation['signal']['finite'], observation
                         if evolve:
                             assert len(observation['slots']) == 2
                             for slot, state in enumerate(observation['slots']):
-                                assert not state['error'], state
+                                assert not state.get('error'), state
                                 # First B load is artificially late, independent of preset speed.
-                                if state['state'] == 0 and (sound_index != 1 or elapsed >= 7):
-                                    load(slot, sound_index)
+                                if (state['state'] == 0 and slot not in pending and slot not in settled
+                                        and (sound_index != 1 or elapsed >= 7)):
+                                    load(slot, sound_index, state)
                                     sound_index += 1
                         time.sleep(.025)
                     # A synchronous load can outlast the final poll. Take a new
@@ -132,13 +216,17 @@ def main():
                     observation = session.evaluate(cells['observe'])
                     observation['elapsed'] = time.perf_counter()-start
                     observations.append(observation)
+                    absorb(observation)
+                    finished = time.time()
                     assert observation['signal']['finite'], observation
                     elapsed = observation['elapsed']
                     trace = session.evaluate(cells['trace'])
                     assert not trace['overflow'], trace
                     counts = Counter((e['instance'],e['note'],e['on']) for e in trace['events'])
                     assert counts and all(note in [60,64,67,71] for _,note,_ in counts), counts
-                    assert all(count == 1 for (_,_,on),count in counts.items() if on), counts
+                    # evolve2 reuses an instance for the same plugin, so it hears the chord again.
+                    if api != 'evolve2':
+                        assert all(count == 1 for (_,_,on),count in counts.items() if on), counts
                     if evolve:
                         assert len(loads) >= 4, loads
                         assert observations[0]['slots'][0]['instanceId'] >= 0
@@ -173,7 +261,6 @@ def main():
                         frames, rate = next(iter(formats))
                         result.update(frames=frames, sampleRate=rate,
                                       deliveredFraction=result['blocks'] * frames / (elapsed * rate))
-                    print(json.dumps({k:v for k,v in result.items() if k not in ('observations','loads','trace','noteCounts')},ensure_ascii=False),flush=True)
                     if args.require_clean and evolve and workers > 0:
                         assert result['workerFaultBlocks'] == 0, 'Worker discarded device blocks'
                         assert result['deadlineMisses'] == 0, 'Actual callback deadline overrun'
@@ -181,6 +268,16 @@ def main():
                     session.evaluate(cells['cleanup'])
                     events=session.finish()
                     assert not any(e['event']=='periodic_script_error' for e in events), session.log
+                    # The monitor writes a stall when it ends, so read after the session closed.
+                    stalls = ui_stalls(session.log, began, finished)
+                    for load_record in loads:
+                        if 'settledWall' in load_record:
+                            load_record['uiStallMs'] = stalled_ms(stalls, load_record['submittedWall'], load_record['settledWall'])
+                    result.update(uiStalls=dict(count=len(stalls), maxMs=max((s['ms'] for s in stalls), default=0),
+                                                totalMs=sum(s['ms'] for s in stalls),
+                                                thresholdMs=sorted(s['thresholdMs'] for s in stalls)[len(stalls)//2] if stalls else None),
+                                  stalls=stalls, requests=request_summary(loads))
+                    print(json.dumps({k:v for k,v in result.items() if k not in ('observations','loads','trace','noteCounts','stalls')},ensure_ascii=False),flush=True)
                 finally:
                     session.kill()
     finally:

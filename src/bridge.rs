@@ -8,6 +8,7 @@ use std::{
 pub struct Bridge {
     _library: Library,
     _sequence_library: Library,
+    _evolve2_library: Library,
     _control_thread: std::marker::PhantomData<std::rc::Rc<()>>,
     request: unsafe extern "C" fn(*const std::ffi::c_char) -> *const std::ffi::c_char,
     capture: Option<Box<crate::scope_capture::Capture>>,
@@ -77,6 +78,47 @@ impl Bridge {
             if !connect_evolution(evolution()) {
                 return Err("Evolution DLL ABI mismatch".into());
             }
+            let evolve2_path = crate::resources::extension("evolve2")?;
+            let evolve2_library = Library::new(&evolve2_path)
+                .map_err(|error| format!("{}: {error}", evolve2_path.display()))?;
+            let evolve2 = evolve2_library
+                .get::<unsafe extern "C" fn() -> *const repl_extension_api::evolve2::Api>(
+                    b"repl_evolve2_api\0",
+                )
+                .map_err(|e| e.to_string())?;
+            let connect_evolve2 = library
+                .get::<unsafe extern "C" fn(*const repl_extension_api::evolve2::Api) -> bool>(
+                    b"repl_set_evolve2_api\0",
+                )
+                .map_err(|e| e.to_string())?;
+            if !connect_evolve2(evolve2()) {
+                return Err("evolve2 DLL ABI mismatch".into());
+            }
+            use crate::patch_state::clap;
+            clap::connect(Some(clap::Bridge {
+                plugin: *library
+                    .get::<clap::ClapPlugin>(b"repl_clap_plugin\0")
+                    .map_err(|e| e.to_string())?,
+                sysex: *library
+                    .get::<clap::ClapSysEx>(b"repl_clap_sysex\0")
+                    .map_err(|e| e.to_string())?,
+                fresh: *library
+                    .get::<clap::FreshPlugin>(b"repl_fresh_plugin\0")
+                    .map_err(|e| e.to_string())?,
+            }));
+            type Into = unsafe extern "C" fn(
+                *const std::ffi::c_void,
+                *const u8,
+                usize,
+                bool,
+                crate::patch_state::StateOut,
+                *mut std::ffi::c_void,
+                *mut std::ffi::c_char,
+                usize,
+            ) -> bool;
+            library
+                .get::<unsafe extern "C" fn(Into)>(b"repl_set_patch_into\0")
+                .map_err(|e| e.to_string())?(crate::patch_state::patch_into);
             crate::script_api::set_sequence_choose(
                 *sequence_library
                     .get::<repl_extension_api::sequence::Choose>(b"repl_sequence_choose\0")
@@ -85,6 +127,7 @@ impl Bridge {
             Ok(Self {
                 _library: library,
                 _sequence_library: sequence_library,
+                _evolve2_library: evolve2_library,
                 _control_thread: std::marker::PhantomData,
                 request,
                 capture: None,
@@ -140,5 +183,6 @@ impl Drop for Bridge {
     fn drop(&mut self) {
         let _ = self.call(json!({"command":"close"}));
         crate::script_api::clear_sequence_choose();
+        crate::patch_state::clap::connect(None);
     }
 }

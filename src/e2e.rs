@@ -44,12 +44,14 @@ pub fn run(case: &str) -> Result<(), String> {
     let rust = rust_case(case);
     let script = Script::load(if case == "scope-load" { "scope" } else { case }, !rust)?;
     let log = log::Log::new()?;
+    let _frames = crate::frame_monitor::start(&log.path);
     let mut app = Control::open(log, &script.init)?;
     let mut result = (|| {
         if case == "close-preparing" {
             return Ok(());
         }
         while !app.ready {
+            crate::frame_monitor::beat();
             if let Err(error) = app.poll() {
                 if case == "missing" && error == crate::i18n::t("install_cli_missing") {
                     app.log

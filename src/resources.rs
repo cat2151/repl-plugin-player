@@ -164,8 +164,8 @@ pub fn extension_names() -> Vec<String> {
     let Some(root) = source_root() else {
         return EXTENSIONS
             .iter()
-            // The audio engine is deployed with DLL resources but has no panes.
-            .filter(|(name, _)| *name != "sequence")
+            // The audio engines are deployed with DLL resources but have no panes.
+            .filter(|(name, _)| !["sequence", "evolve2"].contains(name))
             .map(|(name, _)| (*name).to_owned())
             .collect();
     };
