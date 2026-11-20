@@ -5,19 +5,31 @@
 //! playback hands it back with `retire`. Lock-free so the audio side can use it.
 use std::sync::atomic::{AtomicU32, Ordering};
 
-pub const SLOT_COUNT: usize = 2;
-
 pub const FREE: u32 = 0;
 pub const LOADING: u32 = 1;
 pub const READY: u32 = 2;
 pub const ENGAGED: u32 = 3;
 
-#[derive(Default)]
 pub struct Ownership {
-    states: [AtomicU32; SLOT_COUNT],
+    states: Box<[AtomicU32]>,
 }
 
 impl Ownership {
+    /// Every slot starts `FREE`.
+    pub fn new(slots: usize) -> Self {
+        Self {
+            states: (0..slots).map(|_| AtomicU32::new(FREE)).collect(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.states.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.states.is_empty()
+    }
+
     pub fn get(&self, slot: usize) -> u32 {
         self.states[slot].load(Ordering::Acquire)
     }

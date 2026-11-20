@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use crate::{
     builder::BuilderWorker,
     host::{InstanceHandle, PluginKind, SharedHost},
-    ownership::{Ownership, SLOT_COUNT},
+    ownership::Ownership,
     pool::{LiveInstances, SparePool},
     preload::PreloadBackend,
 };
@@ -51,7 +51,7 @@ pub struct LoaderBackend {
     /// claim (and their spare) until it does.
     orphans: Vec<Job>,
     /// The in-flight job of this slot ended while still holding its claim.
-    unsettled: [bool; SLOT_COUNT],
+    unsettled: Vec<bool>,
 }
 
 impl LoaderBackend {
@@ -61,17 +61,18 @@ impl LoaderBackend {
         builder: BuilderWorker,
         events: std::sync::mpsc::Sender<Event>,
     ) -> Self {
+        let slots = ownership.len();
         Self {
             host,
             ownership,
-            live: LiveInstances::default(),
+            live: LiveInstances::new(slots),
             spares: SparePool::default(),
             builder,
             events,
             loaded: HashMap::new(),
             next_ticket: 1,
             orphans: Vec::new(),
-            unsettled: [false; SLOT_COUNT],
+            unsettled: vec![false; slots],
         }
     }
 
@@ -154,7 +155,7 @@ impl PreloadBackend for LoaderBackend {
 
     fn begin(&mut self, slot: u8, request: LoadRequest) -> Result<Job, String> {
         let slot = usize::from(slot);
-        if slot >= SLOT_COUNT {
+        if slot >= self.unsettled.len() {
             return Err(format!("slot {slot} does not exist"));
         }
         Ok(Job {

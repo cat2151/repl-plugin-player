@@ -49,7 +49,7 @@
         },
         status: () => __replCall('evolve.status', {}),
     };
-    __replCall('evolve.open', {tracks, holdMs:5000, fadeMs:500});
+    __replCall('evolve.open', {groups:[{tracks, input:'chord'}], holdMs:5000, fadeMs:500});
     tracks
 }
 

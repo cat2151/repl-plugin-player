@@ -2,7 +2,7 @@
 
 - 状態: evolve の土台として採用、現行 evolve は削除
 - 決定者: user（現行evolveを置き換えず、別のJSとRust DLLでcmrtと同じ構造のevolve2を新しく作る。要求はworkerへのsubmitだけで即座に返し、決着はpollで回収する。cycle変更・取り消しで世代を進め、古い世代の完了は適用しない。論理slotと物理instanceを分け、同じpluginへの切り替えはstateの再適用だけ、別pluginへの切り替えは種別ごとの予備の差し替えで行う。状態機械・台帳・pool・worker・世代・時計・fadeはRust、C++は生成・破棄・state適用・graphへの着脱の薄いwrapに限る。最後に現行evolveと同じ条件で比べる）。比較の後、userはevolve2をevolveの土台にし、現行evolveを消して名前をevolveに統一することを決めた。物理instanceを1pluginだけ載せた未公開graphとすること、Host APIを完了callback型にすること、予備の数、UAPMDを呼ぶthread、evolveとの排他はAIの提案をuserが承認
-- 関連: [ADR 0017](0017-evolving-loop-prototypes.md)、[ADR 0020](0020-headless-clap-host-for-evolve2.md)
+- 関連: [ADR 0017](0017-evolving-loop-prototypes.md)、[ADR 0020](0020-headless-clap-host-for-evolve2.md)、[ADR 0027](0027-evolve-groups-injected-from-js.md)
 
 ## 決定と理由
 

@@ -3,25 +3,29 @@
 //! # Bound on physical instances
 //! Builds are ordered only while `spares + outstanding < target`, and moving
 //! an instance between a slot and the pool does not change its kind's count.
-//! So per kind the count never exceeds `SLOT_COUNT + SPARE_TARGET`, without
+//! So per kind the count never exceeds the slot count plus `SPARE_TARGET`, without
 //! eviction (same argument as clap-mml-play-server's `instances.rs`).
 use std::collections::HashMap;
 
 use crate::{
     builder::{BuildOutcome, BuilderWorker},
     host::{InstanceHandle, PluginKind},
-    ownership::SLOT_COUNT,
 };
 
 /// Spares kept per kind that has ever been requested.
 pub const SPARE_TARGET: usize = 1;
 
-#[derive(Default)]
 pub struct LiveInstances {
-    slots: [Option<(PluginKind, InstanceHandle)>; SLOT_COUNT],
+    slots: Vec<Option<(PluginKind, InstanceHandle)>>,
 }
 
 impl LiveInstances {
+    pub fn new(slots: usize) -> Self {
+        Self {
+            slots: vec![None; slots],
+        }
+    }
+
     pub fn get(&self, slot: usize) -> Option<&(PluginKind, InstanceHandle)> {
         self.slots[slot].as_ref()
     }
@@ -39,7 +43,7 @@ impl LiveInstances {
         self.slots[slot].take()
     }
 
-    pub fn snapshot(&self) -> [Option<(PluginKind, InstanceHandle)>; SLOT_COUNT] {
+    pub fn snapshot(&self) -> Vec<Option<(PluginKind, InstanceHandle)>> {
         self.slots.clone()
     }
 }

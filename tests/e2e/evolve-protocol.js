@@ -45,7 +45,7 @@
     const settle=(request,{stale=false,error=''}={})=>
         outcomes.push({requestId:request.requestId,slot:request.slot,elapsedMs:1,stale,error});
     const count=api=>calls.filter(c=>c===api).length;
-    const pool=eval(source).prepare([{track:3},{track:4}],entries);
+    const pool=eval(source).prepare([{tracks:[3,4],input:'chord'}],entries);
 
     picks.push(0,1);
     pool.start({role:'chord',kind:'pad'},1000,{holdMs:5000,fadeMs:1000,everyMs:25});

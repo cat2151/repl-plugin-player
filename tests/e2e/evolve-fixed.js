@@ -35,7 +35,7 @@
         const pool=include('builtin/lib/evolve-mode.js').enter(
             sounds.map(s=>({format:s.format,plugin:s.plugin})));
         fixture.tracks=pool.buffers.map(b=>b.track);
-        __replCall(api+'.open',{tracks:fixture.tracks,holdMs:5000,fadeMs});
+        __replCall(api+'.open',{groups:[{tracks:fixture.tracks,input:'chord'}],holdMs:5000,fadeMs});
     } else {
         const plugins=include('builtin/lib/plugins.js');
         for (const track of uapmd.sequencer.getTrackInfos())

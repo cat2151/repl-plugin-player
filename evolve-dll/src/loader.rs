@@ -22,7 +22,7 @@ use std::{
 use crate::{
     builder::{BuildOutcome, BuilderWorker},
     host::{InstanceHandle, PluginKind, SharedHost},
-    ownership::{Ownership, SLOT_COUNT},
+    ownership::Ownership,
     preload::{Generation, PreloadOutcome, PreloadTracker},
 };
 
@@ -52,7 +52,7 @@ pub(crate) enum Event {
 /// What the loader currently holds, for status and tests.
 #[derive(Clone, Default, Debug)]
 pub struct View {
-    pub slots: [Option<(PluginKind, InstanceHandle)>; SLOT_COUNT],
+    pub slots: Vec<Option<(PluginKind, InstanceHandle)>>,
     pub spares: Vec<(PluginKind, usize)>,
 }
 
@@ -77,6 +77,7 @@ impl View {
 
 pub struct Loader {
     events: Sender<Event>,
+    slots: usize,
     outcomes: Arc<Mutex<VecDeque<PreloadOutcome>>>,
     view: Arc<Mutex<View>>,
     generation: Generation,
@@ -94,14 +95,19 @@ impl Loader {
                 let _ = built.send(Event::Built(outcome));
             }),
         );
+        let slots = ownership.len();
         let backend = LoaderBackend::new(host, ownership, builder, events.clone());
         let outcomes = Arc::new(Mutex::new(VecDeque::new()));
-        let view = Arc::new(Mutex::new(View::default()));
+        let view = Arc::new(Mutex::new(View {
+            slots: vec![None; slots],
+            spares: Vec::new(),
+        }));
         let generation: Generation = Arc::new(AtomicU64::new(0));
         let worker = Worker {
             backend,
             tracker: PreloadTracker::default(),
             generation: Arc::clone(&generation),
+            slots,
             outcomes: Arc::clone(&outcomes),
             view: Arc::clone(&view),
         };
@@ -111,6 +117,7 @@ impl Loader {
             .ok();
         Self {
             events,
+            slots,
             outcomes,
             view,
             generation,
@@ -121,7 +128,7 @@ impl Loader {
 
     /// Returns at once with a request id; 0 means rejected.
     pub fn submit(&self, slot: u8, kind: PluginKind, state: Vec<u8>, generation: u64) -> u32 {
-        if usize::from(slot) >= SLOT_COUNT || self.thread.is_none() {
+        if usize::from(slot) >= self.slots || self.thread.is_none() {
             return 0;
         }
         let mut request_id = self.next_id.fetch_add(1, Ordering::Relaxed);
@@ -178,6 +185,7 @@ struct Worker {
     backend: LoaderBackend,
     tracker: PreloadTracker<LoaderBackend>,
     generation: Generation,
+    slots: usize,
     outcomes: Arc<Mutex<VecDeque<PreloadOutcome>>>,
     view: Arc<Mutex<View>>,
 }
@@ -260,7 +268,7 @@ impl Worker {
             self.absorb(event);
         }
         let host = Arc::clone(&self.backend.host);
-        for slot in 0..SLOT_COUNT {
+        for slot in 0..self.slots {
             if let Some((_, handle)) = self.backend.live.take(slot) {
                 host.detach_from_slot(slot as u8);
                 host.destroy_instance(handle);

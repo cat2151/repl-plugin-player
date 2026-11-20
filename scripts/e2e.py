@@ -64,7 +64,7 @@ def main():
             assert any(e["event"] == "cleanup" and e["details"]["result"]["ok"] for e in events), paths[0]
             calls = [e for e in events if e["event"] == "api"]
             note_on = [e for e in calls if e["details"]["call"]["api"] == "uapmd.sequencer.sendNoteOn"]
-            if case in ("scope-master", "evolve-host", "evolve-protocol", "evolve-timbre", "live-sequence", "syntax", "missing", "close-preparing", "close-creating", "mutation-close", "timeline", "timeline-view", "piano-roll-cut-paste", "partial-run", "snippets", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-rescan", "patch-catalog-reload", "patch-browse", "state-load", "track-use", "reset-first-note", "dock", "dock-script-ui"):
+            if case in ("scope-master", "evolve-host", "evolve-mode", "evolve-protocol", "evolve-timbre", "live-sequence", "syntax", "missing", "close-preparing", "close-creating", "mutation-close", "timeline", "timeline-view", "piano-roll-cut-paste", "partial-run", "snippets", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-rescan", "patch-catalog-reload", "patch-browse", "state-load", "track-use", "reset-first-note", "dock", "dock-script-ui"):
                 assert not note_on, f"{case}: unexpected NoteOn"
             elif case in ("tutorials", "demo-play", "easy", "browser-change", "evolve"):
                 pass  # Built-in snippets and lib playback may play notes however they are written.

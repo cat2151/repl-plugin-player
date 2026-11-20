@@ -19,6 +19,8 @@
         include('builtin/lib/tutorial.js').stop();
         if (globalThis.evolveLoop) globalThis.evolveLoop.stop();
         delete globalThis.evolveLoop;
+        if (globalThis.evolveScatter) globalThis.evolveScatter.stop();
+        delete globalThis.evolveScatter;
         repl.sequence.clear();
         if (globalThis.evolvePool) globalThis.evolvePool.dispose();
         // UAPMD's track removal fails when it also has to remove live plugins.
@@ -74,13 +76,16 @@
             for (const node of mode.bypass) uapmd.sequencer.setPluginBypassed(node.instanceId, true);
             // Frozen/audio tracks can sound without passing through the plugins.
             before.forEach((track,index)=>repl.track.setVolume(index,0));
-            for (let index=0; index<2; ++index) {
+            // The pads, then the scatter (evolve-scatter.js): empty tracks stay silent.
+            for (let index=0; index<4; ++index) {
                 const ids = uapmd.sequencer.getTrackInfos().map(t => t.trackId);
                 mutation(uapmd.sequencer.addTrack());
                 mode.trackIds.push(...uapmd.sequencer.getTrackInfos().filter(t => !ids.includes(t.trackId)).map(t => t.trackId));
             }
-            globalThis.evolvePool = include('builtin/lib/evolve-pool.js').prepare(
-                [0,1].map(index => ({track:before.length + index})), slots);
+            const track = index => before.length + index;
+            globalThis.evolvePool = include('builtin/lib/evolve-pool.js').prepare([
+                {tracks:[track(0), track(1)], input:'chord'},
+                {tracks:[track(2), track(3)], input:'timeline'}], slots);
             for (const trackId of mode.trackIds) uapmd.sequencer.setTrackFreezePolicy(trackId, 'off');
             repl.scope.setTarget(-2); // Final stereo master mix.
             return globalThis.evolvePool;

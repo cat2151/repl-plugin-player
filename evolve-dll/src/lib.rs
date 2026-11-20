@@ -6,6 +6,7 @@ mod alloc_count;
 pub mod builder;
 pub mod ffi;
 pub mod host;
+pub mod layout;
 pub mod level;
 pub mod loader;
 pub mod ownership;

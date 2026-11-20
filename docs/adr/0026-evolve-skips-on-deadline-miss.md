@@ -2,7 +2,7 @@
 
 - 状態: 採用
 - 決定者: user（重い音色で無音が続くなら、すぐ skip する。「期限超過したら次の音にいっていい」として、窓と割合で判定する案を採らなかった）。判定を `evolve-dll` の `Playback::begin` に置くこと、遅れた block も期限超過に数えること、どの slot を外すか・今の音色は外さず早めに fade することは AI の設計
-- 関連: [ADR 0017](0017-evolving-loop-prototypes.md)、[ADR 0019](0019-evolve2-async-pool.md)、[ADR 0025](0025-evolve-loudness-trim-and-limiter.md)
+- 関連: [ADR 0017](0017-evolving-loop-prototypes.md)、[ADR 0019](0019-evolve2-async-pool.md)、[ADR 0025](0025-evolve-loudness-trim-and-limiter.md)、[ADR 0027](0027-evolve-groups-injected-from-js.md)（group が複数のとき、blame は全 group から1件だけ選ぶ）
 
 ## 決定と理由
 

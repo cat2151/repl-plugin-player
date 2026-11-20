@@ -1,13 +1,22 @@
 //! Wraps the C [`HostApi`] as the [`Host`] trait. Each `done` closure is boxed
 //! and passed as the callback's `user` pointer; the trampoline takes it back.
-use std::ffi::{c_char, c_void, CStr, CString};
+//! The host's instance id of each created handle is kept for `status`.
+use std::{
+    collections::HashMap,
+    ffi::{c_char, c_void, CStr, CString},
+    sync::{Arc, Mutex},
+};
 
 use repl_extension_api::evolve::HostApi;
 
 use crate::host::{CreateDone, Host, InstanceHandle, LoadDone, PluginKind};
 
+/// Handle → the host's instance id.
+pub type InstanceIds = Arc<Mutex<HashMap<InstanceHandle, i32>>>;
+
 pub struct FfiHost {
     api: HostApi,
+    ids: InstanceIds,
 }
 
 // The host promises its functions may be called from any thread.
@@ -19,9 +28,9 @@ impl FfiHost {
     ///
     /// # Safety
     /// A non-null `api` points to a readable `HostApi` prefix of `size` bytes.
-    pub unsafe fn new(api: *const HostApi) -> Option<Self> {
+    pub unsafe fn new(api: *const HostApi, ids: InstanceIds) -> Option<Self> {
         let api = unsafe { api.as_ref()? };
-        (api.size >= size_of::<HostApi>()).then_some(Self { api: *api })
+        (api.size >= size_of::<HostApi>()).then_some(Self { api: *api, ids })
     }
 }
 
@@ -33,12 +42,19 @@ pub(crate) unsafe fn text(ptr: *const c_char) -> Option<String> {
     })
 }
 
-unsafe extern "C" fn created(user: *mut c_void, handle: u64, error: *const c_char) {
-    let done = unsafe { Box::from_raw(user.cast::<CreateDone>()) };
+type Created = (CreateDone, InstanceIds);
+
+unsafe extern "C" fn created(user: *mut c_void, handle: u64, instance: i32, error: *const c_char) {
+    let (done, ids) = *unsafe { Box::from_raw(user.cast::<Created>()) };
     done(match unsafe { text(error) } {
         Some(error) => Err(error),
         None if handle == 0 => Err("the host returned no instance".to_string()),
-        None => Ok(handle),
+        None => {
+            if let Ok(mut ids) = ids.lock() {
+                ids.insert(handle, instance);
+            }
+            Ok(handle)
+        }
     });
 }
 
@@ -60,7 +76,8 @@ impl Host for FfiHost {
             done(Err("the plugin name contains NUL".to_string()));
             return;
         };
-        let user = Box::into_raw(Box::new(done)).cast();
+        let pending: Created = (done, Arc::clone(&self.ids));
+        let user = Box::into_raw(Box::new(pending)).cast();
         unsafe {
             (self.api.create_instance)(
                 self.api.ctx,
@@ -73,6 +90,9 @@ impl Host for FfiHost {
     }
 
     fn destroy_instance(&self, handle: InstanceHandle) {
+        if let Ok(mut ids) = self.ids.lock() {
+            ids.remove(&handle);
+        }
         unsafe { (self.api.destroy_instance)(self.api.ctx, handle) };
     }
 

@@ -280,18 +280,25 @@ std::string reply;
 }
 static bool session_open() { return session != nullptr; }
 
-// Two empty, ordered tracks that only evolve plays.
-static std::array<int32_t,2> evolve_tracks(const choc::value::ValueView& selected, uapmd::SequencerEngine& engine) {
-    if (!selected.isArray() || selected.size()!=2) throw std::runtime_error("Expected two evolve tracks");
-    std::array<int32_t,2> tracks;
-    for (uint32_t i=0;i<2;++i) {
-        tracks[i]=selected[i].get<int32_t>();
-        if (selected[i].get<double>()!=tracks[i] || tracks[i]<0 || static_cast<size_t>(tracks[i])>=engine.tracks().size() ||
-            !engine.tracks()[tracks[i]]->orderedInstanceIds().empty())
-            throw std::runtime_error("evolve requires empty dedicated tracks");
+// The groups of `evolve.open`, on empty tracks that only evolve plays. evolve checks the rest.
+static std::vector<Evolve::Group> evolve_groups(const choc::value::ValueView& selected, uapmd::SequencerEngine& engine) {
+    if (!selected.isArray()) throw std::runtime_error("Expected evolve groups");
+    std::vector<Evolve::Group> groups;
+    for (uint32_t g=0;g<selected.size();++g) {
+        const auto tracks=selected[g]["tracks"];
+        const auto input=selected[g]["input"];
+        if (!tracks.isArray() || !input.isString()) throw std::runtime_error("Expected evolve groups of tracks and input");
+        Evolve::Group group{{},input.get<std::string>()};
+        for (uint32_t i=0;i<tracks.size();++i) {
+            const auto track=tracks[i].get<int32_t>();
+            if (tracks[i].get<double>()!=track || track<0 || static_cast<size_t>(track)>=engine.tracks().size() ||
+                !engine.tracks()[track]->orderedInstanceIds().empty())
+                throw std::runtime_error("evolve requires empty dedicated tracks");
+            group.tracks.push_back(track);
+        }
+        groups.push_back(std::move(group));
     }
-    if (tracks[1]<=tracks[0]) throw std::runtime_error("Expected ordered distinct tracks");
-    return tracks;
+    return groups;
 }
 
 static const char* evolve_api(const char* request) {
@@ -306,8 +313,8 @@ static const char* evolve_api(const char* request) {
             if (session->evolve) throw std::runtime_error("evolve is already open");
             if (!repl_evolve::api) throw std::runtime_error("evolve DLL is not loaded");
             auto& engine=*uapmd_app::AppModel::instance().sequencer().engine();
-            const auto tracks=evolve_tracks(args["tracks"],engine);
-            session->evolve=std::make_unique<Evolve>(engine,tracks,args["holdMs"].get<double>()/1000,args["fadeMs"].get<double>()/1000);
+            const auto groups=evolve_groups(args["groups"],engine);
+            session->evolve=std::make_unique<Evolve>(engine,groups,args["holdMs"].get<double>()/1000,args["fadeMs"].get<double>()/1000);
         } else if (api=="evolve.close") {
             session->evolve.reset();
         } else {
@@ -318,7 +325,7 @@ static const char* evolve_api(const char* request) {
             else if (api=="evolve.bumpGeneration") value=choc::value::createFloat64(static_cast<double>(current.bumpGeneration()));
             else if (api=="evolve.submit") {
                 const auto slot=args["slot"].get<int32_t>();
-                if (slot<0 || slot>1 || args["slot"].get<double>()!=slot) throw std::runtime_error("Invalid evolve slot");
+                if (slot<0 || args["slot"].get<double>()!=slot) throw std::runtime_error("Invalid evolve slot");
                 value=choc::value::createInt64(current.submit(slot,args["format"].get<std::string>(),args["pluginId"].get<std::string>(),
                     args["file"].get<std::string>(),args["generation"]));
             } else throw std::runtime_error("Unknown evolve API: "+api);

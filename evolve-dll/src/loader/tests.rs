@@ -11,10 +11,11 @@ use crate::{
 };
 
 const LIMIT: Duration = Duration::from_secs(5);
+const SLOTS: usize = 2;
 
 fn setup() -> (Arc<MockHost>, Arc<Ownership>, Loader) {
     let host = Arc::new(MockHost::default());
-    let ownership = Arc::new(Ownership::default());
+    let ownership = Arc::new(Ownership::new(SLOTS));
     let loader = Loader::spawn(host.clone(), Arc::clone(&ownership));
     (host, ownership, loader)
 }
@@ -150,7 +151,7 @@ fn physical_instances_per_kind_stay_within_slots_plus_target() {
         let view = loader.view();
         for p in ["a", "b", "c"] {
             assert!(
-                view.physical(&kind(p)) <= SLOT_COUNT + SPARE_TARGET,
+                view.physical(&kind(p)) <= SLOTS + SPARE_TARGET,
                 "{p}: {view:?}"
             );
         }

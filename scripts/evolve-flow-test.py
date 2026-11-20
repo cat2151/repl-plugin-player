@@ -5,13 +5,22 @@
 
 Runs the snippet as the user would (its sound choice is random), then polls the audio
 worker diagnostics and `evolve.status` every `--interval` seconds. Each poll's increase of
-`deadlineMisses` is charged to the plugins of the slots with gain > 0 (`sounding`) and to
-those loaded with gain 0 (`silent`; still processed), and to `focus` when any slot's plugin
-id contains a `--focus` text. A miss is charged once per plugin even when both slots hold it.
+`deadlineMisses` is charged to the plugins of the slots (pads and scatter) with gain > 0
+(`sounding`) and to those loaded with gain 0 (`silent`; still processed), and to `focus`
+when any slot's plugin id contains a `--focus` text. A miss is charged once per plugin even
+when several slots hold it.
 `patchSeconds`/`patchMisses` do the same for the sounding slots' "pluginId / patch".
 `unfinished` counts, per worker fault block, the plugins whose track had not finished.
 UI stalls come from the session's frame monitor file, as in evolve-fixed-test.py.
 Wall times are kept, so polls overlapping `scripts/build-load.py`'s `busy` can be dropped.
+
+`switches` lists each sound change of the buffers of every evolve group (`pad0`, `pad1`,
+`scatter0`, `scatter1`) with the UI stalls overlapping its span, widened by `SLACK` seconds
+on both sides. A buffer's sound is chosen when its request starts and the instance is made
+later on the main thread, so its span runs until the first poll whose slot is READY or
+ENGAGED. A switch still unsettled at the last poll has `settled` false, and its span ends
+there, so it can take in the stall of `--end`. Stalls in no span are listed in `unmatchedStalls`.
+Use `--interval 0.2` for switch spans of about one poll.
 """
 import argparse
 from collections import Counter
@@ -26,10 +35,44 @@ OBSERVE = """(() => {
     let slots = [];
     try { slots = __replCall('evolve.status', {}); } catch (error) {}
     const pool = globalThis.evolvePool;
+    // Indexed by slot, as `s`: the pads' group, then the scatter's.
+    const buffers = pool ? pool.groups.flatMap((g, group) => g.buffers.map(b => ({b, who: group ? 'scatter' : 'pad'}))) : [];
     return {d: __remidy_audio_worker_diagnostics(), s: slots,
-            tracks: pool ? pool.buffers.map(b => b.track) : [],
-            patches: pool ? pool.buffers.map(b => b.sound ? b.sound.patch : null) : []};
+            who: buffers.map(({b, who}) => who + (b.slot - buffers.findIndex(x => x.who === who))),
+            tracks: buffers.map(({b}) => b.track),
+            patches: buffers.map(({b}) => b.sound ? b.sound.patch : null),
+            sounds: buffers.map(({b}) => b.sound ? b.sound.plugin + ' / ' + b.sound.patch : null)};
 })()"""
+SLACK = .05
+READY, ENGAGED = 2, 3
+
+
+def stall_view(stall):
+    return dict(startMs=stall['startMs'], ms=stall['ms'],
+                functions=[f[0] if isinstance(f, list) else f for f in stall.get('functions', [])[:8]])
+
+
+def switches(observations, stalls):
+    """Sound changes with the stalls overlapping their spans; see the module text."""
+    found = []
+    for index, (previous, current) in enumerate(zip(observations, observations[1:]), 1):
+        for slot, sound in enumerate(current.get('sounds', [])):
+            before = previous['sounds'][slot] if slot < len(previous.get('sounds', [])) else None
+            if not sound or sound == before:
+                continue
+            settled = next((o for o in observations[index:]
+                            if slot < len(o['s']) and o['s'][slot]['state'] in (READY, ENGAGED)), None)
+            found.append(dict(who=current['who'][slot], sound=sound, before=before, settled=settled is not None,
+                              since=previous['wallBefore'], until=(settled or observations[-1])['wallAfter']))
+    matched = set()
+    for switch in found:
+        overlapping = [i for i, s in enumerate(stalls)
+                       if s['endMs'] / 1000 >= switch['since'] - SLACK and s['startMs'] / 1000 <= switch['until'] + SLACK]
+        matched.update(overlapping)
+        switch['stalls'] = [stall_view(stalls[i]) for i in overlapping]
+        switch['maxStallMs'] = max((stalls[i]['ms'] for i in overlapping), default=0)
+    unmatched = [stall_view(s) for i, s in enumerate(stalls) if i not in matched]
+    return found, unmatched
 
 
 def plugins_of(slots, sounding):
@@ -116,8 +159,10 @@ def main():
         used_cpu = fixed['cpu_seconds'](session.child)
         end = start + args.seconds
         while True:
+            asked = time.time()
             observation = session.evaluate(OBSERVE)
-            observation.update(elapsed=time.perf_counter() - start, wallMs=time.time() * 1000)
+            observation.update(elapsed=time.perf_counter() - start, wallMs=time.time() * 1000,
+                               wallBefore=asked, wallAfter=time.time())
             observations.append(observation)
             if observation['elapsed'] >= args.seconds:
                 break
@@ -128,11 +173,19 @@ def main():
         events = session.finish()
         assert not any(e['event'] == 'periodic_script_error' for e in events), session.log
         stalls = fixed['ui_stalls'](session.log, began, finished)
+        changes, unmatched = switches(observations, stalls)
+        result.update(switches=changes, unmatchedStalls=unmatched)
         result.update(summarize(observations, args.focus), seconds=observations[-1]['elapsed'],
                       cpuPercentOfOneCore=cpu, stalls=stalls,
                       uiStalls=dict(count=len(stalls), maxMs=max((s['ms'] for s in stalls), default=0),
                                     totalMs=sum(s['ms'] for s in stalls)))
-        print(json.dumps({k: v for k, v in result.items() if k not in ('observations', 'stalls')}), flush=True)
+        print(json.dumps({k: v for k, v in result.items()
+                          if k not in ('observations', 'stalls', 'switches', 'unmatchedStalls')}), flush=True)
+        for change in changes:
+            mark = '' if change['settled'] else ' (unsettled)'
+            print(f"{change['who']:8} {change['maxStallMs']:7.0f}ms {change['sound']}{mark}", flush=True)
+        for stall in unmatched:
+            print(f"unmatched {stall['ms']:7.0f}ms {stall['functions'][:3]}", flush=True)
     finally:
         session.kill()
         output = directory / f'flow-results-{time.time_ns()}.json'

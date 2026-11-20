@@ -26,3 +26,13 @@
         bpm:72, beats:4, velocity:24000, everyMs:2000
     });
 }
+// %% @text evolving_scatter_edit
+{
+    include('builtin/lib/evolve-scatter.js').start({
+        loop:globalThis.evolveLoop,
+        instruments:['Surge XT','Vaporizer2','TyrellN6','Six Sines','Zebralette3'].map(plugin=>({format:'CLAP',plugin})),
+        sounds:{role:'lead', kinds:['bell','pluck','mallet']},
+        notes:{range:{min:72, max:96}, grid:0.5, chance:0.15, length:1, velocity:{min:16000, max:40000}},
+        changeMs:{min:5000, max:20000}, everyMs:500
+    });
+}

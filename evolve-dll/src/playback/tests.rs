@@ -8,6 +8,7 @@ use repl_extension_api::sequence::Step;
 use super::*;
 use crate::{
     alloc_count::allocations,
+    layout::{Input, Layout},
     loader::Loader,
     ownership::{FREE, LOADING, READY},
     test_host::{kind, Call, MockHost},
@@ -18,10 +19,13 @@ const RATE: f64 = 100.0;
 const CHORD: u32 = 100;
 const HOLD: u32 = 500;
 const FADE: u32 = 100;
+const SLOTS: usize = 2;
 
+/// One `Chord` group on tracks 0 and 1.
 fn engine() -> (Arc<Ownership>, Playback) {
-    let ownership = Arc::new(Ownership::default());
-    let playback = Playback::new(5.0, 1.0, Arc::clone(&ownership)).unwrap();
+    let ownership = Arc::new(Ownership::new(SLOTS));
+    let layout = Layout::new(&[([0, 1], Input::Chord)]).unwrap();
+    let playback = Playback::new(layout, 5.0, 1.0, Arc::clone(&ownership)).unwrap();
     (ownership, playback)
 }
 
@@ -37,7 +41,7 @@ fn sequence(p: &Playback) {
         notes: [60, 64, 67, 71, 0, 0, 0, 0],
         count: 4,
     };
-    assert_eq!(p.publish(&plan), 0);
+    assert_eq!(p.publish(&plan, &[0, 1]), 0);
 }
 
 /// Loader-side hand-over without a loader.
@@ -53,7 +57,7 @@ fn block(p: &Playback, frames: u32) -> [Vec<f32>; 2] {
         p.crossfade(0, frames as usize),
         p.crossfade(1, frames as usize),
     ];
-    for slot in 0..SLOT_COUNT {
+    for slot in 0..SLOTS {
         let mut silence = vec![0.0f32; frames as usize];
         unsafe {
             p.render(slot, frames, RATE, |_, _, _, _| {});
@@ -222,7 +226,7 @@ fn the_audio_callbacks_do_not_allocate() {
     let mut events = 0usize;
     let mut run = |frames: u32| {
         unsafe { p.begin(frames, RATE) };
-        for slot in 0..SLOT_COUNT {
+        for slot in 0..SLOTS {
             unsafe {
                 p.render(slot, frames, RATE, |_, _, _, _| events += 1);
                 let n = frames as usize;
@@ -284,7 +288,7 @@ fn the_heard_output_is_trimmed_and_within_the_ceiling() {
 /// A block the host dropped: `begin` and `render`, but no `mix` or `finish`.
 fn dropped(p: &Playback, frames: u32) {
     unsafe { p.begin(frames, RATE) };
-    for slot in 0..SLOT_COUNT {
+    for slot in 0..SLOTS {
         unsafe { p.render(slot, frames, RATE, |_, _, _, _| {}) };
     }
 }
@@ -323,7 +327,7 @@ fn a_late_block_retires_the_slot() {
     // At `RATE`, a block of one frame lasts 10ms.
     unsafe { p.begin(1, RATE) };
     std::thread::sleep(Duration::from_millis(20));
-    for slot in 0..SLOT_COUNT {
+    for slot in 0..SLOTS {
         unsafe {
             p.render(slot, 1, RATE, |_, _, _, _| {});
             p.finish(slot);

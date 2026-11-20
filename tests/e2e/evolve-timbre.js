@@ -85,7 +85,7 @@ globalThis.evolveTimbre = (() => {
 
     // A on slot 0 and B on slot 1 before playback, then A again on slot 0 once B is measured.
     function differ(pluginId, first, second) {
-        call('open', {tracks, holdMs:5000, fadeMs:300});
+        call('open', {groups:[{tracks, input:'chord'}], holdMs:5000, fadeMs:300});
         try {
             load(0, pluginId, first);
             load(1, pluginId, second);

@@ -10,9 +10,11 @@
     };
     const run = {
         silentPeak, runSnippet,
-        switches:[], seen:new Set(), active:[undefined, undefined], engaged:[undefined, undefined], states:[0, 0],
+        switches:[], seen:new Set(), active:[], engaged:[], states:[],
+        // The scatter's fully heard slot and its changes, as {from, to} slots and plugins.
+        scatter:{heard:undefined, switches:[]},
         startedAt:undefined, longestSilenceMs:0, silentSince:undefined, samples:0,
-        // Samples the master output and both slots until `done()` or `ms` passes.
+        // Samples the master output and the slots until `done()` or `ms` passes.
         watch(done, ms) {
             const end = Date.now() + ms;
             while (!done() && Date.now() < end) {
@@ -27,8 +29,16 @@
                     run.silentSince = undefined;
                 } else if (run.startedAt !== undefined && run.silentSince === undefined) run.silentSince = now;
                 const status = __replCall('evolve.status', {});
-                status.forEach((slot, index) => {
-                    if (slot.instanceId >= 0) run.seen.add(slot.instanceId);
+                status.forEach(slot => { if (slot.instanceId >= 0) run.seen.add(slot.instanceId); });
+                const scatter = globalThis.evolvePool.groups[1].buffers.map(b => b.slot);
+                const heard = scatter.find(index => status[index].state === 3 && status[index].gain === 1);
+                if (heard !== undefined && heard !== run.scatter.heard) {
+                    if (run.scatter.heard !== undefined) run.scatter.switches.push({from:run.scatter.heard, to:heard,
+                        fromPlugin:status[run.scatter.heard].pluginId, toPlugin:status[heard].pluginId});
+                    run.scatter.heard = heard;
+                }
+                globalThis.evolvePool.buffers.forEach(({slot:index}) => {
+                    const slot = status[index];
                     // A slot is engaged: Ready (or a state the poll missed) becomes Active.
                     if (slot.state === 3 && run.states[index] !== 3 && run.states[index] !== 4)
                         run.engaged[index] = {slot:index, pluginId:slot.pluginId, instance:slot.instance, at:now};
@@ -61,9 +71,9 @@
         count: (from, pluginId, same) => run.switches.slice(from)
             .filter(s => s.pluginId === pluginId && s.sameKind === same).length,
         summary: () => ({switches:run.switches.map(s => ({slot:s.slot, from:s.from, to:s.pluginId, sameInstance:s.sameInstance})),
-            longestSilenceMs:run.longestSilenceMs, samples:run.samples, sounded:run.startedAt !== undefined,
+            scatter:run.scatter.switches, longestSilenceMs:run.longestSilenceMs, samples:run.samples, sounded:run.startedAt !== undefined,
             status:__replCall('evolve.status', {}),
-            buffers:globalThis.evolvePool && globalThis.evolvePool.buffers.map(b => ({slot:b.slot, status:b.status,
+            buffers:globalThis.evolvePool && globalThis.evolvePool.groups.flatMap(g => g.buffers).map(b => ({slot:b.slot, status:b.status,
                 sound:b.sound && b.sound.patch, request:b.request, remaining:b.remaining}))})
     };
     globalThis.evolveRun = run;
@@ -80,6 +90,18 @@
     const held = repl.test.instances();
     e2e.assert([...run.seen].every(id => held.includes(id)), 'The host does not list the evolve instances');
     run.summary()
+}
+
+// %% the scatter switches its sound through evolve and the Timeline names it
+{
+    const run = evolveRun;
+    e2e.assert(run.watch(() => run.scatter.switches.length >= 1, 60000), 'The scatter did not switch: ' + JSON.stringify(run.summary()));
+    const source = String.fromCharCode(...repl.file.read(repl.sourceRoot() + '/src/timeline-read.js'));
+    const shown = (0, eval)(source).evolve;
+    const tracks = globalThis.evolvePool.groups[1].buffers.map(b => b.track);
+    const named = shown.filter(s => tracks.includes(s.track) && s.plugin && s.patch);
+    e2e.assert(named.length >= 1, 'The Timeline does not name a scatter sound: ' + JSON.stringify(shown));
+    ({scatter:run.scatter.switches, shown})
 }
 
 // %% the same kind reloads state on its own instance

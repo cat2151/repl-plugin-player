@@ -26,6 +26,8 @@
         const controller = {
             pattern,
             pool,
+            bpm,
+            beats,
             fadeKey,
             stop({keepFade=false}={}) { repl.tasks.cancel('evolve'); if (!keepFade) pool.stop(); },
             update() {
