@@ -20,7 +20,7 @@ track の instance へ音色（state）を入れると、UAPMD は main thread �
 - **clap-helpers の検査の水準を下げる。** `paramsGetValue` を検査つきで呼んでも `get_value` を直に呼んでも 2554 回の所要は同じで、費用は plugin 自身の中だった。
 - **読み直しを別 thread へ移す。** CLAP の `params.get_value` は main thread 専用。
 - **instance 生成時の値の1周（約 0.75 秒）も外す。** inline の header の関数なので、header を include する UAPMD の translation unit 7本を全部写さないと class の定義が食い違う。外しても新しい instance は一覧作りの約 2.5 秒が残る。
-- **evolve2 と同じく、総なめしない host（ADR 0020）を track の instance にも付ける。** INFO・ALL の rescan で一覧が作り直されず、track の parameter の表示が古くなる。
+- **evolve と同じく、総なめしない host（ADR 0020）を track の instance にも付ける。** INFO・ALL の rescan で一覧が作り直されず、track の parameter の表示が古くなる。
 
 ## 結果と制限
 

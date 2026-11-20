@@ -11,6 +11,7 @@ fn snippet(script: &Script, title: &str) -> Result<Snippet, String> {
     Ok(Snippet {
         name: title.into(),
         group: "User",
+        keywords: String::new(),
         code: script.cell(title)?.into(),
     })
 }

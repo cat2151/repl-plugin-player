@@ -120,6 +120,31 @@ fn bypassed_tracks_keep_phase_and_prime_all_voices_after_loading() {
 }
 
 #[test]
+fn resuming_starts_the_chord_in_progress_without_waiting() {
+    let clock = Clock::default();
+    assert_eq!(clock.publish(&plan(&[&[60, 64], &[60, 67]], 0.5, 1.0)), 0);
+    let mut events = Vec::new();
+    unsafe {
+        clock.resume(|_, _, _, _| panic!("Nothing is in progress before the clock runs"));
+        clock.render_enabled(0, 750, 1000.0, false, |_, _, _, _| {});
+        clock.resume(|at, pitch, on, _| events.push((at, pitch, on)));
+        clock.resume(|_, _, _, _| panic!("The chord was already started"));
+        clock.render_enabled(0, 300, 1000.0, true, |at, pitch, on, _| {
+            events.push((at, pitch, on))
+        });
+    }
+    assert_eq!(
+        events,
+        [
+            (0, 60, true),
+            (0, 67, true),
+            (250, 67, false),
+            (250, 64, true)
+        ]
+    );
+}
+
+#[test]
 fn resetting_a_synth_reprimes_common_notes_without_rewinding_the_clock() {
     let clock = Clock::default();
     assert_eq!(clock.publish(&plan(&[&[60, 64], &[60, 67]], 0.5, 1.0)), 0);

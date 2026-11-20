@@ -157,3 +157,17 @@ fn egui_input_writes_only_bound_parameter_and_readonly_never_writes() {
     assert_eq!(fake.writes.len(), count);
     enable(false);
 }
+
+#[test]
+fn dialogs_wait_in_the_order_given_and_need_the_gui() {
+    enable(false);
+    assert!(dispatch("ui.dialog", &json!({"title":"t","text":"a"})).is_err());
+    enable(true);
+    dispatch("ui.dialog", &json!({"title":"t","text":"a"})).unwrap();
+    dispatch("ui.dialog", &json!({"title":"t","text":"b"})).unwrap();
+    assert!(dispatch("ui.dialog", &json!({"title":"t"})).is_err());
+    assert_eq!(take_dialog().map(|d| d.text).as_deref(), Some("a"));
+    assert_eq!(take_dialog().map(|d| d.text).as_deref(), Some("b"));
+    assert_eq!(take_dialog(), None);
+    enable(false);
+}

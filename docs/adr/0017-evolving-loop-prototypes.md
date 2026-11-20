@@ -1,8 +1,8 @@
 # ADR 0017: 変化するloopをRustのA/B演奏へ絞る
 
-- 状態: 採用（timeline型と8個保持は撤回）
+- 状態: 採用（timeline型と8個保持は撤回。A/Bの生成・破棄と1coreの稼働維持・TIME_CRITICALは[ADR 0019](0019-evolve2-async-pool.md)で置き換え済み）
 - 決定者: user（両方式を試し、JSの周期に発音時刻を依存させず、自作側はkeyboard同様のRust DLLとする。演奏を途切れさせず次のランダム音色へcrossfadeするため、evolve mode内で4音源各2個を8trackへ配置して再利用する。同じ種類の音源でも現在音を鳴らしたまま別インスタンスで次の音色を準備できるようにし、準備が遅ければ現在音を保持する。8個同時発音時の音切れを受け、note onの送信対象は現在音と次の音色の最大2インスタンスだけとする。役目を終えた音源は無音になってから音符を終了してホスト側でbypassし、次音の準備時に復帰させる。通常起動と通常の演奏から分離し、終了用snippetを用意する）。その後userがtimeline型と8個保持を撤回し、Rust DLLだけに集中してA/Bの2個とする方針へ変更した。UAPMD拡張口と声部制約の探索方法、未公開graphを使う接続方法はAI
-- 関連: [ADR 0014](0014-loop-in-project-archive.md)
+- 関連: [ADR 0014](0014-loop-in-project-archive.md)、[ADR 0019](0019-evolve2-async-pool.md)
 
 ## 決定と理由
 

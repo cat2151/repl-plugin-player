@@ -90,6 +90,24 @@ impl Clock {
         unsafe { (*self.playback.get()).held = Step::default() };
     }
 
+    /// Starts the chord in progress at offset 0 on a voice that did not hear
+    /// it, so it need not wait for the next chord.
+    ///
+    /// # Safety
+    /// The caller serializes the audio callbacks of this clock.
+    pub unsafe fn resume(&self, mut emit: impl FnMut(u32, u8, bool, u16)) {
+        let state = unsafe { &mut *self.playback.get() };
+        let count = state.plan.count as usize;
+        if count == 0 || state.held.count > 0 || state.frame >= state.release {
+            return;
+        }
+        let current = state.plan.steps[(state.step + count - 1) % count];
+        for &pitch in &current.notes[..current.count as usize] {
+            emit(0, pitch, true, state.plan.velocity);
+        }
+        state.held = current;
+    }
+
     fn adopt(&self, state: &mut Playback) {
         let mut r = self.read.load(Ordering::Relaxed);
         let w = self.written.load(Ordering::Acquire);

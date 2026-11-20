@@ -94,7 +94,7 @@ repl.project = {
     saveArchive: function(filepath) { return __replCall('project.saveArchive', {filepath:filepath}); },
     // Returns after UAPMD has restored the timeline and plugin states.
     load: function(filepath) {
-        include('builtin/lib/evolution-mode.js').end();
+        include('builtin/lib/evolve-mode.js').end();
         repl.sequence.clear();
         const previousId = repl.scope.target();
         const previousTracks = uapmd.sequencer.getTrackInfos();
@@ -127,6 +127,31 @@ repl.file = {
 repl.zlib = {decompress: function(bytes) { return __replCall('zlib.decompress', {bytes:bytes}); }};
 // The repository this exe was built in, or null when the exe runs outside one.
 repl.sourceRoot = function() { return __replCall('sourceRoot', {}); };
+// Windows' "minimum processor state" (AC and DC) of the active power scheme, in percent.
+repl.power = {setMinProcessorState: function(percent) {
+    __replCall('power.setMinProcessorState', {percent:percent});
+}};
+// onExit(name, fn) runs fn once when the app ends normally (not after a crash or a kill);
+// a later call with the same name replaces it, and fn null removes it. In the GUI the
+// window closes after the dialogs that fn shows are closed.
+(() => {
+    const handlers = new Map();
+    repl.app = {onExit: function(name, fn) {
+        if (fn === null) handlers.delete(name);
+        else if (typeof fn === 'function') handlers.set(name, fn);
+        else throw new Error('repl.app.onExit: fn must be a function or null');
+    }};
+    // The host calls this when the app is ending; a second call finds nothing to run.
+    globalThis.__replRunExitHandlers = function() {
+        const pending = [...handlers.values()];
+        handlers.clear();
+        const errors = [];
+        for (const fn of pending) {
+            try { fn(); } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
+        }
+        if (errors.length > 0) throw new Error(errors.join('\n'));
+    };
+})();
 // The track's volume as a linear gain (1 keeps the level, 0 silences it), as uapmd's track slider sets it.
 // setVolume also takes decibels as a string such as '-3dB'.
 // Both return the volume the track now has, as a linear gain.
@@ -204,7 +229,9 @@ repl.patchBrowser = {
 
 repl.ui = {
     show: function(definition) { return __replCall('ui.show', {definition:definition}); },
-    close: function(id) { return __replCall('ui.close', {id:id}); }
+    close: function(id) { return __replCall('ui.close', {id:id}); },
+    // A modal with an OK button; several wait in the order given.
+    dialog: function(title, text) { return __replCall('ui.dialog', {title:title, text:text}); }
 };
 
 // Session-only UAPMD transport state; samples use the engine's current sample rate.
@@ -233,7 +260,7 @@ repl.sequence = {
         return result;
     },
     clear: function() {
-        if (globalThis.evolution) globalThis.evolution.stop();
+        if (globalThis.evolveLoop) globalThis.evolveLoop.stop();
         const result = __replCall('sequence.clear', {});
         delete repl.sequence.view;
         return result;

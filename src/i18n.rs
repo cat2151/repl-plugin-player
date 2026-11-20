@@ -259,6 +259,7 @@ impl Catalog {
             "load-project" => t("name_load_project"),
             "show-project-requirements" => t("name_show_project_requirements"),
             "uapmd-samples" => t("name_uapmd_samples"),
+            "set-min-processor-state" => t("name_set_min_processor_state"),
             "api-list" => t("name_api_list"),
             _ => name,
         }

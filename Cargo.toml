@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = [".", "extensions/*", "extension-api", "sequence-dll", "evolve2-dll"]
-default-members = [".", "extensions/*", "sequence-dll", "evolve2-dll"]
+members = [".", "extensions/*", "extension-api", "sequence-dll", "evolve-dll"]
+default-members = [".", "extensions/*", "sequence-dll", "evolve-dll"]
 
 [workspace.dependencies]
 eframe = { version = "=0.37.0", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "glow", "links", "system_fonts", "wayland", "web_screen_reader", "x11"] }
@@ -29,7 +29,7 @@ cmrt-tui-core = { path = "../clap-mml-render-tui/tui-core" }
 mmlabc-to-smf = { git = "https://github.com/cat2151/mmlabc-to-smf-rust.git", features = ["parser"], default-features = false }
 toml = "=1.2.1"
 egui_tiles = "=0.18.0"
-windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Kernel", "Win32_System_Threading"] }
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Kernel", "Win32_System_Power", "Win32_System_Registry", "Win32_System_SystemServices", "Win32_System_Threading"] }
 
 [patch."https://github.com/cat2151/clap-mml-play-server"]
 cmrt-core = { path = "../clap-mml-play-server/core-lib" }

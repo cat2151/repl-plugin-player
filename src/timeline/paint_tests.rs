@@ -8,6 +8,7 @@ fn fixture() -> View {
             index: 0,
             plugins: vec!["Instrument".into()],
             plugins_serial: true,
+            sounding: None,
             low: 58,
             high: 73,
             clips: vec![Clip {
@@ -79,6 +80,59 @@ fn header_uses_arrows_only_for_serial_connections() {
         }
         assert!(labels.iter().any(|label| label == expected), "{labels:?}");
     }
+}
+
+#[test]
+fn fading_out_label_darkens_early_and_fading_in_label_brightens_early() {
+    let (background, text) = (Color32::from_gray(10), Color32::from_gray(220));
+    let half = (10 + 220) / 2;
+    for fading_out in [true, false] {
+        assert_eq!(label_color(background, text, 0.0, fading_out), background);
+        assert_eq!(label_color(background, text, 1.0, fading_out), text);
+        let level = |gain| label_color(background, text, gain, fading_out).r();
+        assert!(level(0.01) < level(0.1) && level(0.1) < level(0.5) && level(0.5) < level(1.0));
+        // Halfway through a fade the outgoing label is dim and the incoming one bright.
+        assert_eq!(level(0.5) < half, fading_out);
+    }
+}
+
+#[test]
+fn silent_evolve_label_is_drawn_in_the_header_background() {
+    fn texts(shape: &egui::Shape, output: &mut Vec<(String, Color32)>) {
+        match shape {
+            egui::Shape::Text(text) => output.push((
+                text.galley.text().to_owned(),
+                text.galley.job.sections[0].format.color,
+            )),
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| texts(s, output)),
+            _ => {}
+        }
+    }
+    let ctx = egui::Context::default();
+    let mut view = fixture();
+    view.tracks[0].sounding = Some(projection::Sounding {
+        label: "Synth · Pad".into(),
+        gain: 0.0,
+        fading_out: false,
+    });
+    let mut labels = Vec::new();
+    for _ in 0..2 {
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            egui::CentralPanel::default().show(ui, |ui| show(ui, &view));
+        });
+        labels.clear();
+        for shape in &output.shapes {
+            texts(&shape.shape, &mut labels);
+        }
+        output.drop_without_applying_deltas();
+    }
+    let background = ctx.global_style().visuals.extreme_bg_color;
+    let text = ctx.global_style().visuals.text_color();
+    assert!(labels.contains(&("Track 0".into(), text)), "{labels:?}");
+    assert!(
+        labels.contains(&(" · Synth · Pad".into(), background)),
+        "{labels:?}"
+    );
 }
 
 #[test]

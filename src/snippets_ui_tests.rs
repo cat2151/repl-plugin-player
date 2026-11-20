@@ -47,6 +47,7 @@ fn english_timeline_name_is_searchable_and_selectable() {
         entries: vec![Snippet {
             name: "play".into(),
             group: "Built-in",
+            keywords: String::new(),
             code: String::new(),
         }],
         filter: "play time".into(),
@@ -96,11 +97,13 @@ fn long_preview_stays_beside_list_and_survives_pointer_transfer() {
             Snippet {
                 name: "short-example".into(),
                 group: "User",
+                keywords: String::new(),
                 code: "short();".into(),
             },
             Snippet {
                 name: "long-example".into(),
                 group: "User",
+                keywords: String::new(),
                 code: "long();\n".repeat(200),
             },
         ],
@@ -187,6 +190,7 @@ fn window_and_preview_follow_viewport_height() {
         entries: vec![Snippet {
             name: "viewport-example".into(),
             group: "User",
+            keywords: String::new(),
             code: "viewport_example();\n".repeat(200),
         }],
         ..Default::default()

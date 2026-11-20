@@ -235,3 +235,27 @@ fn builtin_location_uses_this_executables_project_or_packaged_directory() {
     assert_eq!(entries.len(), embedded_entries());
     assert!(entries.iter().all(|entry| !entry.code.contains("@text ")));
 }
+
+#[test]
+fn search_lines_become_keywords_and_leave_the_code() {
+    let fixture = Fixture::new();
+    let library = fixture.library();
+    fs::create_dir(&library.builtin).unwrap();
+    fs::write(
+        library.builtin.join("probe.js"),
+        "// %% cell
+  // @search alpha beta
+run();
+// @search gamma
+",
+    )
+    .unwrap();
+    let entries = library.load().unwrap();
+    assert_eq!(entries[0].keywords, "alpha beta gamma");
+    assert_eq!(
+        entries[0].code,
+        "// %% cell
+run();
+"
+    );
+}

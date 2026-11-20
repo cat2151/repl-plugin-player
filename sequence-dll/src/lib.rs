@@ -1,13 +1,9 @@
 //! Sample-clock sequencing. The control producer and serialized audio consumer
 //! share bounded storage; render never allocates, locks, or calls JavaScript.
-mod activity;
 mod clock;
-mod evolution;
-mod evolution_ffi;
 mod note_count;
 #[cfg(test)]
 mod tests;
-mod thread_priority;
 mod voicing;
 
 pub use clock::Clock;

@@ -11,6 +11,7 @@ fn page_keys_move_ten_matching_rows_and_stop_at_edges() {
             .map(|i| Snippet {
                 name: format!("{}-{i:02}", if i % 2 == 0 { "keep" } else { "drop" }),
                 group: "User",
+                keywords: String::new(),
                 code: "42".into(),
             })
             .collect(),
@@ -88,6 +89,7 @@ fn enter_runs_first_result_on_open_and_after_typing_filter() {
                 .map(|name| Snippet {
                     name: name.into(),
                     group: "User",
+                    keywords: String::new(),
                     code: "42".into(),
                 })
                 .collect(),
@@ -138,6 +140,7 @@ fn arrows_in_filter_select_matching_rows_and_enter_runs() {
     let snippet = |name: &str| Snippet {
         name: name.into(),
         group: "User",
+        keywords: String::new(),
         code: format!("{name}();"),
     };
     let mut panel = SnippetsPanel {

@@ -18,8 +18,8 @@
         uapmd.audio.setEngineEnabled(false);
         waitFor(() => !repl.audio.isProcessing());
     }
-    function reset({keepEvolution=false}={}) {
-        if (!keepEvolution) include('builtin/lib/evolution-mode.js').end();
+    function reset({keepEvolve=false}={}) {
+        if (!keepEvolve) include('builtin/lib/evolve-mode.js').end();
         stop();
         repl.sequence.clear();
         repl.timeline.clearLoop();

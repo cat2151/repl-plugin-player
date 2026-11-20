@@ -20,8 +20,7 @@
 #include "scope_capture.hpp"
 #include "freeze_transport.hpp"
 #include "live_sequence_api.hpp"
-#include "evolution_api.hpp"
-#include "evolve2_api.hpp"
+#include "evolve_api.hpp"
 #include "fresh_instance.hpp"
 #include "note_counter.hpp"
 #include "../patches/uapmd/clap-plugin-handle/clap_plugin_handle.hpp"
@@ -70,8 +69,7 @@ static ScriptApi script_api{};
 static const char* control_api(const char* request);
 static bool session_open();
 static const char* sequence_api(const char* request);
-static const char* evolution_api(const char* request);
-static const char* evolve2_api(const char* request);
+static const char* evolve_api(const char* request);
 extern "C" const char* repl_localized(const char* key) {
     static thread_local std::string value;
     value = key; // Standalone native harnesses register the same catalog callback.
@@ -119,8 +117,7 @@ extern "C" __declspec(dllexport) void repl_set_script_api(ScriptApi callback) {
 }
 // Called synchronously on the control thread; copy the Rust-owned reply immediately.
 extern "C" const char* repl_script_api(const char* request) {
-    if (auto result = evolution_api(request)) return result;
-    if (auto result = evolve2_api(request)) return result;
+    if (auto result = evolve_api(request)) return result;
     if (auto result = sequence_api(request)) return result;
     if (auto result = timeline_api(request, session_open())) return result;
     if (auto result = control_api(request)) return result;
@@ -168,8 +165,7 @@ struct Session {
     std::vector<uint8_t> state;
     std::unique_ptr<uapmd_app::UapmdJSRuntime> runtime;
     std::array<std::unique_ptr<LiveSequence>, 8> sequences;
-    std::unique_ptr<Evolution> evolution;
-    std::unique_ptr<Evolve2> evolve2;
+    std::unique_ptr<Evolve> evolve;
     PluginWindows windows;
     Session(const std::string& data) {
         previous = remidy::getEventLoop();
@@ -254,9 +250,7 @@ struct Session {
             }
             remidy::EventLoop::processQueuedTasks();
             windows.closeAll();
-            while (evolution && evolution->busy()) remidy::EventLoop::processQueuedTasks();
-            evolution.reset();
-            evolve2.reset();
+            evolve.reset();
             for (auto& sequence : sequences) sequence.reset();
             if (runtime) {
                 runtime->unregisterAllParameterListeners();
@@ -274,82 +268,48 @@ std::string reply;
 }
 static bool session_open() { return session != nullptr; }
 
-// Two empty, ordered tracks that only an evolve mode plays.
-static std::array<int32_t,2> evolution_tracks(const choc::value::ValueView& selected, uapmd::SequencerEngine& engine) {
-    if (!selected.isArray() || selected.size()!=2) throw std::runtime_error("Expected two evolution tracks");
+// Two empty, ordered tracks that only evolve plays.
+static std::array<int32_t,2> evolve_tracks(const choc::value::ValueView& selected, uapmd::SequencerEngine& engine) {
+    if (!selected.isArray() || selected.size()!=2) throw std::runtime_error("Expected two evolve tracks");
     std::array<int32_t,2> tracks;
     for (uint32_t i=0;i<2;++i) {
         tracks[i]=selected[i].get<int32_t>();
         if (selected[i].get<double>()!=tracks[i] || tracks[i]<0 || static_cast<size_t>(tracks[i])>=engine.tracks().size() ||
             !engine.tracks()[tracks[i]]->orderedInstanceIds().empty())
-            throw std::runtime_error("Evolution requires empty dedicated tracks");
+            throw std::runtime_error("evolve requires empty dedicated tracks");
     }
     if (tracks[1]<=tracks[0]) throw std::runtime_error("Expected ordered distinct tracks");
     return tracks;
 }
 
-static const char* evolution_api(const char* request) {
+static const char* evolve_api(const char* request) {
     static thread_local std::string reply;
     try {
         const auto args=choc::json::parse(request);
         const auto api=args["api"].get<std::string>();
-        if (api!="evolution.open" && api!="evolution.close" && api!="evolution.load" && api!="evolution.status") return nullptr;
+        if (api.rfind("evolve.",0)!=0) return nullptr;
         if (!session) throw std::runtime_error("No session");
         auto value=choc::value::Value();
-        if (api=="evolution.open") {
-            if (session->evolution) throw std::runtime_error("Evolution is already open");
-            if (session->evolve2) throw std::runtime_error("evolve2 is open");
+        if (api=="evolve.open") {
+            if (session->evolve) throw std::runtime_error("evolve is already open");
+            if (!repl_evolve::api) throw std::runtime_error("evolve DLL is not loaded");
             auto& engine=*uapmd_app::AppModel::instance().sequencer().engine();
-            const auto tracks=evolution_tracks(args["tracks"],engine);
-            session->evolution=std::make_unique<Evolution>(engine,tracks,args["holdMs"].get<double>()/1000,args["fadeMs"].get<double>()/1000);
-        } else if (api=="evolution.close") {
-            if (session->evolution && session->evolution->busy()) throw std::runtime_error("Evolution is still loading");
-            session->evolution.reset();
+            const auto tracks=evolve_tracks(args["tracks"],engine);
+            session->evolve=std::make_unique<Evolve>(engine,tracks,args["holdMs"].get<double>()/1000,args["fadeMs"].get<double>()/1000);
+        } else if (api=="evolve.close") {
+            session->evolve.reset();
         } else {
-            if (!session->evolution) throw std::runtime_error("Evolution is not open");
-            if (api=="evolution.status") value=session->evolution->status();
-            else {
+            if (!session->evolve) throw std::runtime_error("evolve is not open");
+            auto& current=*session->evolve;
+            if (api=="evolve.status") value=current.status();
+            else if (api=="evolve.poll") value=current.poll();
+            else if (api=="evolve.bumpGeneration") value=choc::value::createFloat64(static_cast<double>(current.bumpGeneration()));
+            else if (api=="evolve.submit") {
                 const auto slot=args["slot"].get<int32_t>();
-                if (slot<0 || slot>1 || args["slot"].get<double>()!=slot) throw std::runtime_error("Invalid evolution slot");
-                session->evolution->load(slot,args["format"].get<std::string>(),args["pluginId"].get<std::string>(),args["file"].get<std::string>());
-            }
-        }
-        reply=choc::json::toString(choc::value::createObject("","ok",true,"value",value));
-    } catch (const std::exception& error) {
-        reply=choc::json::toString(choc::value::createObject("","ok",false,"error",error.what()));
-    }
-    return reply.c_str();
-}
-
-static const char* evolve2_api(const char* request) {
-    static thread_local std::string reply;
-    try {
-        const auto args=choc::json::parse(request);
-        const auto api=args["api"].get<std::string>();
-        if (api.rfind("evolve2.",0)!=0) return nullptr;
-        if (!session) throw std::runtime_error("No session");
-        auto value=choc::value::Value();
-        if (api=="evolve2.open") {
-            if (session->evolve2) throw std::runtime_error("evolve2 is already open");
-            if (session->evolution) throw std::runtime_error("Evolution is open");
-            if (!repl_evolve2::api) throw std::runtime_error("evolve2 DLL is not loaded");
-            auto& engine=*uapmd_app::AppModel::instance().sequencer().engine();
-            const auto tracks=evolution_tracks(args["tracks"],engine);
-            session->evolve2=std::make_unique<Evolve2>(engine,tracks,args["holdMs"].get<double>()/1000,args["fadeMs"].get<double>()/1000);
-        } else if (api=="evolve2.close") {
-            session->evolve2.reset();
-        } else {
-            if (!session->evolve2) throw std::runtime_error("evolve2 is not open");
-            auto& evolve=*session->evolve2;
-            if (api=="evolve2.status") value=evolve.status();
-            else if (api=="evolve2.poll") value=evolve.poll();
-            else if (api=="evolve2.bumpGeneration") value=choc::value::createFloat64(static_cast<double>(evolve.bumpGeneration()));
-            else if (api=="evolve2.submit") {
-                const auto slot=args["slot"].get<int32_t>();
-                if (slot<0 || slot>1 || args["slot"].get<double>()!=slot) throw std::runtime_error("Invalid evolve2 slot");
-                value=choc::value::createInt64(evolve.submit(slot,args["format"].get<std::string>(),args["pluginId"].get<std::string>(),
+                if (slot<0 || slot>1 || args["slot"].get<double>()!=slot) throw std::runtime_error("Invalid evolve slot");
+                value=choc::value::createInt64(current.submit(slot,args["format"].get<std::string>(),args["pluginId"].get<std::string>(),
                     args["file"].get<std::string>(),args["generation"]));
-            } else throw std::runtime_error("Unknown evolve2 API: "+api);
+            } else throw std::runtime_error("Unknown evolve API: "+api);
         }
         reply=choc::json::toString(choc::value::createObject("","ok",true,"value",value));
     } catch (const std::exception& error) {
@@ -365,15 +325,9 @@ static const char* sequence_api(const char* request) {
         const auto api = args["api"].get<std::string>();
         if (api != "sequence.set" && api != "sequence.clear" && api != "sequence.pending") return nullptr;
         if (!session) throw std::runtime_error("No session");
-        if (session->evolution) {
-            if (api == "sequence.set") session->evolution->set(args);
-            const auto value = api == "sequence.pending" ? choc::value::createBool(session->evolution->pending()) : choc::value::Value();
-            result = choc::json::toString(choc::value::createObject("", "ok",true,"value",value));
-            return result.c_str();
-        }
-        if (session->evolve2) {
-            if (api == "sequence.set") session->evolve2->set(args);
-            const auto value = api == "sequence.pending" ? choc::value::createBool(session->evolve2->pending()) : choc::value::Value();
+        if (session->evolve) {
+            if (api == "sequence.set") session->evolve->set(args);
+            const auto value = api == "sequence.pending" ? choc::value::createBool(session->evolve->pending()) : choc::value::Value();
             result = choc::json::toString(choc::value::createObject("", "ok",true,"value",value));
             return result.c_str();
         }
@@ -451,7 +405,6 @@ static void observe_into(choc::value::Value& result) {
         }
     }
     result.setMember("noteCount", static_cast<int64_t>(note_read && model.sequencer().isAudioPlaying() ? note_read(noteInputs.data(), noteCapabilities.data(), noteInputs.size()) : 0));
-    result.setMember("evolutionBoostedThreads",static_cast<int32_t>(repl_evolution::api ? repl_evolution::api->boosted_threads() : 0));
     std::array<float, 256> samples{};
     auto* analyser = engine->outputAnalyser();
     if (!analyser) throw std::runtime_error(repl_localized("native_08"));

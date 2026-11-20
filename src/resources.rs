@@ -165,7 +165,7 @@ pub fn extension_names() -> Vec<String> {
         return EXTENSIONS
             .iter()
             // The audio engines are deployed with DLL resources but have no panes.
-            .filter(|(name, _)| !["sequence", "evolve2"].contains(name))
+            .filter(|(name, _)| !["sequence", "evolve"].contains(name))
             .map(|(name, _)| (*name).to_owned())
             .collect();
     };

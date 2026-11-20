@@ -1835,7 +1835,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "evolve2"
+name = "evolve"
 version = "0.1.0"
 dependencies = [
  "repl-extension-api",

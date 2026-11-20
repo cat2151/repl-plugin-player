@@ -31,7 +31,6 @@ const BUILTIN_ORDER: &[&str] = &[
     "try-loop-mml",
     "try-loop-mml-multi-track",
     "try-evolving-sequencer",
-    "try-evolve2",
     "try-end-evolve",
     "try-instrument",
     "try-parameter-ui",
@@ -58,6 +57,7 @@ const BUILTIN_ORDER: &[&str] = &[
     "unfreeze-track",
     "show-track-freeze",
     "set-buffer-multiplier",
+    "set-min-processor-state",
     "reload-patch-catalog",
 ];
 
@@ -65,7 +65,30 @@ const BUILTIN_ORDER: &[&str] = &[
 pub struct Snippet {
     pub name: String,
     pub group: &'static str,
+    /// Extra words the filter searches, from the snippet's `// @search ` lines.
+    pub keywords: String,
     pub code: String,
+}
+
+impl Snippet {
+    /// Moves the `// @search ` lines out of the code, which then inserts without them.
+    fn from_file(name: String, group: &'static str, code: &str) -> Self {
+        let mut keywords = Vec::new();
+        let code = code
+            .split_inclusive('\n')
+            .filter(|line| {
+                let words = line.trim().strip_prefix("// @search ");
+                keywords.extend(words);
+                words.is_none()
+            })
+            .collect();
+        Self {
+            name,
+            group,
+            keywords: keywords.join(" "),
+            code,
+        }
+    }
 }
 
 pub struct Library {
@@ -157,14 +180,16 @@ impl Library {
             EMBEDDED
                 .iter()
                 .filter(|(path, _)| !path.contains('/'))
-                .map(|(name, code)| Snippet {
-                    name: Path::new(name)
-                        .file_stem()
-                        .and_then(|name| name.to_str())
-                        .expect("Embedded JS path")
-                        .into(),
-                    group: "Built-in",
-                    code: localize_builtin(code),
+                .map(|(name, code)| {
+                    Snippet::from_file(
+                        Path::new(name)
+                            .file_stem()
+                            .and_then(|name| name.to_str())
+                            .expect("Embedded JS path")
+                            .into(),
+                        "Built-in",
+                        &localize_builtin(code),
+                    )
                 })
                 .collect()
         };
@@ -252,15 +277,16 @@ fn directory(path: &Path, group: &'static str) -> Result<Vec<Snippet>, String> {
             .file_stem()
             .and_then(|name| name.to_str())
             .ok_or(crate::i18n::t("m073"))?;
-        result.push(Snippet {
-            name: name.into(),
+        let code = read(&file)?;
+        result.push(Snippet::from_file(
+            name.into(),
             group,
-            code: if group == "Built-in" {
-                localize_builtin(&read(&file)?)
+            &if group == "Built-in" {
+                localize_builtin(&code)
             } else {
-                read(&file)?
+                code
             },
-        });
+        ));
     }
     Ok(result)
 }

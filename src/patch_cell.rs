@@ -15,6 +15,7 @@ pub fn snippet(selected: &Selected, track: i64) -> Snippet {
     Snippet {
         name: name.replace(['\r', '\n'], " "),
         group: "Patch",
+        keywords: String::new(),
         code: format!(
             "{{
     const track = {track};
@@ -43,6 +44,7 @@ pub fn effect(selected: &Selected, track: i64) -> Result<Snippet, String> {
     Ok(Snippet {
         name: name.replace(['\r', '\n'], " "),
         group: "Effect",
+        keywords: String::new(),
         code: format!(
             "{{
     const track = {track};

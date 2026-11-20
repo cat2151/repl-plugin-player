@@ -1,6 +1,6 @@
 """Compare master scope CPU cost on a fixed, continuously playing evolve voice.
 
-Uses the external hashed states prepared by evolution-fixed-test.py. Test setup
+Uses the external hashed states prepared by evolve-fixed-test.py. Test setup
 and musical input come from the test fixture, never from editable snippets.
 """
 import hashlib
@@ -14,20 +14,21 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    manifest = Path(os.environ['LOCALAPPDATA']) / 'repl-plugin-player/investigations/evolution-fixed/manifest.json'
+    manifest = Path(os.environ['LOCALAPPDATA']) / 'repl-plugin-player/investigations/evolve-fixed/manifest.json'
     sounds = json.loads(manifest.read_text(encoding='utf-8'))
     for sound in sounds:
-        assert hashlib.sha256(Path(sound['file']).read_bytes()).hexdigest() == sound['sha256']
+        for key in ('file', 'prepared'):
+            assert hashlib.sha256(Path(sound[key]).read_bytes()).hexdigest() == sound[key + 'Sha256'], sound
     cells = dict(cell.split('\n', 1) for cell in
-                 (ROOT / 'tests/e2e/evolution-fixed.js').read_text(encoding='utf-8').split('// %% ')[1:])
+                 (ROOT / 'tests/e2e/evolve-fixed.js').read_text(encoding='utf-8').split('// %% ')[1:])
     Session = runpy.run_path(str(ROOT / 'scripts/cli-test.py'))['Session']
-    cpu = runpy.run_path(str(ROOT / 'scripts/evolution-fixed-test.py'))['cpu_seconds']
+    cpu = runpy.run_path(str(ROOT / 'scripts/evolve-fixed-test.py'))['cpu_seconds']
     session = Session()
     try:
-        session.evaluate('(' + cells['create'] + ')(' + json.dumps(dict(sounds=sounds, workers=6, evolve=True)) + ')')
+        session.evaluate('(' + cells['create'] + ')(' + json.dumps(dict(sounds=sounds, workers=6, api='evolve')) + ')')
         session.evaluate('(' + cells['load'] + ')(' + json.dumps(dict(slot=0, sound=sounds[0])) + ')')
         deadline = time.monotonic() + 30
-        while session.evaluate(cells['status'])[0]['state'] != 2:
+        while session.evaluate(cells['status'])[0]['state'] not in [2, 3]:
             assert time.monotonic() < deadline, 'Voice preparation timeout'
             time.sleep(.025)
         session.evaluate(cells['start'])

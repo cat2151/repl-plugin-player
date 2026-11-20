@@ -8,7 +8,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 EXE = ROOT / "target/release/repl-plugin-player.exe"
 LOGS = Path(os.environ["LOCALAPPDATA"]) / "repl-plugin-player/logs"
-CASES = ["evolution-pool", "evolution", "evolve2-host", "evolve2-protocol", "evolve2", "evolve2-timbre", "live-sequence", "cold", "sample", "rerun", "stop", "close", "syntax", "missing",
+CASES = ["evolve-host", "evolve-protocol", "evolve", "evolve-timbre", "live-sequence", "cold", "sample", "rerun", "stop", "close", "syntax", "missing",
          "close-preparing", "close-creating", "mutation-close", "scope-load", "scope-master",
          "syntax-sustain", "runtime-error", "stop-run", "timeline", "timeline-view", "piano-roll-cut-paste", "note-monitor", "scope", "partial-run", "snippets", "tutorials", "demo-play", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-timbre", "patch-rescan", "patch-catalog-reload", "patch-browse", "state-load", "track-use", "reset-first-note", "dock", "dock-script-ui"]
 
@@ -64,9 +64,9 @@ def main():
             assert any(e["event"] == "cleanup" and e["details"]["result"]["ok"] for e in events), paths[0]
             calls = [e for e in events if e["event"] == "api"]
             note_on = [e for e in calls if e["details"]["call"]["api"] == "uapmd.sequencer.sendNoteOn"]
-            if case in ("scope-master", "evolution-pool", "evolution", "evolve2-host", "evolve2-protocol", "evolve2-timbre", "live-sequence", "syntax", "missing", "close-preparing", "close-creating", "mutation-close", "timeline", "timeline-view", "piano-roll-cut-paste", "partial-run", "snippets", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-rescan", "patch-catalog-reload", "patch-browse", "state-load", "track-use", "reset-first-note", "dock", "dock-script-ui"):
+            if case in ("scope-master", "evolve-host", "evolve-protocol", "evolve-timbre", "live-sequence", "syntax", "missing", "close-preparing", "close-creating", "mutation-close", "timeline", "timeline-view", "piano-roll-cut-paste", "partial-run", "snippets", "mml-clip", "chord-clip", "script-ui", "loop", "loop-update", "loop-replaces-clips", "patch-use", "patch-rescan", "patch-catalog-reload", "patch-browse", "state-load", "track-use", "reset-first-note", "dock", "dock-script-ui"):
                 assert not note_on, f"{case}: unexpected NoteOn"
-            elif case in ("tutorials", "demo-play", "easy", "browser-change", "evolve2"):
+            elif case in ("tutorials", "demo-play", "easy", "browser-change", "evolve"):
                 pass  # Built-in snippets and lib playback may play notes however they are written.
             elif case == "stop-run":
                 assert len(note_on) == 2, paths[0]

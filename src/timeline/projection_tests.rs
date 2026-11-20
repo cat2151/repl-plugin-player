@@ -136,3 +136,20 @@ fn pitch_range_spans_every_note_across_tracks_and_clips() {
     ]}]);
     assert_eq!(project(&data).pitch_range(), Some((0x23, 0x48)));
 }
+
+#[test]
+fn evolve_slot_labels_its_track_with_plugin_patch_stem_and_gain() {
+    let mut data = snapshot();
+    data["evolve"] = json!([
+        {"track":0.0,"gain":0.0,"plugin":null,"patch":null},
+        {"track":3.0,"gain":0.25,"state":4,"plugin":"Surge XT","patch":"Author/Pads/Paddy Power.fxp"}
+    ]);
+    let view = project(&data);
+    let sounding = view.tracks[0].sounding.as_ref().unwrap();
+    assert_eq!(view.tracks[0].index, 3);
+    assert_eq!(sounding.label, "Surge XT · Paddy Power");
+    assert_eq!(sounding.gain, 0.25);
+    assert!(sounding.fading_out);
+    data["evolve"] = json!([]);
+    assert!(project(&data).tracks[0].sounding.is_none());
+}

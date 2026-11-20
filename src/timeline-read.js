@@ -5,6 +5,15 @@
     sampleRate: uapmd.sequencer.getSampleRate(),
     scopeTarget: repl.scope.target(),
     sequence: repl.sequence.view || null,
+    evolve: (() => {
+        const pool = globalThis.evolvePool;
+        if (!pool) return [];
+        let slots;
+        // Throws until the pool's first start opens evolve.
+        try { slots = __replCall('evolve.status', {}); } catch (error) { return []; }
+        return pool.buffers.map(b => ({track:b.track, gain:slots[b.slot].gain, state:slots[b.slot].state,
+            plugin:b.sound ? b.sound.plugin : null, patch:b.sound ? b.sound.patch : null}));
+    })(),
     tracks: uapmd.sequencer.getTrackInfos().map((track, trackIndex) => ({
         trackIndex,
         trackId: track.trackId,

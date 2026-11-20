@@ -34,7 +34,7 @@
 
         // Plays once; only the given tracks sound.
         function play(...inputs) {
-            include('builtin/lib/evolution-mode.js').end();
+            include('builtin/lib/evolve-mode.js').end();
             const demo = include('builtin/lib/tutorial.js');
             const list = parts(inputs);
             silence(list.map(p => p.track));
@@ -50,7 +50,7 @@
 
         // Loops; only the given tracks sound.
         function playLoop(...inputs) {
-            include('builtin/lib/evolution-mode.js').end();
+            include('builtin/lib/evolve-mode.js').end();
             const loop = include('builtin/lib/loop.js');
             const list = parts(inputs);
             const next = {};
@@ -62,7 +62,7 @@
         // The start of the easy layer: silent, no clips, no plugins.
         // Tracks stay, so track numbers keep their meaning.
         function reset() {
-            include('builtin/lib/evolution-mode.js').end();
+            include('builtin/lib/evolve-mode.js').end();
             silence([]);
             for (const track of uapmd.sequencer.getTrackInfos()) {
                 for (const node of track.nodes.filter(n => n.instanceId >= 0))

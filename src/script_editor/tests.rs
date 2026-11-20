@@ -357,6 +357,7 @@ fn snippet_insertion_is_one_undo_step_and_does_not_replace_selection() {
         &crate::snippets::Snippet {
             name: "new".into(),
             group: "User",
+            keywords: String::new(),
             code: "var value = 1;".into(),
         },
     );

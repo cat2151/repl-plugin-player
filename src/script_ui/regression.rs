@@ -44,6 +44,7 @@ fn run_enabled(app: &mut Control, script: &Script) -> Result<(), String> {
     let open = &Snippet {
         name: "open".into(),
         group: "User",
+        keywords: String::new(),
         code: script.cell("open")?.into(),
     };
     let ctx = egui::Context::default();

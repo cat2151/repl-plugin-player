@@ -45,6 +45,7 @@ mod tests {
         Snippet {
             name: "test".into(),
             group: "User",
+            keywords: String::new(),
             code: code.into(),
         }
     }

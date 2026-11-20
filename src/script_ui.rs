@@ -3,7 +3,7 @@ use crate::i18n::{render, t};
 use serde_json::Value;
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
 };
 
 mod view;
@@ -29,11 +29,18 @@ pub struct Window {
     pub widgets: Vec<Widget>,
     pub revision: u64,
 }
+/// A modal notice with only an OK button, shown in the order given.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Dialog {
+    pub title: String,
+    pub text: String,
+}
 #[derive(Default)]
 struct Registry {
     enabled: bool,
     revision: u64,
     windows: BTreeMap<String, Window>,
+    dialogs: VecDeque<Dialog>,
 }
 thread_local! { static REGISTRY: RefCell<Registry> = RefCell::default(); }
 
@@ -41,6 +48,7 @@ pub fn enable(enabled: bool) {
     REGISTRY.with_borrow_mut(|registry| {
         registry.enabled = enabled;
         registry.windows.clear();
+        registry.dialogs.clear();
     });
 }
 
@@ -124,6 +132,13 @@ pub fn dispatch(api: &str, input: &Value) -> Result<Value, String> {
                 registry.windows.remove(&string(input, "id")?);
                 Ok(Value::Null)
             }
+            "ui.dialog" => {
+                registry.dialogs.push_back(Dialog {
+                    title: string(input, "title")?,
+                    text: string(input, "text")?,
+                });
+                Ok(Value::Null)
+            }
             _ => Err(t("ui_type").into()),
         }
     })
@@ -132,6 +147,10 @@ pub fn dispatch(api: &str, input: &Value) -> Result<Value, String> {
 /// Every registered window, copied so that no borrow is held while entering JS.
 pub fn snapshot() -> Vec<Window> {
     REGISTRY.with_borrow(|r| r.windows.values().cloned().collect())
+}
+/// The oldest dialog not yet shown.
+pub fn take_dialog() -> Option<Dialog> {
+    REGISTRY.with_borrow_mut(|r| r.dialogs.pop_front())
 }
 /// Removes the window unless a later `ui.show` has replaced it.
 pub fn close(window: &Window) {

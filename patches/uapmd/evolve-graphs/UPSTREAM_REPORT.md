@@ -1,0 +1,11 @@
+# Draft: processing unpublished live sources in existing track workers
+
+Not sent.
+
+At UAPMD `4ec5c3b1c30130fdd3b7d4b375082273247e561f`, an application can prepare an unpublished track without pausing playback, but the public event-handler interface cannot supply its graph to the engine's parallel batch. Rendering two such graphs in after callbacks serializes their DSP. Our fixed-state A/B test produced a 34.6 ms callback from two roughly 17 ms graphs at 48 kHz / 1024 frames.
+
+The app-local repair selects a registered unpublished graph per dedicated track for the existing worker job. Before callbacks provide Rust-generated events; after callbacks apply Rust-generated sample gains and return silent-slot ownership to control. With no registration, normal graph selection and scheduling are unchanged. For this dedicated path, the worker cutoff uses the actual block deadline because the post-DSP work is only gain multiplication. Plugin overload can still exceed that deadline.
+
+An upstream graph-source extension could avoid this local translation-unit replacement. Its lifecycle must exclude registration/removal from active renders, preserve failed-batch ownership, and leave ordinary track processing unchanged. Reproduction and regression procedures are in integration.md. Performance and output validation must distinguish early worker discard from a real callback deadline overrun.
+
+The graph hook by itself is not a complete dropout fix: worker-discard blocks still occur after parallel dispatch, and a late standby job can discard a block even when the playing side finished within the period. Performance validation must cover both worker incidents and callback delivery.

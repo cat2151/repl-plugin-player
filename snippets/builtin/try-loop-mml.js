@@ -1,6 +1,6 @@
 // %% @text name_try_loop_mml
 {
-    include('builtin/lib/evolution-mode.js').end();
+    include('builtin/lib/evolve-mode.js').end();
     const loopTrack = 0;
     const {prepareLoopPart, playLoopParts} = include('builtin/lib/loop.js');
 

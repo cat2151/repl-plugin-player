@@ -12,13 +12,13 @@ rescans from `stateLoad` and again from `onMainThread` therefore blocks the main
 thread for every state load. With Six Sines (2554 parameters) one state load cost
 about 1.5 s, and about 4 s on a new instance.
 
-Instances created by evolve2 (`native/evolve2_api.hpp`) are never shown in a
+Instances created by evolve (`native/evolve_api.hpp`) are never shown in a
 track, UI or script, so nobody reads their parameter list or values.
 
 ## Repair
 
 - `headless_scope.hpp`: a `thread_local` depth and the RAII `repl_headless::Scope`.
-  evolve2 holds one around `addPluginToPreparedTrack`. That call runs on the main
+  evolve holds one around `addPluginToPreparedTrack`. That call runs on the main
   thread and creates the instance synchronously in the same call stack
   (`EventLoop::runTaskOnMainThread` runs inline on main), so the mark reaches the
   host construction. If creation ever moves to another thread, the instance
@@ -40,8 +40,7 @@ track, UI or script, so nobody reads their parameter list or values.
   and leaves its contents and the UAPMD checkout untouched.
 - The input contains exactly one host-construction anchor and exactly one
   `namespace remidy {` line, and remidy's `SOURCES` contains the input exactly once.
-- Track instances and `evolution.load` instances are created outside the scope and
-  keep `RemidyCLAPHost` unchanged.
+- Track instances are created outside the scope and keep `RemidyCLAPHost` unchanged.
 
 ## Reapplication
 
@@ -62,8 +61,8 @@ and `HostClasses.hpp` (the `paramsRescan` signature) before updating the anchors
 - `python -B patches/uapmd/headless-clap-host/test_apply.py`: one replacement,
   includes before the namespace, input untouched, idempotent reapply, rejection of
   the unpatched text, and missing/repeated anchors.
-- `python -B scripts/evolution-fixed-test.py --topologies evolve evolve2 --workers 6 --seconds 30 --sounds 3`:
-  evolve2's Six Sines requests should no longer stall the UI.
+- `python -B scripts/evolve-fixed-test.py --topologies evolve --workers 6 --seconds 30 --sounds 3`:
+  evolve's Six Sines requests should no longer stall the UI.
 - `target/release/repl-plugin-player.exe --e2e script-ui` and
   `python -B patches/uapmd/parameter-metadata/regression.py`: track instances still
   report parameters.
@@ -71,7 +70,7 @@ and `HostClasses.hpp` (the `paramsRescan` signature) before updating the anchors
 ## Removal
 
 Remove the include line, this directory and the `Scope` in
-`native/evolve2_api.hpp` when upstream lets a host skip value rescans for
+`native/evolve_api.hpp` when upstream lets a host skip value rescans for
 unobserved instances, or no longer walks every parameter on
 `CLAP_PARAM_RESCAN_VALUES`.
 

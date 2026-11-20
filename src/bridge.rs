@@ -8,7 +8,7 @@ use std::{
 pub struct Bridge {
     _library: Library,
     _sequence_library: Library,
-    _evolve2_library: Library,
+    _evolve_library: Library,
     _control_thread: std::marker::PhantomData<std::rc::Rc<()>>,
     request: unsafe extern "C" fn(*const std::ffi::c_char) -> *const std::ffi::c_char,
     capture: Option<Box<crate::scope_capture::Capture>>,
@@ -65,34 +65,21 @@ impl Bridge {
             if !connect(api()) {
                 return Err("Sequence DLL ABI mismatch".into());
             }
-            let evolution = sequence_library
-                .get::<unsafe extern "C" fn() -> *const repl_extension_api::evolution::Api>(
-                    b"repl_evolution_api\0",
+            let evolve_path = crate::resources::extension("evolve")?;
+            let evolve_library = Library::new(&evolve_path)
+                .map_err(|error| format!("{}: {error}", evolve_path.display()))?;
+            let evolve = evolve_library
+                .get::<unsafe extern "C" fn() -> *const repl_extension_api::evolve::Api>(
+                    b"repl_evolve_api\0",
                 )
                 .map_err(|e| e.to_string())?;
-            let connect_evolution = library
-                .get::<unsafe extern "C" fn(*const repl_extension_api::evolution::Api) -> bool>(
-                    b"repl_set_evolution_api\0",
+            let connect_evolve = library
+                .get::<unsafe extern "C" fn(*const repl_extension_api::evolve::Api) -> bool>(
+                    b"repl_set_evolve_api\0",
                 )
                 .map_err(|e| e.to_string())?;
-            if !connect_evolution(evolution()) {
-                return Err("Evolution DLL ABI mismatch".into());
-            }
-            let evolve2_path = crate::resources::extension("evolve2")?;
-            let evolve2_library = Library::new(&evolve2_path)
-                .map_err(|error| format!("{}: {error}", evolve2_path.display()))?;
-            let evolve2 = evolve2_library
-                .get::<unsafe extern "C" fn() -> *const repl_extension_api::evolve2::Api>(
-                    b"repl_evolve2_api\0",
-                )
-                .map_err(|e| e.to_string())?;
-            let connect_evolve2 = library
-                .get::<unsafe extern "C" fn(*const repl_extension_api::evolve2::Api) -> bool>(
-                    b"repl_set_evolve2_api\0",
-                )
-                .map_err(|e| e.to_string())?;
-            if !connect_evolve2(evolve2()) {
-                return Err("evolve2 DLL ABI mismatch".into());
+            if !connect_evolve(evolve()) {
+                return Err("evolve DLL ABI mismatch".into());
             }
             use crate::patch_state::clap;
             clap::connect(Some(clap::Bridge {
@@ -127,7 +114,7 @@ impl Bridge {
             Ok(Self {
                 _library: library,
                 _sequence_library: sequence_library,
-                _evolve2_library: evolve2_library,
+                _evolve_library: evolve_library,
                 _control_thread: std::marker::PhantomData,
                 request,
                 capture: None,

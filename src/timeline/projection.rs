@@ -18,11 +18,20 @@ pub struct Clip {
     pub notes: Vec<Note>,
 }
 
+/// The sound an evolve slot holds on this track; `gain` is linear, 0 when silent.
+pub struct Sounding {
+    pub label: String,
+    pub gain: f32,
+    /// evolve's RETIRING slot state: the gain only falls.
+    pub fading_out: bool,
+}
+
 pub struct Track {
     pub id: String,
     pub index: usize,
     pub plugins: Vec<String>,
     pub plugins_serial: bool,
+    pub sounding: Option<Sounding>,
     pub clips: Vec<Clip>,
     pub low: u8,
     pub high: u8,
@@ -122,6 +131,32 @@ fn project_notes(
             })
         })
         .collect()
+}
+
+/// "plugin · patch file stem" of the evolve slot on `track`.
+fn sounding(slots: &Value, track: &Value) -> Option<Sounding> {
+    let slot = array(slots).iter().find(|slot| {
+        slot["track"]
+            .as_f64()
+            .is_some_and(|t| Some(t) == track.as_f64())
+    })?;
+    let plugin = slot["plugin"].as_str()?;
+    let label = match slot["patch"].as_str().map(std::path::Path::new) {
+        Some(patch) => format!(
+            "{plugin} · {}",
+            patch
+                .file_stem()
+                .unwrap_or(patch.as_os_str())
+                .to_string_lossy()
+        ),
+        None => plugin.to_owned(),
+    };
+    Some(Sounding {
+        label,
+        gain: number(&slot["gain"], 0.0) as f32,
+        // `repl_extension_api::evolve::slot_state::RETIRING`.
+        fading_out: slot["state"].as_f64() == Some(4.0),
+    })
 }
 
 pub fn project(snapshot: &Value) -> View {
@@ -236,6 +271,7 @@ pub fn project(snapshot: &Value) -> View {
             index: number(&track["trackIndex"], index as f64) as usize,
             plugins,
             plugins_serial,
+            sounding: sounding(&snapshot["evolve"], &track["trackIndex"]),
             clips,
             low,
             high,

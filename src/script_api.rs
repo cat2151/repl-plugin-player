@@ -89,10 +89,15 @@ fn dispatch(input: &Value) -> Result<Value, String> {
             crate::frame_monitor::beat();
             Ok(Value::Null)
         }
+        "power.setMinProcessorState" => {
+            let percent = input["percent"].as_u64().filter(|&p| p <= 100);
+            let percent = percent.ok_or(crate::i18n::t("min_processor_state_range"))?;
+            crate::min_processor_state::set(percent as u32).map(|()| Value::Null)
+        }
         "snippet.source" => Ok(json!(
             crate::snippets::Library::default().source(argument(input, "name")?)?
         )),
-        api @ ("ui.show" | "ui.close") => crate::script_ui::dispatch(api, input),
+        api @ ("ui.show" | "ui.close" | "ui.dialog") => crate::script_ui::dispatch(api, input),
         api if api.starts_with("patchBrowser.") => crate::patch_browse::dispatch(api, input),
         "text" => {
             let key = argument(input, "key")?;

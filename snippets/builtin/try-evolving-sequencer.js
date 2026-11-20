@@ -1,13 +1,12 @@
 // %% @text name_try_evolving_sequencer
 {
     const instruments = ['Surge XT','Vaporizer2','TyrellN6','Six Sines'];
-    include('builtin/lib/evolution-mode.js').enter(
-        instruments.map(plugin=>({format:'CLAP',plugin})));
-    const sequenceTracks = globalThis.evolutionPool.buffers.map(b=>b.track);
+    include('builtin/lib/evolve-mode.js').enter(instruments.map(plugin=>({format:'CLAP',plugin})));
+    const sequenceTracks = globalThis.evolvePool.buffers.map(b=>b.track);
     const demo = include('builtin/lib/tutorial.js');
-    demo.reset({keepEvolution:true});
+    demo.reset({keepEvolve:true});
     repl.sequence.clear();
-    for (const track of uapmd.sequencer.getTrackInfos().filter(t=>globalThis.evolutionMode.trackIds.includes(t.trackId)))
+    for (const track of uapmd.sequencer.getTrackInfos().filter(t=>globalThis.evolveMode.trackIds.includes(t.trackId)))
         for (const clip of uapmd.timeline.getClips(track.trackId))
             if (!uapmd.timeline.removeClip(clip.clipId)) throw new Error('Could not remove clip');
     for (const track of sequenceTracks)
@@ -17,8 +16,8 @@
 // %% @text evolving_sequence_edit
 {
     // Re-run only this cell while playing: the native clock keeps its phase.
-    include('builtin/lib/evolution.js').start({
-        mode:'sequence', pool:globalThis.evolutionPool,
+    include('builtin/lib/evolve-loop.js').start({
+        mode:'sequence', pool:globalThis.evolvePool,
         sounds:{role:'chord', kind:'pad'},
         crossfade:{holdMs:5000, fadeMs:5000, everyMs:25},
         progression:'CM7-Dm7-Em7-FM7-G6-Am7',

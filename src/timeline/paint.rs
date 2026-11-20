@@ -89,20 +89,35 @@ pub fn show(ui: &mut egui::Ui, view: &View) {
                     egui::pos2(pinned_left, top),
                     egui::pos2(rect.right(), top + HEADER),
                 );
-                painter.rect_filled(header, 0.0, ui.visuals().extreme_bg_color);
-                let name = if track.plugins.is_empty() {
+                let background = ui.visuals().extreme_bg_color;
+                painter.rect_filled(header, 0.0, background);
+                let name = if track.sounding.is_some() || track.plugins.is_empty() {
                     format!("Track {}", track.index)
                 } else {
                     let separator = if track.plugins_serial { " → " } else { ", " };
                     format!("Track {} · {}", track.index, track.plugins.join(separator))
                 };
-                painter.text(
+                let drawn = painter.text(
                     header.left_center() + egui::vec2(4.0, 0.0),
                     Align2::LEFT_CENTER,
                     name,
                     FontId::proportional(12.0),
                     ui.visuals().text_color(),
                 );
+                if let Some(sounding) = &track.sounding {
+                    painter.text(
+                        egui::pos2(drawn.right(), header.center().y),
+                        Align2::LEFT_CENTER,
+                        format!(" · {}", sounding.label),
+                        FontId::proportional(12.0),
+                        label_color(
+                            background,
+                            ui.visuals().text_color(),
+                            sounding.gain,
+                            sounding.fading_out,
+                        ),
+                    );
+                }
                 // Stable identity for hover interactions, independent of vector index changes.
                 ui.interact(
                     header,
@@ -174,6 +189,21 @@ fn draw_keys(painter: &egui::Painter, track: &Track, rect: Rect) {
             );
         }
     }
+}
+
+/// Above 1 a fading-out label darkens early and any other label brightens early.
+const BRIGHTNESS_EXPONENT: f32 = 2.0;
+
+/// The background at gain 0 and `text` at gain 1. Between, `gain^e` while fading
+/// out and `1 - (1 - gain)^e` otherwise.
+fn label_color(background: Color32, text: Color32, gain: f32, fading_out: bool) -> Color32 {
+    let gain = gain.clamp(0.0, 1.0);
+    let level = if fading_out {
+        gain.powf(BRIGHTNESS_EXPONENT)
+    } else {
+        1.0 - (1.0 - gain).powf(BRIGHTNESS_EXPONENT)
+    };
+    background.lerp_to_gamma(text, level)
 }
 
 fn color(clip: &Clip) -> Color32 {

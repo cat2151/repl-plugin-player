@@ -67,7 +67,7 @@ def main():
         return
     import subprocess
     import sys
-    subprocess.run([sys.executable, str(ROOT / 'scripts/e2e.py'), 'live-sequence', 'evolution', 'evolution-pool'],
+    subprocess.run([sys.executable, str(ROOT / 'scripts/e2e.py'), 'live-sequence', 'evolve'],
                    cwd=ROOT, check=True)
 
 

@@ -1,6 +1,6 @@
 # Master scope
 
-Evolve uses unpublished instruments, and an individual instrument tap cannot show
+evolve uses unpublished instruments, and an individual instrument tap cannot show
 the crossfaded master output. The realtime dispatcher return is wrapped to observe
 the final stereo output after master gain, soft clipping and mute processing.
 Offline rendering is unaffected. Target -2 selects master; -1 disables capture.
@@ -17,9 +17,9 @@ and target source list before updating the anchor; do not bypass validation.
 
 Validation: `python -B patches/uapmd/master-scope/test_generate.py`, Rust scope
 tests, release build, `python -B scripts/e2e.py scope-master`,
-`python -B scripts/evolution-mode-test.py` and `python -B scripts/master-scope-test.py`.
+`python -B scripts/evolve-mode-test.py` and `python -B scripts/master-scope-test.py`.
 The performance comparison uses the external hashed fixture prepared by
-`evolution-fixed-test.py`, keeping the same voice while selecting off/on/on/off.
+`evolve-fixed-test.py`, keeping the same voice while selecting off/on/on/off.
 Remove this patch and its CMake
 include when upstream exposes a final realtime output observer, then move the
 bridge capture call to that observer and repeat output/performance checks.

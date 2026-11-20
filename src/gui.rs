@@ -13,6 +13,7 @@ mod console;
 mod dock;
 pub(crate) use dock::regression::run as dock_regression;
 pub(crate) use dock::script_regression::run as dock_script_ui_regression;
+mod dialog;
 mod help;
 mod logs;
 mod panes;
@@ -92,6 +93,9 @@ struct Editor {
     settings: settings::Settings,
     help: help::Help,
     player_download: player_download::Offer,
+    dialogs: dialog::Dialogs,
+    /// Set once the first close request has run the script's exit handlers.
+    exit_handlers_ran: bool,
     extensions: crate::extension::Extensions,
     frames: Option<crate::frame_monitor::Monitor>,
 }
@@ -129,6 +133,8 @@ impl Editor {
             settings,
             help: help::Help::default(),
             player_download: player_download::Offer::default(),
+            dialogs: dialog::Dialogs::default(),
+            exit_handlers_ran: false,
             extensions: crate::extension::Extensions::default(),
             frames: None,
         }
@@ -175,6 +181,22 @@ impl Editor {
             let _ = self.execute(request);
             self.write_browsed_cell(ctx);
         }
+    }
+    /// The first close request is held so that the dialogs the exit handlers
+    /// show are read before the window closes.
+    fn run_exit_handlers_on_close(&mut self, ctx: &egui::Context) {
+        if self.exit_handlers_ran || !ctx.input(|i| i.viewport().close_requested()) {
+            return;
+        }
+        self.exit_handlers_ran = true;
+        let Some(control) = self.control.as_mut().filter(|control| control.ready) else {
+            return;
+        };
+        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        if let Err(error) = control.run_exit_handlers() {
+            self.error(crate::i18n::t("stage_script"), error);
+        }
+        self.dialogs.close_after();
     }
     fn execute(&mut self, request: crate::execution::Request) -> Result<(), String> {
         self.error.clear();
@@ -258,6 +280,8 @@ impl eframe::App for Editor {
         }
         self.help.show(&ctx);
         self.player_download.show(&ctx);
+        self.run_exit_handlers_on_close(&ctx);
+        self.dialogs.show(&ctx);
         ctx.request_repaint_after(Duration::from_millis(16));
     }
     fn on_exit(&mut self, _: Option<&eframe::glow::Context>) {

@@ -48,6 +48,7 @@ impl Filter {
             snippet.group,
             snippet.name.as_str(),
             crate::i18n::group(snippet.group),
+            &snippet.keywords,
         ];
         if snippet.group == "Built-in" {
             fields.push(crate::i18n::snippet_name(&snippet.name));
@@ -68,6 +69,7 @@ mod tests {
         let snippet = Snippet {
             name: "Try-Loop-42".into(),
             group: "User",
+            keywords: String::new(),
             code: "not searched".into(),
         };
         let mut filter = Filter::default();
@@ -105,6 +107,7 @@ mod tests {
                 .map(|name| Snippet {
                     name: name.into(),
                     group: "User",
+                    keywords: String::new(),
                     code: "42".into(),
                 })
                 .collect(),
