@@ -10,6 +10,7 @@
 #include <array>
 #include "../patches/uapmd/note-monitor/note_monitor.hpp"
 #include "../patches/uapmd/catalog-cache-startup/catalog_cache.hpp"
+#include "../patches/uapmd/clap-catalog-complete/clap_catalog.hpp"
 #include "localization.hpp"
 #include "plugin_windows.hpp"
 #include "parameter_safety.hpp"
@@ -181,7 +182,18 @@ struct Session {
         auto& model = uapmd_app::AppModel::instance();
         timeline_view.captureInitial(*model.sequencer().engine());
         windows.attach();
+        // Runs on the scan worker, before scanning_done lets scripts read the catalog.
         model.scanningCompleted.push_back([this](bool ok, std::string error) {
+            if (ok) {
+                try {
+                    auto* host = uapmd_app::AppModel::instance().sequencer().engine()->pluginHost();
+                    if (repl_clap_catalog::complete(*host))
+                        host->reloadPluginCatalogFromCache();
+                } catch (const std::exception& e) {
+                    ok = false;
+                    error = std::string("clap-catalog-complete: ") + e.what();
+                }
+            }
             remidy::EventLoop::enqueueTaskOnMainThread([this, ok, error] {
                 scanning_done = true;
                 scan_error = ok ? "" : error;

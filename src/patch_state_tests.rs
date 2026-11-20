@@ -97,6 +97,28 @@ fn the_reference_takes_the_bundle_from_the_players_table() {
     assert!(reference(&table, "VST3", "id", "p.fxp").is_err());
 }
 
+#[test]
+fn the_owner_tag_of_a_catalog_patch_is_not_part_of_its_path() {
+    let dir = Dir::new("tag");
+    let patch = dir.file("root/6 Pads/p.h2p");
+    let table = Table {
+        plugins: vec![Plugin {
+            format: "CLAP".into(),
+            id: "com.u-he.Zebralette3".into(),
+            bundle_path: "D:/plugin.clap".into(),
+            roots: vec![dir.root("root")],
+        }],
+    };
+    let found = reference(&table, "CLAP", "com.u-he.Zebralette3", "6 Pads/p.h2p:z").unwrap();
+    assert_eq!(
+        found.source,
+        Source::Catalog {
+            path: patch.clone(),
+            file: patch
+        }
+    );
+}
+
 pub(super) fn catalog(id: &str, path: PathBuf) -> PatchReference {
     PatchReference {
         plugin: PluginKey {

@@ -1,6 +1,6 @@
 // %% @text name_try_evolving_sequencer
 {
-    const instruments = ['Surge XT','Vaporizer2','TyrellN6','Six Sines'];
+    const instruments = ['Surge XT','Vaporizer2','TyrellN6','Six Sines','Zebralette3'];
     include('builtin/lib/evolve-mode.js').enter(instruments.map(plugin=>({format:'CLAP',plugin})));
     const sequenceTracks = globalThis.evolvePool.buffers.map(b=>b.track);
     const demo = include('builtin/lib/tutorial.js');

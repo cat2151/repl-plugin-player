@@ -3873,9 +3873,11 @@ name = "plugin-presets"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dirs",
  "dunce",
  "mlua",
  "serde",
+ "serde_json",
  "winreg",
  "xmltree",
 ]

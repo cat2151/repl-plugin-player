@@ -18,7 +18,10 @@ pub(super) fn reference(
         .iter()
         .find(|p| p.format == format && p.id == plugin_id)
         .ok_or_else(|| render("patch_state_02", &[("plugin", plugin_id.into())]))?;
-    let (path, file) = locate(&plugin.roots, patch).map_err(|key| {
+    // The catalog names a patch of a non-default owner with its tag (`x.h2p:z`);
+    // the plugin is already given, so only the path locates it.
+    let (location, _) = cmrt_core::split_display(patch);
+    let (path, file) = locate(&plugin.roots, location).map_err(|key| {
         render(
             key,
             &[("patch", patch.into()), ("plugin", plugin_id.into())],
