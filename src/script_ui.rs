@@ -9,6 +9,7 @@ use std::{
 mod view;
 pub use view::Renderer;
 pub mod regression;
+pub mod surface;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Binding {
@@ -45,6 +46,7 @@ struct Registry {
 thread_local! { static REGISTRY: RefCell<Registry> = RefCell::default(); }
 
 pub fn enable(enabled: bool) {
+    surface::clear();
     REGISTRY.with_borrow_mut(|registry| {
         registry.enabled = enabled;
         registry.windows.clear();
@@ -129,7 +131,19 @@ pub fn dispatch(api: &str, input: &Value) -> Result<Value, String> {
                 Ok(Value::Null)
             }
             "ui.close" => {
-                registry.windows.remove(&string(input, "id")?);
+                let id = string(input, "id")?;
+                registry.windows.remove(&id);
+                surface::close(&id);
+                Ok(Value::Null)
+            }
+            "ui.surface.show" => surface::register(&input["definition"]),
+            "ui.surface.poll" => Ok(surface::poll(&string(input, "id")?)),
+            "ui.surface.setTitle" => {
+                let instance = input["padGainInstance"]
+                    .as_i64()
+                    .and_then(|id| i32::try_from(id).ok())
+                    .filter(|&id| id >= 0);
+                surface::set_title(&string(input, "id")?, string(input, "title")?, instance);
                 Ok(Value::Null)
             }
             "ui.dialog" => {

@@ -172,6 +172,59 @@ fn script_windows_start_in_their_own_window_and_follow_the_registry() {
 }
 
 #[test]
+fn surface_docks_refloats_and_closes_using_the_shared_pane_controls() {
+    crate::script_ui::enable(true);
+    let dispatch = crate::script_ui::dispatch;
+    let id = "Performance pads";
+    let definition = serde_json::json!({"definition": {
+        "id": id, "width": 960, "height": 512,
+        "regions": [{"rect": [0, 0, 960, 512], "color": [40, 50, 60]}],
+        "header": {"checkbox": "auto gain", "checked": true}
+    }});
+    let input = serde_json::json!({"id": id});
+    let pane = Pane::Surface(id.into());
+    let mut harness = Harness::new();
+    harness.settle(DEFAULT);
+    dispatch("ui.surface.show", &definition).unwrap();
+    harness.settle(DEFAULT);
+    assert_eq!(
+        harness.editor.layout.floating_panes(),
+        std::slice::from_ref(&pane)
+    );
+    assert!(harness.text(id).is_some());
+
+    dispatch(
+        "ui.surface.setTitle",
+        &serde_json::json!({"id": id, "title": "Plugin / Patch"}),
+    )
+    .unwrap();
+    harness.dock().unwrap();
+    assert!(harness.in_tree(&pane) && harness.editor.layout.floating.is_empty());
+    assert!(harness.text("Plugin / Patch").is_some());
+    assert_eq!(
+        dispatch("ui.surface.poll", &input).unwrap()["checked"],
+        true
+    );
+    assert!(!super::file::write(&harness.editor.layout).contains(id));
+
+    harness.float(&pane).unwrap();
+    assert!(!harness.in_tree(&pane));
+    assert_eq!(
+        harness.editor.layout.floating_panes(),
+        std::slice::from_ref(&pane)
+    );
+    harness.dock().unwrap();
+    let tab = harness.text(id).unwrap();
+    harness.click(
+        egui::pos2(tab.right() + 10.0, tab.center().y),
+        PointerButton::Primary,
+    );
+    assert!(!harness.in_tree(&pane) && harness.editor.layout.floating.is_empty());
+    assert_eq!(dispatch("ui.surface.poll", &input).unwrap()["open"], false);
+    crate::script_ui::enable(false);
+}
+
+#[test]
 fn a_pane_window_is_brought_to_the_front_once_when_it_opens() {
     let focused = |harness: &Harness, pane: &Pane| {
         let focus = (pane.viewport(), egui::ViewportCommand::Focus);

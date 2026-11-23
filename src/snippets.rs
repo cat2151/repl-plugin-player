@@ -38,6 +38,7 @@ const BUILTIN_ORDER: &[&str] = &[
     "try-cut-paste",
     "try-change-patch",
     "try-change-effect",
+    "try-performance-pads",
     "play",
     "play-loop",
     "stop-playback",

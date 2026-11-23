@@ -70,6 +70,12 @@ pub fn run(case: &str) -> Result<(), String> {
         }
         let app = &mut app;
         match case {
+            "pad-reroll" => {
+                crate::script_ui::enable(true);
+                let result = script.run(app, case);
+                crate::script_ui::enable(false);
+                result
+            }
             _ if !rust => script.run(app, case),
             "timeline-view" => crate::timeline::regression::run(app, &script),
             "piano-roll-cut-paste" => crate::piano_roll_e2e::run(app, &script),

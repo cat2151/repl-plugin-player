@@ -21,6 +21,9 @@ impl Pane {
             Pane::Scope => 170.0,
             Pane::Log => 200.0,
             Pane::Reference => 300.0,
+            Pane::Surface(id) => {
+                return crate::script_ui::surface::size(id).unwrap_or(egui::vec2(620.0, 600.0));
+            }
             Pane::Script(id) => {
                 let widgets = windows
                     .iter()
@@ -149,11 +152,21 @@ impl Panes<'_> {
             }
             let title = float.title(&self.windows);
             let placed = placed.get(&id);
+            let size = placed.map_or_else(|| float.size(&self.windows), |r| r.size());
             let mut builder = egui::ViewportBuilder::default()
                 .with_title(title.clone())
-                .with_inner_size(placed.map_or(float.size(&self.windows), |r| r.size()));
+                .with_inner_size(size);
             if let Some(rect) = placed {
                 builder = builder.with_position(rect.min);
+            } else if matches!(&float.panes()[..], [Pane::Surface(_)])
+                && ctx.input(|input| {
+                    input
+                        .viewport()
+                        .monitor_size
+                        .is_some_and(|monitor| size.x >= monitor.x || size.y >= monitor.y)
+                })
+            {
+                builder = builder.with_maximized(true);
             }
             let outer = resolved.get(&id).copied();
             let mut seen = None;
@@ -186,14 +199,13 @@ impl Panes<'_> {
                 seen_rects.insert(id, rect);
             }
             let panes = float.panes();
-            let script = |pane: &Pane| matches!(pane, Pane::Script(_));
             if closed {
                 panes
                     .iter()
-                    .filter(|pane| script(pane))
+                    .filter(|pane| pane.is_script())
                     .for_each(|p| self.close(p));
             }
-            if docked || (closed && !panes.iter().all(script)) {
+            if docked || (closed && !panes.iter().all(Pane::is_script)) {
                 back.push(id);
             }
         }

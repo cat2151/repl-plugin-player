@@ -87,13 +87,18 @@ repl.processEvents = function() {
         return errors;
     };
 })();
-repl.audio = {isProcessing: function() { return __replCall('audio.isProcessing', {}); }};
+repl.audio = {
+    isProcessing: function() { return __replCall('audio.isProcessing', {}); },
+    // Auto gain for these live pad instances. An empty list turns it off.
+    setPadAutoGain: function(instances) { return __replCall('audio.setPadAutoGain', {instances}); }
+};
 // UAPMD's self-contained archive, including MIDI and plugin states.
 repl.project = {
     directory: function() { return __replCall('projectsDirectory', {}); },
     saveArchive: function(filepath) { return __replCall('project.saveArchive', {filepath:filepath}); },
     // Returns after UAPMD has restored the timeline and plugin states.
     load: function(filepath) {
+        globalThis.performancePadSession?.();
         include('builtin/lib/evolve-mode.js').end();
         repl.sequence.clear();
         const previousId = repl.scope.target();
@@ -206,6 +211,12 @@ repl.patchCatalog = function(options) {
 };
 // Reads the catalog again in the background; the next patchCatalog waits for it.
 repl.reloadPatchCatalog = function() { return __replCall('patchCatalog.reload', {}); };
+repl.catalogInstruments = function() { return __replCall('patchCatalog.instruments', {}); };
+repl.midi = {
+    controlChange: function(instanceId, controller, value) {
+        return __replCall('midi.controlChange', {instanceId, controller, value});
+    }
+};
 // The effect preset file `preset` (relative to the plugin's root) with the player's
 // selector `value` inside it, for `pluginId`. `instance` and `created` are as in
 // repl.patchState.
@@ -230,6 +241,18 @@ repl.patchBrowser = {
 repl.ui = {
     show: function(definition) { return __replCall('ui.show', {definition:definition}); },
     close: function(id) { return __replCall('ui.close', {id:id}); },
+    // A viewport of colored hit regions and an optional {title, checkbox, checked} header.
+    // Poll returns {open, events} and, with a header, checked;
+    // Primary capture emits down/move/up; right presses and vertical mouse wheel events
+    // emit secondary and wheel for the hovered region.
+    // Coordinates are normalized to the event's region.
+    surface: {
+        show: function(definition) { return __replCall('ui.surface.show', {definition}); },
+        poll: function(id) { return __replCall('ui.surface.poll', {id}); },
+        setTitle: function(id, title, padGainInstance) {
+            return __replCall('ui.surface.setTitle', {id, title, padGainInstance});
+        }
+    },
     // A modal with an OK button; several wait in the order given.
     dialog: function(title, text) { return __replCall('ui.dialog', {title:title, text:text}); }
 };

@@ -20,6 +20,15 @@ pub const CEILING: f64 = 0.891_250_938_133_745_5;
 pub const RELEASE_SECONDS: f64 = 0.2;
 pub const GLIDE_SECONDS: f64 = 1.0;
 
+pub(crate) fn loudness(energy: f64) -> f64 {
+    -0.691 + 10.0 * energy.log10()
+}
+
+pub(crate) fn trim_for(loudness: f64) -> f64 {
+    let db = (TARGET_LUFS - loudness).clamp(-MAX_TRIM_DB, MAX_TRIM_DB);
+    10f64.powf(db / 20.0)
+}
+
 pub trait Sample: Copy {
     fn get(self) -> f64;
     fn put(value: f64) -> Self;
@@ -194,17 +203,12 @@ impl Level {
             return false;
         }
         let mean = self.energy / self.measured as f64;
-        self.loudness = if mean > 0.0 {
-            -0.691 + 10.0 * mean.log10()
+        self.loudness = loudness(mean);
+        let trim = if self.loudness < SILENT_LUFS {
+            1.0
         } else {
-            f64::NEG_INFINITY
+            trim_for(self.loudness)
         };
-        let db = if self.loudness < SILENT_LUFS {
-            0.0
-        } else {
-            (TARGET_LUFS - self.loudness).clamp(-MAX_TRIM_DB, MAX_TRIM_DB)
-        };
-        let trim = 10f64.powf(db / 20.0);
         self.trim = Some(trim);
         let glide = (GLIDE_SECONDS * self.rate).round() as u64;
         if heard && glide > 0 {
@@ -234,6 +238,20 @@ impl Level {
         20.0 * self.peak.log10()
     }
 
+    pub(crate) fn weighted_energy(&mut self, channel: usize, sample: f64) -> f64 {
+        let h = &mut self.histories[channel];
+        let shelved = h[0].step(&self.shelf, sample);
+        let y = h[1].step(&self.high_pass, shelved);
+        y * y
+    }
+
+    pub(crate) fn limit(&mut self, peak: f64) -> f64 {
+        let released = 1.0 - (1.0 - self.envelope) * self.release;
+        let limit = if peak > CEILING { CEILING / peak } else { 1.0 };
+        self.envelope = released.min(limit);
+        self.envelope
+    }
+
     /// Measures (until the trim is fixed), trims, limits and applies `gains`.
     /// Every channel has `frames` samples; `gains` has at least `frames`.
     pub fn process<T: Sample>(&mut self, channels: &mut [&mut [T]], frames: usize, gains: &[f32]) {
@@ -251,22 +269,12 @@ impl Level {
             for (channel, samples) in channels.iter().enumerate() {
                 let x = samples[frame].get();
                 if measuring {
-                    let h = &mut self.histories[channel];
-                    let shelved = h[0].step(&self.shelf, x);
-                    let y = h[1].step(&self.high_pass, shelved);
-                    self.energy += y * y;
+                    self.energy += self.weighted_energy(channel, x);
                     self.peak = self.peak.max(x.abs());
                 }
                 loudest = loudest.max((x * trim).abs());
             }
-            let released = 1.0 - (1.0 - self.envelope) * self.release;
-            let limit = if loudest > CEILING {
-                CEILING / loudest
-            } else {
-                1.0
-            };
-            self.envelope = released.min(limit);
-            let scale = trim * self.envelope * f64::from(*gain);
+            let scale = trim * self.limit(loudest) * f64::from(*gain);
             for samples in channels.iter_mut() {
                 samples[frame] = T::put(samples[frame].get() * scale);
             }

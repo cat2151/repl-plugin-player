@@ -11,7 +11,13 @@ use std::{
     sync::{mpsc, Arc, Mutex, PoisonError},
 };
 
-type Groups = BTreeMap<(String, String), Vec<(String, Option<String>)>>;
+type Groups = BTreeMap<(String, String), Vec<CatalogPatch>>;
+
+struct CatalogPatch {
+    display: String,
+    category: Option<String>,
+    drum_kit: bool,
+}
 
 struct Entry {
     id: String,
@@ -19,6 +25,7 @@ struct Entry {
     patch: String,
     role: Option<PatchRole>,
     kind: Option<&'static str>,
+    drum_kit: bool,
 }
 
 type Held = Mutex<Option<Arc<Vec<Entry>>>>;
@@ -72,13 +79,18 @@ impl Sources {
             {
                 continue;
             }
+            let display = &patch.reference.display;
             groups
                 .entry((id.to_owned(), plugin.name.clone()))
                 .or_default()
-                .push((
-                    patch.reference.display.clone(),
-                    patch.selector_category.clone(),
-                ));
+                .push(CatalogPatch {
+                    display: display.clone(),
+                    category: patch.selector_category.clone(),
+                    drum_kit: snapshot
+                        .load_measurements()
+                        .get(display)
+                        .is_some_and(|m| m.drum_kit),
+                });
         }
         Ok(classify(groups, &users))
     }
@@ -91,6 +103,26 @@ pub fn list(role: &str, kind: &str) -> Result<Value, String> {
         .ok_or_else(|| format!("Unknown catalog role: {role}"))?;
     let entries = held(&HELD, read_current)?;
     Ok(filter(&entries, role, kind))
+}
+
+/// Pitched patch candidates by plugin, from the same held catalog as `list`.
+pub fn instruments() -> Result<Value, String> {
+    let entries = held(&HELD, read_current)?;
+    let mut plugins = BTreeMap::<_, (&str, Vec<&str>)>::new();
+    for entry in entries
+        .iter()
+        .filter(|e| !e.drum_kit && e.role != Some(PatchRole::Drum))
+    {
+        plugins
+            .entry(&entry.id)
+            .or_insert_with(|| (&entry.plugin, Vec::new()))
+            .1
+            .push(&entry.patch);
+    }
+    Ok(plugins
+        .into_iter()
+        .map(|(id, (plugin, patches))| json!({"format":"CLAP", "pluginId":id, "plugin":plugin, "patches":patches}))
+        .collect())
 }
 
 fn read_current() -> Result<Vec<Entry>, String> {
@@ -161,27 +193,31 @@ fn classify(groups: Groups, users: &[(String, String)]) -> Vec<Entry> {
     for ((id, name), patches) in groups {
         let normalized: Vec<_> = patches
             .iter()
-            .map(|(display, _)| display.to_lowercase())
+            .map(|patch| patch.display.to_lowercase())
             .collect();
         let index = PatchRoleIndex::build(
             patches
                 .iter()
                 .zip(&normalized)
-                .map(|((display, category), n)| PatchRoleInput {
-                    display,
+                .map(|(patch, n)| PatchRoleInput {
+                    display: &patch.display,
                     normalized_display: n,
-                    selector_category: category.as_deref(),
+                    selector_category: patch.category.as_deref(),
                     plugin: Some(&name),
                 }),
             users,
         );
-        for (display, _) in patches {
+        for CatalogPatch {
+            display, drum_kit, ..
+        } in patches
+        {
             entries.push(Entry {
                 role: index.role_of(&display),
                 kind: index.preset_label_of(&display),
                 id: id.clone(),
                 plugin: name.clone(),
                 patch: display,
+                drum_kit,
             });
         }
     }

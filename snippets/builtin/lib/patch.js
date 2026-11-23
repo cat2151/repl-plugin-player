@@ -130,20 +130,23 @@
         const excluded = new Set(exclude.map(key));
         const unique = [...new Map(candidates.filter(p => !excluded.has(key(p))).map(p => [key(p),p])).values()];
         if (unique.length < targets.length) throw new Error('Not enough distinct catalog patches for ' + role + ' / ' + kind);
-        return targets.map(track => {
-            const failures = [];
-            for (let attempt = 0; attempt < attempts && unique.length; ++attempt) {
-                const selected = unique.splice(Math.floor(Math.random() * unique.length), 1)[0];
-                try { return {...selected, ...load({...selected, track})}; }
-                catch (error) {
-                    const failure = selected.plugin + ' / ' + selected.patch + ': ' + error.message;
-                    failures.push(failure);
-                    console.log(failure);
-                }
-            }
-            throw new Error('Could not load ' + role + ' / ' + kind + ':\n' + failures.join('\n'));
-        });
+        return targets.map(track => randomFrom(unique, track, role + ' / ' + kind, {attempts, load}));
     }
 
-    return {use, browse, change, random};
+    // Draw without replacement so an unavailable patch doesn't block other candidates.
+    function randomFrom(candidates, track, description, {attempts = 8, load = use} = {}) {
+        const failures = [];
+        for (let attempt = 0; attempt < attempts && candidates.length; ++attempt) {
+            const selected = candidates.splice(Math.floor(Math.random() * candidates.length), 1)[0];
+            try { return {...selected, ...load({...selected, track})}; }
+            catch (error) {
+                const failure = selected.plugin + ' / ' + selected.patch + ': ' + error.message;
+                failures.push(failure);
+                console.log(failure);
+            }
+        }
+        throw new Error('Could not load ' + description + ':\n' + failures.join('\n'));
+    }
+
+    return {use, browse, change, random, randomFrom};
 })();

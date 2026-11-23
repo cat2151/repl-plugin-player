@@ -45,24 +45,45 @@ void repl_process_note_counter(void* state, const uint32_t* words, size_t count)
 using ScopeCallback = void (*)(void*, const void*, const void*, size_t, uint32_t, const uint32_t*, size_t);
 static ScopeCallback scope_callback{};
 static void* scope_context{};
+using PadGain = void (*)(int32_t, void* const*, size_t, size_t, double, bool, const uint32_t*, size_t);
+static PadGain pad_gain{};
+// The device callback's context keeps its default sample rate on MiniAudio.
+static std::atomic<double> pad_gain_rate{};
+extern "C" __declspec(dllexport) void repl_set_pad_gain_callback(PadGain callback) {
+    pad_gain = callback;
+}
 extern "C" __declspec(dllexport) void repl_set_scope(ScopeCallback callback, void* context) {
     scope_callback = callback;
     scope_context = context;
 }
 void repl_capture_scope(int32_t instance, uapmd::AudioProcessContext& process) noexcept {
-    if (!scope_callback || instance != repl_notes::target.load(std::memory_order_relaxed) ||
-        process.frameCount() <= 0 || process.audioOutBusCount() == 0 || process.outputChannelCount(0) == 0) return;
+    const bool master = instance == -2;
+    const bool capture = scope_callback && instance == repl_notes::target.load(std::memory_order_relaxed);
+    if ((!capture && !pad_gain) || process.frameCount() <= 0 ||
+        process.audioOutBusCount() == 0 || process.outputChannelCount(0) == 0) return;
     const bool doubles = process.masterContext().audioDataType() == remidy::AudioContentType::Float64;
     const auto channels = process.outputChannelCount(0);
-    const void* left = doubles ? static_cast<const void*>(process.getDoubleOutBuffer(0, 0)) : process.getFloatOutBuffer(0, 0);
-    const void* right = channels > 1
-        ? (doubles ? static_cast<const void*>(process.getDoubleOutBuffer(0, 1)) : process.getFloatOutBuffer(0, 1)) : left;
-    if (!left || !right) return;
-    const bool master = instance == -2;
-    scope_callback(scope_context, left, right, static_cast<size_t>(process.frameCount()),
-        (doubles ? 1u : 0u) | (master ? 2u : 0u),
-        master ? nullptr : static_cast<const uint32_t*>(process.eventIn().getMessages()),
-        master ? 0 : process.eventIn().position() / sizeof(uint32_t));
+    const auto* events = master ? nullptr : static_cast<const uint32_t*>(process.eventIn().getMessages());
+    const size_t words = master ? 0 : process.eventIn().position() / sizeof(uint32_t);
+    const auto gain = [&] {
+        std::array<void*, 16> output;
+        if (!pad_gain || channels > output.size()) return;
+        for (size_t i = 0; i < channels; ++i)
+            output[i] = doubles ? static_cast<void*>(process.getDoubleOutBuffer(0, i))
+                                : process.getFloatOutBuffer(0, i);
+        pad_gain(instance, output.data(), channels, process.frameCount(),
+            pad_gain_rate.load(std::memory_order_relaxed), doubles, events, words);
+    };
+    if (master) gain();
+    if (capture) {
+        const void* left = doubles ? static_cast<const void*>(process.getDoubleOutBuffer(0, 0)) : process.getFloatOutBuffer(0, 0);
+        const void* right = channels > 1
+            ? (doubles ? static_cast<const void*>(process.getDoubleOutBuffer(0, 1)) : process.getFloatOutBuffer(0, 1)) : left;
+        if (left && right)
+            scope_callback(scope_context, left, right, static_cast<size_t>(process.frameCount()),
+                (doubles ? 1u : 0u) | (master ? 2u : 0u), events, words);
+    }
+    if (!master) gain();
 }
 
 using ScriptApi = const char* (*)(const char*);
@@ -507,10 +528,20 @@ static const char* control_api(const char* request) {
             api != "test.observe" && api != "test.notes" &&
             api != "test.loopTrace" &&
             api != "test.pluginState" && api != "test.instances" && api != "track.volume" &&
-            api != "track.setVolume" && api != "track.setDormant") return nullptr;
+            api != "track.setVolume" && api != "track.setDormant" && api != "midi.controlChange") return nullptr;
         if (!session) throw std::runtime_error("No session");
         auto value = choc::value::Value();
-        if (api == "test.observe") {
+        if (api == "midi.controlChange") {
+            const auto instance = args["instanceId"].get<int32_t>();
+            const auto controller = args["controller"].get<int32_t>();
+            const auto cc = args["value"].get<int32_t>();
+            if (controller < 0 || controller > 127 || cc < 0 || cc > 127)
+                throw std::runtime_error("Expected MIDI controller and value in 0..127");
+            const auto ump = umppi::UmpFactory::midi2CC(0, 0, controller,
+                static_cast<uint32_t>(static_cast<uint64_t>(cc) * UINT32_MAX / 127));
+            uapmd_ump_t words[] = {static_cast<uapmd_ump_t>(ump >> 32), static_cast<uapmd_ump_t>(ump)};
+            uapmd_app::AppModel::instance().sequencer().engine()->enqueueUmp(instance, words, sizeof(words), 0);
+        } else if (api == "test.observe") {
             value = choc::value::createObject("");
             observe_into(value);
         } else if (api == "test.notes") {
@@ -591,6 +622,7 @@ extern "C" __declspec(dllexport) const char* repl_request(const char* request) n
             result.setMember("uapmdRevision", std::string(REPL_UAPMD_REVISION));
             result.setMember("catalogFromCache", session->catalog_from_cache);
             auto* device = uapmd::defaultDeviceIODispatcher()->audio();
+            pad_gain_rate.store(device ? device->sampleRate() : 0.0, std::memory_order_relaxed);
             result.setMember("deviceOpened", device != nullptr);
             if (device) {
                 result.setMember("sampleRate", device->sampleRate());

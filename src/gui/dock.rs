@@ -28,12 +28,15 @@ pub(super) enum Pane {
     Reference,
     /// A `repl.ui` window, by its id; it lives while the registry has the id.
     Script(String),
+    /// A `repl.ui.surface` canvas, by its id.
+    Surface(String),
 }
 
 impl Pane {
     /// The tab and window title; a script window's comes from its definition.
     fn title(&self, windows: &[Window]) -> String {
         match self {
+            Pane::Surface(id) => return id.clone(),
             Pane::Editor => "JavaScript",
             Pane::Main => crate::i18n::t("m001"),
             Pane::Console => "Console",
@@ -50,6 +53,10 @@ impl Pane {
             }
         }
         .into()
+    }
+
+    fn is_script(&self) -> bool {
+        matches!(self, Self::Script(_) | Self::Surface(_))
     }
 }
 
@@ -257,7 +264,11 @@ impl egui_tiles::Behavior<Pane> for Panes<'_> {
         {
             self.touched = Some(tile);
         }
-        let frame = egui::Frame::central_panel(ui.style());
+        let frame = if matches!(pane, Pane::Surface(_)) {
+            egui::Frame::NONE
+        } else {
+            egui::Frame::central_panel(ui.style())
+        };
         frame.show(ui, |ui| {
             ui.set_min_size(ui.available_size());
             self.contents(ui, pane);
@@ -270,7 +281,7 @@ impl egui_tiles::Behavior<Pane> for Panes<'_> {
     }
 
     fn is_tab_closable(&self, tiles: &Tiles<Pane>, tile: TileId) -> bool {
-        matches!(tiles.get(tile), Some(Tile::Pane(Pane::Script(_))))
+        matches!(tiles.get(tile), Some(Tile::Pane(pane)) if pane.is_script())
     }
 
     fn on_tab_close(&mut self, tiles: &mut Tiles<Pane>, tile: TileId) -> bool {
@@ -313,6 +324,7 @@ impl Panes<'_> {
         let preparing = self.preparing;
         match pane {
             Pane::Script(id) => self.script(ui, id),
+            Pane::Surface(id) => self.surface(ui, id),
             // Not disabled while a run is pending: results stay selectable.
             Pane::Console => super::console::show(
                 ui,
@@ -349,7 +361,7 @@ impl Panes<'_> {
             Pane::Scope => self.editor.scope_pane(ui),
             Pane::Log => self.editor.log_pane(ui),
             Pane::Reference => self.editor.reference_pane(ui),
-            Pane::Editor | Pane::Main | Pane::Console | Pane::Script(_) => {}
+            Pane::Editor | Pane::Main | Pane::Console | Pane::Script(_) | Pane::Surface(_) => {}
         }
     }
 }
@@ -404,6 +416,7 @@ impl Editor {
         for id in back {
             layout.dock_window(id);
         }
+        crate::script_ui::surface::finish_frame();
         if let Some(file) = &mut self.layout_file {
             file.poll(&mut layout);
         }

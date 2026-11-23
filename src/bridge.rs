@@ -81,6 +81,28 @@ impl Bridge {
             if !connect_evolve(evolve()) {
                 return Err("evolve DLL ABI mismatch".into());
             }
+            type PadGain = unsafe extern "C" fn(
+                i32,
+                *const *mut std::ffi::c_void,
+                usize,
+                usize,
+                f64,
+                bool,
+                *const u32,
+                usize,
+            );
+            let register_gain = library
+                .get::<unsafe extern "C" fn(PadGain)>(b"repl_set_pad_gain_callback\0")
+                .map_err(|e| e.to_string())?;
+            let process_gain = *evolve_library
+                .get(b"repl_pad_gain_process\0")
+                .map_err(|e| e.to_string())?;
+            let set_gain = *evolve_library
+                .get(b"repl_pad_gain_set\0")
+                .map_err(|e| e.to_string())?;
+            let read_gain = *evolve_library
+                .get(b"repl_pad_gain_read\0")
+                .map_err(|e| e.to_string())?;
             use crate::patch_state::clap;
             clap::connect(Some(clap::Bridge {
                 plugin: *library
@@ -111,6 +133,11 @@ impl Bridge {
                     .get::<repl_extension_api::sequence::Choose>(b"repl_sequence_choose\0")
                     .map_err(|e| e.to_string())?,
             );
+            register_gain(process_gain);
+            crate::script_api::connect_pad_gain(Some(crate::script_api::PadGain {
+                set: set_gain,
+                read: read_gain,
+            }));
             Ok(Self {
                 _library: library,
                 _sequence_library: sequence_library,
@@ -169,6 +196,7 @@ impl Bridge {
 impl Drop for Bridge {
     fn drop(&mut self) {
         let _ = self.call(json!({"command":"close"}));
+        crate::script_api::connect_pad_gain(None);
         crate::script_api::clear_sequence_choose();
         crate::patch_state::clap::connect(None);
     }

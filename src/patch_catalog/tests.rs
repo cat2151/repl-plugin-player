@@ -5,19 +5,21 @@ use std::{
 };
 
 fn sample_groups() -> Groups {
+    let patch = |display: &str| CatalogPatch {
+        display: display.into(),
+        category: None,
+        drum_kit: false,
+    };
     [
         (
             ("alpha".into(), "Alpha".into()),
             vec![
-                ("Pads/Soft".into(), None),
-                ("Bass/Pad Bass".into(), None),
-                ("Leads/Pad Lead".into(), None),
+                patch("Pads/Soft"),
+                patch("Bass/Pad Bass"),
+                patch("Leads/Pad Lead"),
             ],
         ),
-        (
-            ("beta".into(), "Beta".into()),
-            vec![("Pads/Soft".into(), None)],
-        ),
+        (("beta".into(), "Beta".into()), vec![patch("Pads/Soft")]),
     ]
     .into()
 }
@@ -39,20 +41,20 @@ fn pad_kind_uses_exclusive_roles_and_keeps_plugin_identity() {
 fn select_per_request(groups: Groups, role: PatchRole, kind: &str) -> Value {
     let mut result = Vec::new();
     for ((id, name), patches) in groups {
-        let normalized: Vec<_> = patches.iter().map(|(d, _)| d.to_lowercase()).collect();
+        let normalized: Vec<_> = patches.iter().map(|p| p.display.to_lowercase()).collect();
         let index = PatchRoleIndex::build(
             patches
                 .iter()
                 .zip(&normalized)
-                .map(|((display, category), n)| PatchRoleInput {
-                    display,
+                .map(|(patch, n)| PatchRoleInput {
+                    display: &patch.display,
                     normalized_display: n,
-                    selector_category: category.as_deref(),
+                    selector_category: patch.category.as_deref(),
                     plugin: Some(&name),
                 }),
             &[],
         );
-        for (display, _) in patches {
+        for CatalogPatch { display, .. } in patches {
             if index.role_of(&display) == Some(role)
                 && index.preset_label_of(&display) == Some(kind)
             {

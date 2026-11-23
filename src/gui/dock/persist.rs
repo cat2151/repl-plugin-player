@@ -136,15 +136,14 @@ fn in_config(text: &str, extensions: &[String]) -> Result<Layout, String> {
 /// Takes the read layout; script windows keep being floating or docked.
 fn apply(layout: &mut Layout, read: Layout) {
     let old = std::mem::replace(layout, read);
-    let script = |pane: &Pane| matches!(pane, Pane::Script(_));
     for float in old.floating {
-        if float.panes().iter().all(script) {
+        if float.panes().iter().all(Pane::is_script) {
             layout.floating.push(float);
         }
     }
     for (_, tile) in old.tree.tiles.iter() {
         if let egui_tiles::Tile::Pane(pane) = tile {
-            if script(pane) {
+            if pane.is_script() {
                 layout.dock(pane.clone());
             }
         }

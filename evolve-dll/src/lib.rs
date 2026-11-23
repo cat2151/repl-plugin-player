@@ -10,6 +10,7 @@ pub mod layout;
 pub mod level;
 pub mod loader;
 pub mod ownership;
+mod pad_gain;
 pub mod playback;
 pub mod pool;
 pub mod preload;

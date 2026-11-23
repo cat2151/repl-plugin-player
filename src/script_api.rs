@@ -9,9 +9,36 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+type SetPadGain = unsafe extern "C" fn(*const i32, usize) -> bool;
+type ReadPadGain = unsafe extern "C" fn(i32) -> f32;
+
+#[derive(Clone, Copy)]
+pub struct PadGain {
+    pub set: SetPadGain,
+    pub read: ReadPadGain,
+}
+
 thread_local! {
     static REPLY: RefCell<CString> = RefCell::new(CString::default());
     static SEQUENCE_CHOOSE: std::cell::Cell<Option<repl_extension_api::sequence::Choose>> = const { std::cell::Cell::new(None) };
+    static PAD_GAIN: std::cell::Cell<Option<PadGain>> = const { std::cell::Cell::new(None) };
+}
+
+pub fn connect_pad_gain(gain: Option<PadGain>) {
+    if let Some(previous) = PAD_GAIN.replace(gain) {
+        unsafe { (previous.set)(std::ptr::null(), 0) };
+    }
+}
+
+pub fn pad_gain_meter(instance: Option<i32>) -> (Option<f32>, Option<f32>) {
+    let Some(gain) = PAD_GAIN.get() else {
+        return (None, None);
+    };
+    let read = |id| {
+        let value = unsafe { (gain.read)(id) };
+        value.is_finite().then_some(value)
+    };
+    (instance.and_then(read), read(-2))
 }
 pub fn set_sequence_choose(choose: repl_extension_api::sequence::Choose) {
     SEQUENCE_CHOOSE.set(Some(choose));
@@ -84,6 +111,17 @@ fn dispatch(input: &Value) -> Result<Value, String> {
             crate::patch_catalog::reload();
             Ok(Value::Null)
         }
+        "patchCatalog.instruments" => crate::patch_catalog::instruments(),
+        "audio.setPadAutoGain" => {
+            let instances: Vec<i32> =
+                serde_json::from_value(input["instances"].clone()).map_err(|e| e.to_string())?;
+            let gain = PAD_GAIN.get().ok_or("Pad auto gain is not loaded")?;
+            if unsafe { (gain.set)(instances.as_ptr(), instances.len()) } {
+                Ok(Value::Null)
+            } else {
+                Err("Expected up to 16 distinct pad instance IDs".into())
+            }
+        }
         // A script that blocks the control thread for long (an E2E cell) marks its own passes.
         "frameMonitor.beat" => {
             crate::frame_monitor::beat();
@@ -97,7 +135,7 @@ fn dispatch(input: &Value) -> Result<Value, String> {
         "snippet.source" => Ok(json!(
             crate::snippets::Library::default().source(argument(input, "name")?)?
         )),
-        api @ ("ui.show" | "ui.close" | "ui.dialog") => crate::script_ui::dispatch(api, input),
+        api if api.starts_with("ui.") => crate::script_ui::dispatch(api, input),
         api if api.starts_with("patchBrowser.") => crate::patch_browse::dispatch(api, input),
         "text" => {
             let key = argument(input, "key")?;
