@@ -1,9 +1,13 @@
 # Frozen track loop playback
 
-UAPMD `4ec5c3b1c30130fdd3b7d4b375082273247e561f` wraps ordinary timeline clips
-but reads frozen audio at the monotonically increasing callback transport position.
-After the first pass it reads the cache tail and then silence. The reproduced
-one-second loop had peaks of about 0.28 on its first pass and zero on later passes.
+UAPMD `9f708d3300b4a6f8109eee0fadccf286db8b7a45` wraps the transport position at the loop end,
+but reads frozen audio for the whole callback from its first position. A callback
+crossing the loop end reads past the end instead of continuing at the loop start.
+
+`TimelineFacade::loopRegion()` belongs to the model thread, so the generated
+`TimelineFacadeAudio.cpp` publishes the loop that callback reads and
+`FrozenTrackManager` uses it. Its input is the `loop-end-note-off` output, so that
+include must come first.
 
 This repair wraps both the cache read position and its loader position. It splits
 reads at loop endpoints, including nonzero ranges and multiple wraps inside one
@@ -14,7 +18,8 @@ silence if audio at a newly requested position is not resident; this repair does
 not claim to eliminate all cache misses.
 
 The include in `native/CMakeLists.txt` generates only
-`target/shim/frozen-loop-playback/FrozenTrackManager.cpp`. Dependency checkouts and
+`FrozenTrackManager.cpp` and `TimelineFacadeAudio.cpp` under
+`target/shim/frozen-loop-playback`. Dependency checkouts and
 other repairs are unchanged. Fresh checkouts and existing build caches take the
 same path. Every source anchor and CMake source entry must match; otherwise
 configuration stops with the repair name, target file, failed condition, upstream

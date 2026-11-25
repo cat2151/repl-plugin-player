@@ -2,37 +2,36 @@
 
 ## 原因と適用条件
 
-UAPMD `4ec5c3b1c30130fdd3b7d4b375082273247e561f` で確認した。
-`TimelineFacadeAudio.cpp` はloop終端で描画を分割して先頭に戻す。
-`MidiClipSourceNode::processEvents` は終端を含まないため、終端ちょうどの
-Note Offがどの周回でも送られず、末尾の音が残る。
+検証した上流revision: `9f708d3300b4a6f8109eee0fadccf286db8b7a45`。
+上流はloop終端で描画を分割するとき、鳴っている音のNote Offを送る
+（`processAudioForRenderSegment` の `sendNoteOffsAtEnd`）。ただし
+`TimelineFacadeAudio.cpp` の判定が `>` なので、音声ブロックの末尾がloop終端に
+ちょうど一致すると分割とみなされない。次のブロックの先頭へのseekが
+鳴っている音の記録を消すので、Note Offはどの周回でも送られず、音が残る。
 
-loop終端まで届くMIDIクリップの処理中だけthread-local scopeを有効にし、
-終端ちょうどのNote Offを最後のサンプルに収めて送る。
-MIDI 1.0/2.0のNote Offとvelocity 0のNote Onだけを対象にする。
-同時刻の通常Note On、program change、終端より後のイベントは含めない。
-通常再生の終端除外とloop周期は変えず、音符・SMF・保存形式も変更しない。
-Note Off自体がloop終端より後にある音の強制切断は、この補修の対象外。
+判定を `>=` にして、一致する場合も上流のNote Off送出を通す。
+Note Offが終端より後にある音も、上流の処理によって終端で止まる。
+音符・SMF・保存形式・loop周期は変えない。
 
 ## 再適用と撤去
 
 依存checkoutを変更しない。`native/CMakeLists.txt` のincludeが正本。
-`generate.py` が2つのcppのコピーを `target/shim/loop-end-note-off/` に生成し、
-`uapmd-data` のビルド対象だけ差し替える。既存の補修とは独立している。
+`generate.py` が `TimelineFacadeAudio.cpp` のコピーを `target/shim/loop-end-note-off/` に
+生成し、`uapmd-engine` のビルド対象を差し替える。このコピーは
+`frozen-loop-playback` の入力になるので、includeはそれより前に置く。
 通常の `python scripts/build.py` で既存キャッシュ・再cloneの双方に適用される。
-ソースと生成処理の変更時はCMakeが再構成する。
 
 適用失敗時は補修名、対象ファイル、anchorの不一致条件、上流revision、
-この説明書の場所を表示して停止する。上流差分とloop分割・MIDI送出を調べ、
-同等の修正が上流に入ったかを先に確認する。検査を外してビルドしない。
-上流が終端releaseの送出を保証し、下記テストが補修なしで通ったら、
-includeとこのdirectoryを撤去する。
+この説明書の場所を表示して停止する。上流のloop分割の条件を調べ、
+同等の修正が入ったかを先に確認する。検査を外してビルドしない。
+上流の素の `TimelineFacadeAudio.cpp` で下記の回帰テストが通ったら、includeと
+このdirectoryを撤去し、`frozen-loop-playback` の入力を上流のファイルに向ける。
 
 ## 検証
 
-`regression.cpp` は実際の生成済みMidiClipSourceNodeを使い、通常の終端除外、
-同時刻にNote Onが先行する場合、program change・範囲外releaseの除外、
-MIDI 1.0/2.0とvelocity 0、offset、重複送出とscope漏れを確認する。
+`regression.cpp` は実engineでloop終端より長いclipを再生し、trackの入力に届く
+Note On/Offを数える。終端がブロック境界に一致する場合（開始0と非0）と、
+ブロックの途中にある場合を調べる。素の上流では前の2つがNote Off 0回で失敗する。
 
 ```
 cmake --build build --config Release --target loop_end_note_off_regression

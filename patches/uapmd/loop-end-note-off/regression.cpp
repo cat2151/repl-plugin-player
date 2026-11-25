@@ -1,65 +1,78 @@
-#include <uapmd-data/uapmd-data.hpp>
-#include "boundary.hpp"
+// Plays a held note through the real engine and counts what reaches the track input.
+#include <uapmd-engine/uapmd-engine.hpp>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 
-static void check(bool condition, const char* message) {
-    if (!condition) throw std::runtime_error(message);
+// The app's bridge owns these observers.
+void repl_capture_scope(int, remidy::AudioProcessContext&) noexcept {}
+void* repl_create_note_counter(int32_t) { return nullptr; }
+void repl_destroy_note_counter(void*) {}
+void repl_process_note_counter(void*, const uint32_t*, size_t) {}
+
+namespace {
+constexpr int32_t kFrames = 256;
+
+struct Recorder final : uapmd::AudioProcessingEventHandler {
+    int ons{}, offs{};
+    bool held{}, overlapped{};
+    bool supportsParallelTrackProcessing() const noexcept override { return true; }
+    void beforeTrackProcess(const uapmd::TrackAudioProcessingEvent& event) noexcept override {
+        if (event.track_index != 0) return;
+        auto& input = event.context.eventIn();
+        const auto* data = static_cast<const uint32_t*>(input.getMessages());
+        const auto words = input.position() / sizeof(uint32_t);
+        for (size_t i = 0; i < words; i += (data[i] >> 28) == 4 ? 2 : 1) {
+            if ((data[i] >> 28) != 4) continue;
+            const auto status = (data[i] >> 20) & 15;
+            if (status == 9) { ++ons; overlapped |= held; held = true; }
+            if (status == 8) { ++offs; held = false; }
+        }
+    }
+};
+
+// The clip outlives the loop, so only the loop end can release the note.
+bool releasesEveryPass(const char* name, int64_t start, int64_t end) {
+    auto engine = uapmd::SequencerEngine::create(48000, kFrames, 65536);
+    engine->setEngineActive(true);
+    if (engine->addEmptyTrack() < 0) throw std::runtime_error("track not added");
+    uapmd::ClipData clip;
+    clip.clipType = uapmd::ClipType::Midi;
+    clip.position.samples = start;
+    clip.durationSamples = 480000;
+    clip.sourceNodeInstanceId = 7;
+    clip.setTimeReference(uapmd::TimeReference::fromContainerStart(
+        {}, static_cast<double>(start) / 48000), 48000);
+    auto node = std::make_unique<uapmd::MidiClipSourceNode>(7,
+        std::vector<uapmd_ump_t>{0x40903c00u, 0x80000000u, 0x40803c00u, 0u},
+        std::vector<uint64_t>{0, 0, 9600, 9600}, 480, 120.0, 48000.0,
+        std::vector<uapmd::MidiTempoChange>{}, std::vector<uapmd::MidiTimeSignatureChange>{});
+    if (engine->timeline().tracks()[0]->addClip(clip, std::move(node)) < 0)
+        throw std::runtime_error("clip not added");
+    Recorder recorder;
+    engine->addAudioProcessingEventHandler(recorder);
+    engine->timeline().loopRegion({true, start, end});
+    engine->startPlayback();
+    remidy::AudioProcessContext process(engine->data().masterContext(), 65536);
+    process.configureMainBus(2, 2, kFrames);
+    process.frameCount(kFrames);
+    for (int block = 0; block < 64; ++block)
+        if (engine->processAudio(process) != 0) throw std::runtime_error("processAudio failed");
+    engine->stopPlayback();
+    engine->removeAudioProcessingEventHandler(recorder);
+    const bool ok = recorder.ons >= 4 && recorder.offs >= recorder.ons - 1 && !recorder.overlapped;
+    std::cout << (ok ? "PASS " : "FAIL ") << name << ": ons " << recorder.ons
+              << " offs " << recorder.offs << '\n';
+    return ok;
+}
 }
 
 int main() {
     try {
-        // 48 kHz, 120 BPM, 480 PPQN: one tick = 50 samples.
-        // Put an ordinary Note On BEFORE the release at the same endpoint.
-        // A release after the range and a program change must also stay out.
-        const std::vector<uint32_t> words{
-            0x20903c64, 0x20904064, 0x20803c00, 0x20c00100, 0x20804000};
-        const std::vector<uint64_t> ticks{0, 10, 10, 10, 11};
-        uapmd::MidiClipSourceNode node(0, words, ticks, 480, 120, 48000, {}, {});
-        auto messages = [](remidy::EventSequence& sequence) {
-            std::vector<uint32_t> result;
-            const auto* data = static_cast<const uint32_t*>(sequence.getMessages());
-            for (size_t i = 0; i < sequence.position() / 4; ++i)
-                if (data[i] >> 28) result.push_back(data[i]);
-            return result;
-        };
-        for (bool boundary : {false, true}) {
-            remidy::EventSequence sequence(4096);
-            node.seek(0);
-            node.setPlaying(true);
-            repl_loop_end::Scope scope(boundary);
-            node.processEvents(sequence, 500, 48000, 120, 17);
-            const auto actual = messages(sequence);
-            check(actual == (boundary ? std::vector<uint32_t>{words[0], words[2]} :
-                std::vector<uint32_t>{words[0]}), "Endpoint admitted a Note On/program/future release or lost Note Off");
-            if (boundary) {
-                const auto* data = static_cast<const uint32_t*>(sequence.getMessages());
-                uint32_t jr = 0;
-                for (size_t i = 0; i < sequence.position() / 4; ++i) {
-                    if (data[i] >> 28 == 0) jr += data[i] & 65535;
-                    if (data[i] == words[2])
-                        check(jr == (516 * 31250 + 24000) / 48000, "Release offset escaped outgoing block");
-                }
-            }
-        }
-        check(!repl_loop_end::includeEndNoteOff, "Boundary scope leaked");
-        for (const auto& release : std::vector<std::vector<uint32_t>>{
-                {0x20903c00}, {0x40803c00, 0x40000000}, {0x40903c00, 0x00001234}}) {
-            std::vector<uint64_t> times(release.size(), 10);
-            uapmd::MidiClipSourceNode source(0, release, times, 480, 120, 48000, {}, {});
-            remidy::EventSequence sequence(4096);
-            source.seek(0);
-            source.setPlaying(true);
-            repl_loop_end::Scope scope(true);
-            source.processEvents(sequence, 500, 48000, 120);
-            check(sequence.position() == (release.size() + 1) * 4, "MIDI1/2 release or velocity-zero release lost");
-            // The same endpoint cannot be emitted twice by a continued source call.
-            sequence.position(0);
-            source.processEvents(sequence, 500, 48000, 120);
-            check(sequence.position() == 0, "Boundary release duplicated");
-        }
-        check(!repl_loop_end::isNoteOff(0x40903c00, 0x00010000), "MIDI2 positive velocity classified as release");
-        std::cout << "PASS loop endpoint Note Off filtering and offsets\n";
+        bool ok = releasesEveryPass("loop end on a block boundary", 0, kFrames * 8);
+        ok &= releasesEveryPass("nonzero start, end on a block boundary", kFrames * 2, kFrames * 8);
+        ok &= releasesEveryPass("loop end inside a block", 0, kFrames * 8 + 100);
+        return ok ? 0 : 1;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

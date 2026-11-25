@@ -1,6 +1,6 @@
 # Frozen playback observations
 
-Validated upstream: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`.
+Validated upstream: `9f708d3300b4a6f8109eee0fadccf286db8b7a45`.
 Frozen playback bypasses AudioPluginNodeImpl, where this app observes keyboard
 notes and scope waveforms. The cached-audio processor must provide those
 observations without running plugin DSP again.

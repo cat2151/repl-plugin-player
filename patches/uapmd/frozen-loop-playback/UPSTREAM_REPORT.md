@@ -1,19 +1,14 @@
-# Frozen tracks become silent after the first loop pass
+# Frozen tracks read past the loop end in the callback that wraps
 
-Tested revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`.
+Revision: `9f708d3300b4a6f8109eee0fadccf286db8b7a45`.
 Status: 未報告. This file is a draft, not an external submission.
 
-Create a MIDI clip, enable its freeze policy, wait for `frozen`, enable a one-second
-transport loop, and play for five seconds. Ordinary clips wrap, but frozen playback
-plays its recorded content once and then goes silent. A test-owned Surge clip
-produced pass peaks `[0.275, 2.1e-7, 5.2e-17, 0, 0]` before the repair.
-
-`FrozenTrackManager::processAudio` uses the callback context's increasing transport
-sample position as a cache offset. That position is not wrapped to the timeline
-loop. Frozen audio reads must map it into the loop range and split reads crossing
-the endpoint, with matching loader positions. Offline rendering should continue
-to ignore realtime loop state. The local repair leaves the nonblocking disk loader
-and cache serialization unchanged.
+`FrozenTrackManager::processAudio` maps the callback's first position into the cache
+and reads all frames contiguously. The transport now wraps at the loop end, but a
+callback that crosses it still reads cached audio after the loop end for its remaining
+frames, while live clips continue at the loop start. Split the read at the loop end,
+as `TimelineFacadeImpl::processTracksAudio` does. Offline rendering should continue
+to ignore realtime loop state. This is found by reading the source.
 
 Regression coverage includes exact sample positions for zero/nonzero loop starts,
 nonaligned callback boundaries, multiple wraps per block, disabled/invalid loops,

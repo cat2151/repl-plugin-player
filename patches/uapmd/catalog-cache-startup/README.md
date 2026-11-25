@@ -18,7 +18,7 @@ GUI は Ready 後に入力が2秒途切れたら `refresh` で UAPMD の初回 s
 scan 中の JS 評価は完了まで待つ（scan が別 thread で host の catalog を作り直すため）。
 CLI と e2e は refresh を始めない。false のときは従来どおり起動時に初回 scan を待つ。
 
-調査した上流revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`。
+調査した上流revision: `9f708d3300b4a6f8109eee0fadccf286db8b7a45`。
 `apply.cmake` は依存checkoutを変更せず、`generate.py` で host の header と source のコピーを
 `target/shim/catalog-cache-startup/` に生成し、`uapmd-plugin-hosting` のビルド対象を差し替える。
 header を include するのはこの source だけなので、header のコピーは他の翻訳単位に影響しない。

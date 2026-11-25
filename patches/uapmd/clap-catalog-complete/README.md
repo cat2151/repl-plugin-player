@@ -30,7 +30,7 @@ bridge の `scanningCompleted` callback（scan worker 上）が scan の成功�
 停止したら、上流が cache にある format の bundle 列挙を省く条件を変えたか読み、
 新しい bundle が full scan で載るなら撤去、載らないなら anchor を新しい条件に合わせる。
 
-検証した上流revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`。
+検証した上流revision: `9f708d3300b4a6f8109eee0fadccf286db8b7a45`。
 
 ## 検証
 

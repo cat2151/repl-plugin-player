@@ -1,6 +1,6 @@
 # CLAP input note dialect repair
 
-UAPMD `4ec5c3b1c30130fdd3b7d4b375082273247e561f` sends every note as a native CLAP Note event.
+UAPMD `9f708d3300b4a6f8109eee0fadccf286db8b7a45` sends every note as a native CLAP Note event.
 sforzando 2.1.2.4 accepts MIDI on input port 0, so an SFZ state can restore correctly while playback remains silent.
 This repair reuses cat-plugin-player's existing dialect selection implementation: collect supported port dialects before activation, prefer native CLAP notes when supported, otherwise send MIDI, once per event. CC uses MIDI-capable ports.
 UAPMD gives each instance on a track its own UMP group (`SequencerTrack::findAvailableGroup`), so an instance created while another is on the track receives group 1. The group selects the note port only when the plugin has that many input note ports; otherwise the event goes to port 0, so a single-port plugin is not silenced.

@@ -1,20 +1,19 @@
-# Loop playback drops Note Off exactly at loopEnd
+# Notes hang when the loop end falls on an audio block boundary
 
-Revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`
+Revision: `9f708d3300b4a6f8109eee0fadccf286db8b7a45`. Not sent.
 
-Create a MIDI clip whose last Note Off is exactly at the transport loop end,
-then enable looping and play several passes. The final Note On is delivered
-each pass but its Note Off never reaches the plugin. Notes accumulate or sustain.
+Play a MIDI clip that outlasts the loop region, with the note still held at the
+loop end and the loop end exactly on an audio block boundary (for example
+`loopRegion({true, 0, 2048})` with 256-frame blocks). The note receives a Note On
+every pass and never a Note Off. With the loop end inside a block, the Note Off is sent.
 
-`TimelineFacadeImpl::processTracksAudio` renders end-exclusive segments and wraps
-at loopEnd. `MidiClipSourceNode::processEvents` excludes events at windowEnd,
-so the endpoint release is skipped on every pass.
+`TimelineFacadeImpl::processTracksAudio` sets `wrapsAtLoopEnd` only when
+`segmentStartSample + remainingFrames > loop.endSamples`. At equality the segment
+is not treated as leaving the loop, so `sendNoteOffsAtEnd` is false. The next block
+seeks to the loop start, and `MidiClipSourceNode::seek` clears the active notes.
 
-The local workaround admits only Note Off (including velocity-zero Note On,
-MIDI 1.0 and 2.0) at that endpoint, clamped to the outgoing segment's last sample.
-Ordinary Note On and other messages at the endpoint remain excluded, even when
-they precede Note Off in source order. Events beyond loopEnd remain excluded.
-Normal non-loop playback retains its end-exclusive windows.
+Suggested fix: compare with `>=`. The rendering loop then ends with no frames remaining.
 
-Regression: plugin-input trace of a four-note looping clip at 120 BPM,
-plus direct MidiClipSourceNode tests for filtering and block offsets.
+Regression, 64 blocks of 256 frames at 48 kHz (Note On / Note Off counts):
+loop 0..2048: 8/0 before, 8/8 after; loop 512..2048: 11/0 before, 11/10 after;
+loop 0..2148: 8/7 both.

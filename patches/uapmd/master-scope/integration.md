@@ -7,7 +7,7 @@ Offline rendering is unaffected. Target -2 selects master; -1 disables capture.
 The existing bounded scope queue is reused, with no allocation or locks in the tap.
 Master frames use a 20 ms window without pitch similarity analysis.
 
-Validated upstream: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`.
+Validated upstream: `9f708d3300b4a6f8109eee0fadccf286db8b7a45`.
 The checkout is never modified. CMake regenerates
 `target/shim/master-scope/RealtimeSequencer.cpp` from the checkout on configure,
 including after reclone and with an existing build cache. An absent or duplicate

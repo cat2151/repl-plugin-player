@@ -1,6 +1,6 @@
 # Requested audio device buffer size
 
-UAPMD `4ec5c3b1c30130fdd3b7d4b375082273247e561f` discards `bufferSize` in
+UAPMD `9f708d3300b4a6f8109eee0fadccf286db8b7a45` discards `bufferSize` in
 `MiniAudioIODeviceManager::onOpen` and opens MiniAudio with a fixed 256-frame period.
 AppModel requests 1024 frames, but parallel track rendering gets only an 80% deadline
 of 256 frames (4.267 ms at 48 kHz). Overruns silence output until workers finish.

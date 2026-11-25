@@ -76,7 +76,7 @@ def generate(source, output, node_header=None, engine_source=None):
     if engine_source is not None:
         engine_source = Path(engine_source).resolve()
         raw = engine_source.read_bytes().replace(b'\r\n', b'\n')
-        if hashlib.sha256(raw).hexdigest() != '93821bdd4da436c684804f3c29ba57dee32c70f358a43b0ebe18a8aaf1fa2adc':
+        if hashlib.sha256(raw).hexdigest() != 'e70dae306bbd0587b35eacdd9ccb65fdf8d2bec315099479a9e63e6b65f1f1dc':
             raise ValueError(f'{engine_source}: baseline SHA256 mismatch; inspect upstream change/fix')
         engine = raw.decode('utf-8')
         old = 'track.setProcessingGroup(instanceId, fb ? fb->group() : static_cast<uint8_t>(0xFF));'

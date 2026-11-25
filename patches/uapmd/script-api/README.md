@@ -7,7 +7,7 @@ MMLからSMFを生成する既存Rust crateを同期呼び出しするため、
 `UapmdJSRuntime::registerConsoleFunctions` にJSON文字列の往復を行う
 `__repl_host_call` を1つ登録する。SMF取込・再生処理は変更しない。
 
-調査した上流revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`。
+調査した上流revision: `9f708d3300b4a6f8109eee0fadccf286db8b7a45`。
 `apply.cmake` は依存checkoutを変更せず、runtimeソースのコピーを
 `target/shim/script-api/UapmdJSRuntime.cpp` に生成してビルド対象を差し替える。
 通常の `python scripts/build.py` で再clone・既存キャッシュのどちらにも適用する。

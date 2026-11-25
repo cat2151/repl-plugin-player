@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 NAME = 'frozen-loop-prefetch'
-REVISION = '4ec5c3b1c30130fdd3b7d4b375082273247e561f'
+REVISION = '9f708d3300b4a6f8109eee0fadccf286db8b7a45'
 
 
 def once(source, old, new):
@@ -72,8 +72,8 @@ def manager(source, output):
     source = once(source, '#include "FrozenTrackAudio.hpp"',
                   f'#include "{(output / "FrozenTrackAudio.hpp").as_posix()}"')
     return once(source, '    cachedAudio->playbackPosition(cacheFrame);', '''    cachedAudio->playbackPosition(cacheFrame);
-    cachedAudio->playbackLoopStart(looping && loop.loopEnd.samples > loop.loopStart.samples
-        ? std::max<int64_t>(0, loop.loopStart.samples - cachedAudio->startSample()) : -1);''')
+    cachedAudio->playbackLoopStart(looping
+        ? std::max<int64_t>(0, loop.start - cachedAudio->startSample()) : -1);''')
 
 
 def generate(checkout, manager_input, output):

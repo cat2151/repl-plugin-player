@@ -1,6 +1,6 @@
 # Frozen loop head prefetch
 
-Validated upstream: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`.
+Validated upstream: `9f708d3300b4a6f8109eee0fadccf286db8b7a45`.
 Report status: **未報告**; [author report draft](UPSTREAM_REPORT.md).
 
 The existing frozen-loop-playback repair wraps sample positions, but the upstream

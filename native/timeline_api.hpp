@@ -13,14 +13,8 @@ static const char* timeline_api(const char* request, bool sessionOpen) {
         const auto end = enabled ? args["endSamples"].get<int64_t>() : 0;
         if (enabled && (start < 0 || end <= start)) throw std::runtime_error("Invalid loop range");
         auto& engine = *uapmd_app::AppModel::instance().sequencer().engine();
-        // This upstream operation excludes callbacks. An absent track skips buffer resets;
-        // only its synchronous transition is needed for transport state.
-        engine.resetTrackProcessingState(-1, false, [&] {
-            auto& state = engine.timeline().state();
-            state.loopEnabled = enabled;
-            state.loopStart.samples = start;
-            state.loopEnd.samples = end;
-        });
+        // TimelineState's own loop fields compile but no longer drive playback.
+        engine.timeline().loopRegion({enabled, start, end});
         result = "{\"ok\":true,\"value\":null}";
     } catch (const std::exception& error) {
         result = choc::json::toString(choc::value::createObject("", "ok", false, "error", error.what()));

@@ -1,6 +1,6 @@
 # Routed builtin nodes in a full DAG
 
-Affected UAPMD revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`.
+Affected UAPMD revision: `9f708d3300b4a6f8109eee0fadccf286db8b7a45`.
 The DAG builder accepts generic builtin nodes, but its runtime only creates contexts for plugin nodes and then processes all builtins as a final serial chain.
 An instrument → GainNode → effect edge can therefore be rejected as a cycle, and audio routed from a builtin has no runtime output. This breaks the layer gains and post-sum effects in editor exports.
 

@@ -21,7 +21,7 @@ class GenerateTests(unittest.TestCase):
     def test_manager_guards(self):
         source = (ROOT / 'target/shim/freeze-monitor/FrozenTrackManager.cpp').read_text(encoding='utf-8')
         patched = manager(source, ROOT / 'target/shim/frozen-loop-prefetch')
-        self.assertIn('looping && loop.loopEnd.samples > loop.loopStart.samples', patched)
+        self.assertIn('playbackLoopStart(looping', patched)
         with self.assertRaises(ValueError):
             manager(patched, ROOT)
 

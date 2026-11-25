@@ -4,10 +4,12 @@ import subprocess
 import sys
 
 NAME = 'frozen-loop-playback'
-REVISION = '4ec5c3b1c30130fdd3b7d4b375082273247e561f'
+REVISION = '9f708d3300b4a6f8109eee0fadccf286db8b7a45'
 POSITION = '''    const int64_t cacheFrame =
         context.masterContext().playbackPositionSamples() -
         cachedAudio->startSample();'''
+LOOP = '            loop = *loop_snapshot_.protect();'
+INCLUDE = '#include "TimelineFacadeImpl.hpp"'
 READ = '                    cachedAudio->read(cachedChannel, cacheFrame, output, frameCount, waitForDisk);'
 
 
@@ -17,17 +19,31 @@ def once(source, old, new):
     return source.replace(old, new)
 
 
+def helper_path():
+    return Path(__file__).with_name('segments.hpp').resolve().as_posix()
+
+
+def transform_timeline(source):
+    if 'repl_frozen_loop' in source:
+        raise ValueError('repair already applied')
+    source = once(source, INCLUDE, INCLUDE + f'\n#include "{helper_path()}"')
+    return once(source, LOOP, '''        {
+            loop = *loop_snapshot_.protect();
+            repl_frozen_loop::publish(loop.enabled, loop.startSamples, loop.endSamples);
+        }''')
+
+
 def transform(source):
-    helper = Path(__file__).with_name('segments.hpp').resolve().as_posix()
+    helper = helper_path()
     source = once(source, '#include "FrozenTrackAudio.hpp"',
                   '#include "FrozenTrackAudio.hpp"\n' + f'#include "{helper}"')
     source = once(source, POSITION, '''    const auto position = context.masterContext().playbackPositionSamples();
-    const auto& loop = engine.timeline().state();
-    const bool looping = !engine.offlineRendering() && loop.loopEnabled;
+    const auto loop = repl_frozen_loop::current();
+    const bool looping = !engine.offlineRendering() && loop.enabled;
     const int64_t cacheFrame = repl_frozen_loop::wrap(
-        position, looping, loop.loopStart.samples, loop.loopEnd.samples) - cachedAudio->startSample();''')
+        position, looping, loop.start, loop.end) - cachedAudio->startSample();''')
     return once(source, READ, '''                    repl_frozen_loop::read(position, frameCount, looping,
-                        loop.loopStart.samples, loop.loopEnd.samples,
+                        loop.start, loop.end,
                         [&](int64_t source, int32_t offset, int32_t frames) {
                             cachedAudio->read(cachedChannel, source - cachedAudio->startSample(),
                                 output + offset, frames, waitForDisk);
@@ -35,12 +51,15 @@ def transform(source):
 
 
 if __name__ == '__main__':
-    source, output, checkout = map(Path, sys.argv[1:])
+    source, output, timeline, checkout = map(Path, sys.argv[1:])
     try:
-        patched = transform(source.read_text(encoding='utf-8'))
+        files = {output: transform(source.read_text(encoding='utf-8'))}
+        source = timeline
+        files[output.with_name(timeline.name)] = transform_timeline(timeline.read_text(encoding='utf-8'))
         output.parent.mkdir(parents=True, exist_ok=True)
-        if not output.exists() or output.read_text(encoding='utf-8') != patched:
-            output.write_text(patched, encoding='utf-8')
+        for path, patched in files.items():
+            if not path.exists() or path.read_text(encoding='utf-8') != patched:
+                path.write_text(patched, encoding='utf-8')
     except (OSError, ValueError) as error:
         revision = subprocess.run(['git', '-C', str(checkout), 'rev-parse', 'HEAD'],
                                   capture_output=True, text=True).stdout.strip() or 'unknown'

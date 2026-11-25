@@ -14,7 +14,7 @@
 Float32/64に対応し、音声threadでは確保・ロック・JS実行をしない。
 callbackは音源作成前に登録し、エンジンの停止・破棄後までRust側の有界queueを保持する。
 
-検証した上流revision: `4ec5c3b1c30130fdd3b7d4b375082273247e561f`。
+検証した上流revision: `9f708d3300b4a6f8109eee0fadccf286db8b7a45`。
 適用対象は `source/uapmd-graph/src/node-graph/AudioPluginNodeImpl.hpp` の
 `trackInputEvents(process.eventIn())` 直後。linear/full DAG両方で共通の観測点を使う。
 依存checkoutは書き換えず、CMake構成時にコピーを `target/shim/note-monitor` に生成する。

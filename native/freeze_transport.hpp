@@ -5,8 +5,7 @@
 inline void repl_finish_pending_freeze() {
     auto& engine = *uapmd_app::AppModel::instance().sequencer().engine();
     if (!engine.isPlaybackActive() || engine.offlineRendering()) return;
-    const auto& timeline = engine.timeline().state();
-    if (timeline.loopEnabled && timeline.loopEnd.samples > timeline.loopStart.samples) return;
+    if (engine.timeline().loopRegion().enabled) return;
     auto& freeze = engine.frozenTrackManager();
     bool pending = false;
     for (size_t i = 0; i < engine.tracks().size(); ++i) {
