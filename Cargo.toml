@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = [".", "extensions/*", "extension-api", "sequence-dll", "evolve-dll"]
-default-members = [".", "extensions/*", "sequence-dll", "evolve-dll"]
+members = [".", "extensions/*", "extension-api", "evolve-dll"]
+default-members = [".", "extensions/*", "evolve-dll"]
 
 [workspace.dependencies]
 eframe = { version = "=0.37.0", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "glow", "links", "system_fonts", "wayland", "web_screen_reader", "x11"] }

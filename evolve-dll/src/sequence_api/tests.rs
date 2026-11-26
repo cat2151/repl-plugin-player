@@ -1,4 +1,4 @@
-use super::{clock::Clock, voicing};
+use crate::{clock::Clock, voicing};
 use repl_extension_api::sequence::{Plan, Step};
 
 fn plan(chords: &[&[u8]], seconds: f64, gate: f64) -> Plan {

@@ -1,12 +1,9 @@
-//! Sample-clock sequencing. The control producer and serialized audio consumer
-//! share bounded storage; render never allocates, locks, or calls JavaScript.
-mod clock;
-mod note_count;
+//! The standalone sample-clock sequence API and the voicing choice, connected to
+//! the native bridge.
 #[cfg(test)]
 mod tests;
-mod voicing;
 
-pub use clock::Clock;
+use crate::{clock::Clock, voicing};
 use repl_extension_api::sequence::{Api, Emit, Plan, Step};
 use std::ffi::c_void;
 

@@ -1,5 +1,5 @@
 #pragma once
-#include "sequence_dll.hpp"
+#include "sequence_abi.hpp"
 #include <cstddef>
 #include <cstdint>
 

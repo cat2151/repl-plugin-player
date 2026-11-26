@@ -34,8 +34,8 @@ use std::{
     },
 };
 
+use crate::clock::Clock;
 use repl_extension_api::sequence::Plan;
-use sequence::Clock;
 
 use crate::{
     layout::{Input, Layout},

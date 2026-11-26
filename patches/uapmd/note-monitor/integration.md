@@ -90,7 +90,7 @@ Zero crossや他の周期数の処理も削除した。
 
 `python scripts/execution-meters-test.py` は実機で、2音源の同音、同じ音源への重ね掛け、
 effect入力の除外、個別Note Off、Stop/restart、処理時間の取得を検証する。
-group/channel別の対応、MIDI 1/2、velocity-zero、CC、破棄は`sequence-dll/src/note_count.rs`の回帰で検証する。
+group/channel別の対応、MIDI 1/2、velocity-zero、CC、破棄は`evolve-dll/src/note_count.rs`の回帰で検証する。
 
 このdirectoryの `note-monitor.js` を E2E 入口（`--e2e note-monitor`）が disk から読んで cell ごとに流す。
 観測は `repl.test.notes()`（bridge の `notes` command と同じ `held_notes`）。

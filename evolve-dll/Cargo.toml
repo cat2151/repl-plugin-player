@@ -8,4 +8,3 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 repl-extension-api = { path = "../extension-api" }
-sequence = { path = "../sequence-dll" }

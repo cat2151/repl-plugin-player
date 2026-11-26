@@ -32,7 +32,7 @@ class Clock {
     void* handle;
 public:
     Clock() : handle(api ? api->create() : nullptr) {
-        if (!handle) throw std::runtime_error("Rust sequence DLL is not loaded");
+        if (!handle) throw std::runtime_error("Rust sequence API is not connected");
     }
     ~Clock() { api->destroy(handle); }
     Clock(const Clock&) = delete;

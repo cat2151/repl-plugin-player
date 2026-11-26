@@ -272,7 +272,7 @@ repl.timeline = {
 // set({track, steps:[[MIDI pitches]], bpm, beats, gate:(0,1], velocity:1..65535})
 // `tracks:[...]` sends the pattern to up to eight distinct tracks instead of `track`.
 // replaces the complete pattern at the next step; initial set starts at step 0.
-// Rust sequence.dll uses the audio sample clock; gate:1 ties common notes.
+// Rust evolve.dll uses the audio sample clock; gate:1 ties common notes.
 // C++ only adapts UAPMD callbacks and UMP JR timestamps.
 // Stop stops playback; clear also removes the pattern. Not part of project save.
 repl.sequence = {

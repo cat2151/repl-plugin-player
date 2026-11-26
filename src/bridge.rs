@@ -7,7 +7,6 @@ use std::{
 
 pub struct Bridge {
     _library: Library,
-    _sequence_library: Library,
     _evolve_library: Library,
     _control_thread: std::marker::PhantomData<std::rc::Rc<()>>,
     request: unsafe extern "C" fn(*const std::ffi::c_char) -> *const std::ffi::c_char,
@@ -35,24 +34,24 @@ impl Bridge {
                     unsafe extern "C" fn(*const i32, *const u32, usize) -> u64,
                 )>(b"repl_set_note_counter\0")
                 .map_err(|e| e.to_string())?;
-            let sequence_path = crate::resources::extension("sequence")?;
-            let sequence_library = Library::new(&sequence_path)
-                .map_err(|error| format!("{}: {error}", sequence_path.display()))?;
+            let evolve_path = crate::resources::extension("evolve")?;
+            let evolve_library = Library::new(&evolve_path)
+                .map_err(|error| format!("{}: {error}", evolve_path.display()))?;
             register_notes(
-                *sequence_library
+                *evolve_library
                     .get(b"repl_note_counter_create\0")
                     .map_err(|e| e.to_string())?,
-                *sequence_library
+                *evolve_library
                     .get(b"repl_note_counter_destroy\0")
                     .map_err(|e| e.to_string())?,
-                *sequence_library
+                *evolve_library
                     .get(b"repl_note_counter_process\0")
                     .map_err(|e| e.to_string())?,
-                *sequence_library
+                *evolve_library
                     .get(b"repl_note_counter_read\0")
                     .map_err(|e| e.to_string())?,
             );
-            let api = sequence_library
+            let api = evolve_library
                 .get::<unsafe extern "C" fn() -> *const repl_extension_api::sequence::Api>(
                     b"repl_sequence_api\0",
                 )
@@ -63,11 +62,8 @@ impl Bridge {
                 )
                 .map_err(|e| e.to_string())?;
             if !connect(api()) {
-                return Err("Sequence DLL ABI mismatch".into());
+                return Err("sequence API ABI mismatch".into());
             }
-            let evolve_path = crate::resources::extension("evolve")?;
-            let evolve_library = Library::new(&evolve_path)
-                .map_err(|error| format!("{}: {error}", evolve_path.display()))?;
             let evolve = evolve_library
                 .get::<unsafe extern "C" fn() -> *const repl_extension_api::evolve::Api>(
                     b"repl_evolve_api\0",
@@ -129,7 +125,7 @@ impl Bridge {
                 .get::<unsafe extern "C" fn(Into)>(b"repl_set_patch_into\0")
                 .map_err(|e| e.to_string())?(crate::patch_state::patch_into);
             crate::script_api::set_sequence_choose(
-                *sequence_library
+                *evolve_library
                     .get::<repl_extension_api::sequence::Choose>(b"repl_sequence_choose\0")
                     .map_err(|e| e.to_string())?,
             );
@@ -140,7 +136,6 @@ impl Bridge {
             }));
             Ok(Self {
                 _library: library,
-                _sequence_library: sequence_library,
                 _evolve_library: evolve_library,
                 _control_thread: std::marker::PhantomData,
                 request,

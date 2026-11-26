@@ -1,5 +1,5 @@
 #pragma once
-#include "sequence_dll.hpp"
+#include "sequence_abi.hpp"
 #include <atomic>
 #include <algorithm>
 #include <cmath>
@@ -35,7 +35,7 @@ inline repl_sequence::Plan sequence_plan(const choc::value::ValueView& args, uap
     return plan;
 }
 
-// UAPMD adapter only; the clock and pattern handoff live in Rust sequence.dll.
+// UAPMD adapter only; the clock and pattern handoff live in Rust evolve.dll.
 class LiveSequence final : public uapmd::AudioProcessingEventHandler,
                            public uapmd::SequencerProcessingLifecycleListener {
     uapmd::SequencerEngine& engine;

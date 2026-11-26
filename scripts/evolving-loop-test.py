@@ -62,7 +62,7 @@ def main():
                 session.kill()
         finally:
             launch_globals['EXE'] = original_exe
-    print('PASS standalone exe deploys Rust sequence.dll and services periodic JS')
+    print('PASS standalone exe deploys Rust evolve.dll and services periodic JS')
     if args.smoke_only:
         return
     import subprocess
