@@ -376,5 +376,3 @@ comment_46 = "準備完了の前に起動時にこのcellを実行して最初�
 catalog_refresh_timeout = "プラグイン一覧の更新がタイムアウトしました"
 performance_load = "負荷"
 performance_load_help = "上段avg、下段peak。直近約500msの平均と最大負荷。横幅は0〜100%、80%以上は赤。通常の並列workerは80%で打切り（evolve graph使用中は100%）。callback負荷だけですべての音声破棄を判定できるわけではありません。"
-performance_notes = "note"
-performance_notes_help = "上段now、下段は直近約500msのpeak。横幅は0〜99、99を超えた数値も表示。MIDI入力と音声出力があり、他ノードから音声が接続されていないプラグインの未解除Note On合計。別インスタンス・同音の重ね掛けも加算。余韻・サステイン保持は含みません。"

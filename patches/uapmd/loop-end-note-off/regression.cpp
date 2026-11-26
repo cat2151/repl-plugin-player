@@ -6,9 +6,6 @@
 
 // The app's bridge owns these observers.
 void repl_capture_scope(int, remidy::AudioProcessContext&) noexcept {}
-void* repl_create_note_counter(int32_t) { return nullptr; }
-void repl_destroy_note_counter(void*) {}
-void repl_process_note_counter(void*, const uint32_t*, size_t) {}
 
 namespace {
 constexpr int32_t kFrames = 256;

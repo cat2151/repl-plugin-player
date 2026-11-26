@@ -23,24 +23,6 @@ callbackは音源作成前に登録し、エンジンの停止・破棄後まで
 
 ## 表示とスレッド境界
 
-### executionの発音数
-
-execution欄は鍵盤の音高和集合とは独立して、各音源に届いた未解除Note Onの総数を表示する。
-対象はユーザー指定により「MIDI入力と音声出力があり、他ノードから音声接続がない」インスタンスとする。
-音声入力busの有無だけではSurge XTやSix Sinesも除外されるため、busの存在ではなく接続で判定する。
-DAGはnodeId優先で音声edgeの接続先を照合し、linear graphは音声出力を持つ先行pluginの有無を使う。
-後段audio effectとMIDI effectは加算しない。instrumentの正式な種別判定ではなく、接続に基づく近似である。
-同音の別インスタンス・同一インスタンスへの重ね掛けをそれぞれ加算する。
-Note Offは対応するgroup/channel/pitchの未解除分を1つ減算し、CC120/123はチャネル全体を解除する。
-余韻やサステインによる保持、音源内部のvoice数は対象外。
-
-ノード構築時にRust sequence DLLの固定長カウンターを確保し、GUI読取時に接続から対象を選ぶ。
-入力観測点はUMPをRustへ渡すだけで、処理中の確保・ロック・JS呼び出しは追加しない。
-各インスタンスの残数はlock-free atomicで公開し、非音声threadの登録簿から対象を合算する。
-登録・破棄・集計だけが登録簿のmutexを使い、音声threadは触らない。ノード破棄で登録を除く。
-鍵盤の64slot制約はこの合計には適用しない。callbackはモデル作成前に登録し、モデル破棄後まで有効。
-構築位置のアンカーもCMakeで検査し、同じ生成コピーへ再適用する。
-
 ### 鍵盤と波形
 
 Timelineの全ノートを含む音域の鍵盤を、Timelineのスクロール領域の上に固定する。Note Onは緑色で点灯し、
@@ -87,10 +69,6 @@ Zero crossや他の周期数の処理も削除した。
 表示窓の共通peak正規化によりL/R比は保つが、窓間の絶対音量は表さない。
 
 ## 回帰検証
-
-`python scripts/execution-meters-test.py` は実機で、2音源の同音、同じ音源への重ね掛け、
-effect入力の除外、個別Note Off、Stop/restart、処理時間の取得を検証する。
-group/channel別の対応、MIDI 1/2、velocity-zero、CC、破棄は`evolve-dll/src/note_count.rs`の回帰で検証する。
 
 このdirectoryの `note-monitor.js` を E2E 入口（`--e2e note-monitor`）が disk から読んで cell ごとに流す。
 観測は `repl.test.notes()`（bridge の `notes` command と同じ `held_notes`）。

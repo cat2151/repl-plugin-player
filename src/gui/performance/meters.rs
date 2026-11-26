@@ -51,34 +51,6 @@ fn rows(rect: Rect, row_height: f32) -> [Rect; 2] {
     })
 }
 
-pub(super) fn notes(ui: &mut egui::Ui, values: [Option<u64>; 2]) {
-    let font = egui::TextStyle::Monospace.resolve(ui.style());
-    let texts = values.map(|value| value.map_or_else(|| " —".into(), |n| format!("{n:>2}")));
-    let galleys = texts.map(|text| {
-        ui.painter()
-            .layout_no_wrap(text, font.clone(), ui.visuals().text_color())
-    });
-    let row_height = galleys.iter().map(|g| g.size().y).fold(0.0, f32::max);
-    let number_width = galleys.iter().map(|g| g.size().x).fold(0.0, f32::max);
-    let (rect, response) = ui.allocate_exact_size(
-        Vec2::new(WIDTH + 4.0 + number_width, row_height * 2.0 + GAP),
-        egui::Sense::hover(),
-    );
-    for (row, bar_rect) in rows(rect, row_height).into_iter().enumerate() {
-        bar(ui, bar_rect, values[row].map(|n| n as f32 / 99.0), false);
-        let galley = galleys[row].clone();
-        ui.painter().galley(
-            egui::pos2(
-                rect.right() - galley.size().x,
-                rect.top() + row as f32 * (row_height + GAP),
-            ),
-            galley,
-            ui.visuals().text_color(),
-        );
-    }
-    response.on_hover_text(crate::i18n::t("performance_notes_help"));
-}
-
 pub(super) fn load(ui: &mut egui::Ui, values: Option<[f64; 2]>) {
     let row_height = ui.text_style_height(&egui::TextStyle::Monospace);
     let (rect, response) = ui.allocate_exact_size(

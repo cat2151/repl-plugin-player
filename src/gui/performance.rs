@@ -15,7 +15,6 @@ struct Batch {
     callback_ms: f64,
     budget_ms: f64,
     peak_percent: f64,
-    note_peak: Option<u64>,
 }
 
 #[derive(Default)]
@@ -24,15 +23,11 @@ pub(super) struct Performance {
     counters: Option<(u32, u32)>,
     missed: u64,
     dropped: u64,
-    notes: Option<(Instant, u64)>,
     execution_width: usize,
 }
 
 impl Performance {
     pub fn record(&mut self, observation: &Value, now: Instant) {
-        self.notes = observation["noteCount"]
-            .as_f64()
-            .map(|count| (now, count as u64));
         // Poll batches approximate the trailing window to the 100 ms UI poll interval.
         // Gaps cannot be mistaken for recent measurements after the UI was blocked.
         let gap = self
@@ -42,10 +37,7 @@ impl Performance {
         if gap {
             self.batches.clear();
         }
-        let mut batch = Batch {
-            note_peak: self.notes.map(|(_, count)| count),
-            ..Batch::default()
-        };
+        let mut batch = Batch::default();
         if let Some(timings) = observation["processingTimings"].as_array().filter(|_| !gap) {
             for timing in timings {
                 let (Some(stage), Some(ms), Some(frames), Some(rate)) = (
@@ -100,7 +92,6 @@ impl Performance {
             total.callback_ms += batch.callback_ms;
             total.budget_ms += batch.budget_ms;
             total.peak_percent = total.peak_percent.max(batch.peak_percent);
-            total.note_peak = total.note_peak.max(batch.note_peak);
         }
         total
     }
@@ -117,14 +108,7 @@ impl Performance {
             .extend(),
         );
         let now = Instant::now();
-        let notes = self
-            .notes
-            .filter(|(time, _)| now.duration_since(*time) < WINDOW);
         let total = self.totals(now);
-        ui.label(crate::i18n::t("performance_notes"))
-            .on_hover_text(crate::i18n::t("performance_notes_help"));
-        meters::notes(ui, [notes.map(|(_, count)| count), total.note_peak]);
-        ui.add_space(8.0);
         ui.label(crate::i18n::t("performance_load"))
             .on_hover_text(crate::i18n::t("performance_load_help"));
         let load = (total.callbacks > 0).then(|| {
@@ -141,27 +125,6 @@ impl Performance {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn note_peak_holds_then_expires_with_the_load_window() {
-        let mut meter = Performance::default();
-        let now = Instant::now();
-        meter.record(&json!({"noteCount":12.0}), now);
-        meter.record(&json!({"noteCount":3.0}), now + Duration::from_millis(100));
-        assert_eq!(meter.notes.unwrap().1, 3);
-        assert_eq!(
-            meter.totals(now + Duration::from_millis(100)).note_peak,
-            Some(12)
-        );
-        assert_eq!(
-            meter.totals(now + Duration::from_millis(500)).note_peak,
-            Some(3)
-        );
-        assert_eq!(
-            meter.totals(now + Duration::from_millis(600)).note_peak,
-            None
-        );
-    }
 
     #[test]
     fn weights_callback_budgets_and_ignores_other_stages() {
@@ -204,10 +167,9 @@ mod tests {
     fn accepts_native_float_zeros_and_discards_timings_after_a_poll_gap() {
         let mut meter = Performance::default();
         let now = Instant::now();
-        let value = json!({"noteCount":0.0,"deadlineMisses":0.0,"droppedTimings":0.0,
+        let value = json!({"deadlineMisses":0.0,"droppedTimings":0.0,
             "processingTimings":[{"stage":5.0,"durationMs":1,"frames":480,"sampleRate":48000}]});
         meter.record(&value, now);
-        assert_eq!(meter.notes.unwrap().1, 0);
         assert_eq!(meter.counters, Some((0, 0)));
         assert_eq!(meter.totals(now).callbacks, 1);
         meter.record(&value, now + Duration::from_secs(1));
