@@ -1,7 +1,78 @@
 use std::{
-    env, fs,
+    env, fs, io,
     path::{Path, PathBuf},
+    process::Command,
 };
+
+/// Builds `build/out/repl_bridge.dll` with the C/C++ runtime that this Rust target links
+/// (`crt-static` → /MT), so `cargo build` alone builds the native bridge (ADR 0029).
+/// Configures only without a cache or on a runtime change: an explicit configure rewrites
+/// the generated UAPMD patches and relinks the bridge (about 2 min), and `cmake --build`
+/// reconfigures by itself when a patch's inputs change (`CMAKE_CONFIGURE_DEPENDS`).
+/// The DLL is not watched: this script writes it, so Cargo would rerun the script and
+/// recompile the exe once more after every bridge rebuild.
+fn bridge(root: &Path) {
+    for path in [
+        "native",
+        "patches/uapmd",
+        "../uapmd/source",
+        "../uapmd/external",
+        "../uapmd/CMakeLists.txt",
+    ] {
+        println!("cargo:rerun-if-changed={path}");
+    }
+    let features = env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or_default();
+    let mut runtime = String::from("MultiThreaded$<$<CONFIG:Debug>:Debug>");
+    if !features.split(',').any(|feature| feature == "crt-static") {
+        runtime.push_str("DLL");
+    }
+    let cache = fs::read_to_string(root.join("build/CMakeCache.txt")).unwrap_or_default();
+    let configured = cache.lines().any(|line| {
+        line.split_once('=').is_some_and(|(key, value)| {
+            key.starts_with("REPL_MSVC_RUNTIME_LIBRARY:") && value == runtime
+        })
+    });
+    if !configured {
+        cmake(
+            root,
+            &[
+                "-S",
+                "native",
+                "-B",
+                "build",
+                "-G",
+                "Visual Studio 17 2022",
+                "-DBUILD_SHARED_LIBS=OFF",
+                "-DCPM_SOURCE_CACHE=OFF",
+                &format!("-DREPL_MSVC_RUNTIME_LIBRARY={runtime}"),
+            ],
+        );
+    }
+    cmake(
+        root,
+        &[
+            "--build",
+            "build",
+            "--config",
+            "Release",
+            "--target",
+            "repl_bridge",
+            "--parallel",
+            "6",
+        ],
+    );
+}
+
+fn cmake(root: &Path, args: &[&str]) {
+    // Cargo reads a build script's stdout as `cargo:` directives, so CMake writes to stderr.
+    let status = Command::new("cmake")
+        .args(args)
+        .current_dir(root)
+        .stdout(io::stderr())
+        .status()
+        .expect("Run cmake");
+    assert!(status.success(), "cmake {} failed", args.join(" "));
+}
 
 fn scripts(directory: &Path, paths: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(directory).expect("Read builtin scripts") {
@@ -53,7 +124,8 @@ fn extensions() {
 }
 
 fn main() {
-    println!("cargo:rerun-if-changed=build/out/repl_bridge.dll");
+    let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    bridge(&root);
     extensions();
     println!("cargo:rerun-if-changed=locales/ja.toml");
     println!("cargo:rerun-if-changed=locales/en.toml");

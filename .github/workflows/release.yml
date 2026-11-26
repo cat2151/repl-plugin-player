@@ -120,7 +120,7 @@ jobs:
     runs-on: windows-2022
     env:
       ZIP: repl-plugin-player-${{ needs.resolve.outputs.version }}-windows-x64.zip
-      # scripts/build.py derives native /MT from the same Rust target feature.
+      # build.rs derives native /MT from the same Rust target feature.
       CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
     steps:
       - run: git config --global core.longpaths true
