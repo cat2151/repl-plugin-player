@@ -219,9 +219,9 @@ struct Session {
         model.notifyPersistentStorageReady();
     }
     void requestState(int32_t target) {
-        if (state_pending) throw std::runtime_error(repl_localized("native_00"));
+        if (state_pending) throw std::runtime_error(repl_localized("uapmd_host_00"));
         auto* instance = uapmd_app::AppModel::instance().sequencer().engine()->getPluginInstance(target);
-        if (!instance) throw std::runtime_error(repl_localized("native_01"));
+        if (!instance) throw std::runtime_error(repl_localized("uapmd_host_01"));
         state_ready = false;
         state_pending = true;
         instance->requestState(uapmd_plugin_hosting::StateContextType::Project, false, nullptr,
@@ -249,7 +249,7 @@ struct Session {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
         if (!state_pending && !preparation_error.empty()) throw std::runtime_error(preparation_error);
-        if (!state_ready) throw std::runtime_error(repl_localized("native_06"));
+        if (!state_ready) throw std::runtime_error(repl_localized("uapmd_host_06"));
         return stateHex();
     }
     ~Session() {
@@ -406,7 +406,7 @@ static void observe_into(choc::value::Value& result) {
     result.setMember("droppedTimings", static_cast<int64_t>(counters.dropped_records));
     std::array<float, 256> samples{};
     auto* analyser = engine->outputAnalyser();
-    if (!analyser) throw std::runtime_error(repl_localized("native_08"));
+    if (!analyser) throw std::runtime_error(repl_localized("uapmd_host_08"));
     analyser->getFloatTimeDomainData(samples.data(), static_cast<uint32_t>(samples.size()));
     double peak{}, energy{};
     bool finite = true;
@@ -569,12 +569,12 @@ extern "C" __declspec(dllexport) const char* repl_request(const char* request) n
         auto result = choc::value::createObject("");
         result.setMember("ok", true);
         if (command == "open") {
-            if (session) throw std::runtime_error(repl_localized("native_02"));
+            if (session) throw std::runtime_error(repl_localized("uapmd_host_02"));
             auto diagnostics = std::filesystem::u8path(args["diagnostics"].get<std::string>());
             FILE* stream{};
             if (_wfreopen_s(&stream, (diagnostics.wstring() + L".stdout.log").c_str(), L"w", stdout) != 0 ||
                 _wfreopen_s(&stream, (diagnostics.wstring() + L".stderr.log").c_str(), L"w", stderr) != 0)
-                throw std::runtime_error(repl_localized("native_03"));
+                throw std::runtime_error(repl_localized("uapmd_host_03"));
             session = std::make_unique<Session>(args["data"].get<std::string>());
             session->initialize();
             result.setMember("bootstrap", session->runtime->evaluateScript("typeof uapmd.audio.setEngineEnabled"));
@@ -592,7 +592,7 @@ extern "C" __declspec(dllexport) const char* repl_request(const char* request) n
             session.reset();
             std::fflush(nullptr);
         } else {
-            if (!session || !session->runtime) throw std::runtime_error(repl_localized("native_04"));
+            if (!session || !session->runtime) throw std::runtime_error(repl_localized("uapmd_host_04"));
             remidy::EventLoop::processQueuedTasks();
             session->windows.pump();
             repl_finish_pending_freeze();
@@ -625,7 +625,7 @@ extern "C" __declspec(dllexport) const char* repl_request(const char* request) n
             } else if (command == "request-state") {
                 session->requestState(args["instanceId"].get<int32_t>());
             } else if (command == "state") {
-                if (!session->state_ready) throw std::runtime_error(repl_localized("native_06"));
+                if (!session->state_ready) throw std::runtime_error(repl_localized("uapmd_host_06"));
                 result.setMember("hex", session->stateHex());
             } else if (command == "notes") {
                 result.setMember("notes", held_notes());
@@ -638,11 +638,11 @@ extern "C" __declspec(dllexport) const char* repl_request(const char* request) n
                 session->windows.takeError();
                 auto value = session->runtime->evaluateScript(args["code"].get<std::string>());
                 auto uiError = session->windows.takeError();
-                if (!uiError.empty()) throw std::runtime_error(repl_format1("native_16", "error", uiError));
+                if (!uiError.empty()) throw std::runtime_error(repl_format1("uapmd_host_16", "error", uiError));
                 result.setMember("result", value);
                 if (command == "timeline-view") result.setMember("view", session->timeline_view.read(
                     *uapmd_app::AppModel::instance().sequencer().engine()));
-            } else throw std::runtime_error(repl_format1("native_17", "command", command));
+            } else throw std::runtime_error(repl_format1("uapmd_host_17", "command", command));
         }
         reply = choc::json::toString(result, false);
     } catch (const std::exception& error) {
@@ -651,7 +651,7 @@ extern "C" __declspec(dllexport) const char* repl_request(const char* request) n
         result.setMember("error", std::string(error.what()));
         reply = choc::json::toString(result, false);
     } catch (...) {
-        reply = choc::json::toString(choc::value::createObject("", "ok", false, "error", std::string(repl_localized("native_09"))));
+        reply = choc::json::toString(choc::value::createObject("", "ok", false, "error", std::string(repl_localized("uapmd_host_09"))));
     }
     return reply.c_str();
 }

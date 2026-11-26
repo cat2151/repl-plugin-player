@@ -18,7 +18,7 @@ A zero request retains the upstream 256-frame fallback. It does not change worke
 deadlines, project data, or plugin state. Honoring 1024 instead of 256 frames increases
 the nominal period from 5.33 to 21.33 ms at 48 kHz.
 
-`native/CMakeLists.txt` includes `apply.cmake`. Configure regenerates only
+`uapmd-host/CMakeLists.txt` includes `apply.cmake`. Configure regenerates only
 `target/shim/device-buffer-size/MiniAudioIODevice.cpp`; the checkout is never modified.
 Fresh checkouts and existing caches follow the same path. Source anchor mismatches or
 missing CMake target entries stop configuration with the patch, file, condition,

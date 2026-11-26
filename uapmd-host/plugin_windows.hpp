@@ -37,8 +37,8 @@ class PluginWindows {
 
     void show(int32_t id) {
         auto* plugin = instance(id);
-        if (!plugin) throw std::runtime_error(repl_localized("native_10"));
-        if (!plugin->hasUISupport()) throw std::runtime_error(repl_localized("native_11"));
+        if (!plugin) throw std::runtime_error(repl_localized("uapmd_host_10"));
+        if (!plugin->hasUISupport()) throw std::runtime_error(repl_localized("uapmd_host_11"));
         auto& editor = editors[id];
         if (!editor.window) {
             const auto title = plugin->displayName() + " (" + plugin->formatName() + ")";
@@ -47,7 +47,7 @@ class PluginWindows {
             });
             if (!editor.window || !editor.window->getHandle()) {
                 editors.erase(id);
-                throw std::runtime_error(repl_localized("native_12"));
+                throw std::runtime_error(repl_localized("uapmd_host_12"));
             }
             // As in cat-plugin-player, size changes originate in the plug-in.
             editor.window->setResizable(false);
@@ -61,7 +61,7 @@ class PluginWindows {
                     return resize(id, w, h);
                 });
             if (!editor.shown)
-                throw std::runtime_error(editor.error.empty() ? repl_localized("native_13") : editor.error);
+                throw std::runtime_error(editor.error.empty() ? repl_localized("uapmd_host_13") : editor.error);
             uint32_t width{}, height{};
             if (plugin->getUISize(width, height)) resize(id, width, height);
         } catch (...) {
@@ -74,14 +74,14 @@ public:
     void attach() {
         auto& model = uapmd_app::AppModel::instance();
         model.uiShowRequested.push_back([this](int32_t id) {
-            // QuickJS native callbacks do not catch C++ exceptions. Let the bridge
+            // QuickJS native callbacks do not catch C++ exceptions. Let the host
             // report failures only after evaluateScript has returned safely.
             try {
                 show(id);
             } catch (const std::exception& error) {
                 pendingError = error.what();
             } catch (...) {
-                pendingError = repl_localized("native_14");
+                pendingError = repl_localized("uapmd_host_14");
             }
         });
         model.uiShown.push_back([this](const uapmd_app::AppModel::UIStateResult& result) {

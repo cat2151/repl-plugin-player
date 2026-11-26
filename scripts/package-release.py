@@ -12,13 +12,13 @@ from build import BUNDLED, EMBEDDED
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def package(output, executable, bridge):
+def package(output, executable, host):
     tool = crt_linkage.dumpbin()
     with tempfile.TemporaryDirectory(prefix='repl-package-') as temporary:
         stage = Path(temporary) / 'app'
         stage.mkdir()
         shutil.copy2(executable, stage / 'repl-plugin-player.exe')
-        assert bridge.read_bytes() in executable.read_bytes(), 'Executable embeds a different bridge'
+        assert host.read_bytes() in executable.read_bytes(), 'Executable embeds a different UAPMD host DLL'
         extensions = [EMBEDDED / f'{name}.dll' for name in BUNDLED]
         assert sorted(EMBEDDED.iterdir()) == sorted(extensions), f'{EMBEDDED} differs from {BUNDLED}'
         for extension in extensions:
@@ -26,7 +26,7 @@ def package(output, executable, bridge):
             # The workspace build is the one `cargo test` checks against the exe's egui.
             assert extension.read_bytes() == (ROOT / 'target/release' / extension.name).read_bytes(), \
                 f'Embedded {extension.name} differs from the one built with the exe'
-        pending = [stage / 'repl-plugin-player.exe', bridge, *extensions]
+        pending = [stage / 'repl-plugin-player.exe', host, *extensions]
         checked = set()
         imports = {}
         while pending:
@@ -78,7 +78,7 @@ def package(output, executable, bridge):
             assert result.stdout and b'--lang' in result.stdout, result.stderr
         subprocess.run([os.sys.executable, '-c',
                         'import ctypes,sys; d=ctypes.WinDLL(sys.argv[1]); assert d.repl_request and d.repl_set_script_api',
-                        str(bridge)], cwd=temporary, check=True, timeout=30)
+                        str(host)], cwd=temporary, check=True, timeout=30)
         output.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED, strict_timestamps=False) as archive:
             for path in stage.rglob('*'):
@@ -88,7 +88,7 @@ def package(output, executable, bridge):
             assert archive.testzip() is None
             names = set(archive.namelist())
             assert 'repl-plugin-player.exe' in names
-            assert 'repl_bridge.dll' not in names
+            assert 'uapmd_host.dll' not in names
             assert not any(f'{name}.dll' in names for name in BUNDLED)
             assert not any(name.startswith('locales/') for name in names)
         print('PASS packaged imports:', imports)
@@ -99,6 +99,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--exe', type=Path, default=ROOT / 'target/release/repl-plugin-player.exe')
-    parser.add_argument('--bridge', type=Path, default=ROOT / 'build/out/repl_bridge.dll')
+    parser.add_argument('--uapmd-host', type=Path, default=ROOT / 'build/out/uapmd_host.dll')
     args = parser.parse_args()
-    package(args.output.resolve(), args.exe.resolve(), args.bridge.resolve())
+    package(args.output.resolve(), args.exe.resolve(), args.uapmd_host.resolve())

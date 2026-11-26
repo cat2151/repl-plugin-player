@@ -1,7 +1,7 @@
-# ADR 0003: build が要るのは `.rs` と `native/` だけにし、JS は `.js` ファイルにだけ書く
+# ADR 0003: build が要るのは `.rs` と `uapmd-host/` だけにし、JS は `.js` ファイルにだけ書く
 
 - 状態: 採用
-- 決定者: user（JS だけを調べたり直したりするときに release build を回さないこと・build が要るのは `.rs` と `native/` だけにすること・JS は `.js` ファイルにだけ書くこと・規則の明文化と E2E のシナリオの JS 化と埋め込み JS の disk 読みを全部入れること）。配布用の exe は埋め込みのままにすること・disk から読むかの判定を1本にすること・E2E の runner の形・観測 API の形は AI の提案
+- 決定者: user（JS だけを調べたり直したりするときに release build を回さないこと・build が要るのは `.rs` と `uapmd-host/` だけにすること・JS は `.js` ファイルにだけ書くこと・規則の明文化と E2E のシナリオの JS 化と埋め込み JS の disk 読みを全部入れること）。配布用の exe は埋め込みのままにすること・disk から読むかの判定を1本にすること・E2E の runner の形・観測 API の形は AI の提案
 - 関連: [0002](0002-cells-address-instruments-by-track.md)（init script と lib の JS）
 
 ## 決定
@@ -10,7 +10,7 @@
 - disk から読むかの判定は `src/resources.rs` の `source_root`（exe の祖先に package 名 `repl-plugin-player` の `Cargo.toml` がある dir）1本にする。repo の中の exe でファイルが無ければ、埋め込みへ戻らずエラーにする。
 - E2E のシナリオは `tests/e2e/<case>.js`（uapmd の補修の回帰は `patches/uapmd/<補修名>/<case>.js`）に `// %% <title>` の cell で書き、`--e2e <case>` が disk から読んで cell を1つずつ流す。title の語 `init`・`stop`・`error` で runner の扱いを変える。補助関数は `tests/e2e/lib.js` に置く。
 - Rust に残すのは、起動・終了の case と、検査対象が Rust のコード（projection・scope 表示・範囲の切り出し・editor・egui・代役の patch browser）の case だけ。その case でも JS は case の `.js` の cell に置き、Rust は title で引いて流す。値を渡す cell は関数式にして、Rust は JSON を引数に呼ぶ。
-- JS から読めない native の観測は、既存の bridge command と同じ関数を呼ぶだけの `repl.test.*`（`observe`・`notes`・`loopTrace`・`pluginState`・`instances`）で出す。
+- JS から読めない native の観測は、既存の `uapmd_host.dll` の command と同じ関数を呼ぶだけの `repl.test.*`（`observe`・`notes`・`loopTrace`・`pluginState`・`instances`）で出す。
 
 ## 理由
 

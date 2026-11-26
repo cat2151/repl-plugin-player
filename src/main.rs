@@ -1,10 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-mod bridge;
 mod browser_change_e2e;
 mod catalog_refresh;
 mod cli;
 mod config;
 mod control;
+mod dll_wiring;
 mod e2e;
 mod e2e_script;
 mod execution;
@@ -49,6 +49,7 @@ mod surge_home;
 mod syntax_highlight;
 mod timeline;
 mod tutorials_e2e;
+mod uapmd_host;
 
 // cat-plugin-player's resident protocol and the types it names, from its source
 // of truth. This app uses only part of them.

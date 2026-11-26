@@ -29,7 +29,7 @@ fn floe_and_dexed_patches_go_to_the_instance_without_the_player() {
         assert_eq!(into::check(reference), Ok(()));
         let prepared = into::prepare(reference.clone(), asked).unwrap();
         assert!(prepared.state.is_none());
-        // No bridge on the test thread: the instance is not found, and nothing else is tried.
+        // No uapmd_host.dll on the test thread: the instance is not found, and nothing else is tried.
         let missing = || Err::<clap::Plugin, _>("instance 3".to_string());
         let loaded = into::into(missing, prepared, true);
         assert_eq!(loaded, Err("instance 3".into()));
@@ -164,7 +164,7 @@ fn a_reused_instance_gets_the_template_from_a_new_instance_without_the_player() 
         unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr().cast(), error, bytes.len()) };
         false
     }
-    clap::connect(Some(clap::Bridge {
+    clap::connect(Some(clap::HostCalls {
         plugin: unused,
         sysex: no_sysex,
         fresh: refuse,

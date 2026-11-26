@@ -1,4 +1,4 @@
-//! The bridge's generic entry points to a live CLAP instance.
+//! `uapmd_host.dll`'s generic entry points to a live CLAP instance.
 use crate::i18n::render;
 use std::{
     cell::Cell,
@@ -25,19 +25,19 @@ pub type FreshPlugin = unsafe extern "C" fn(
 ) -> bool;
 
 #[derive(Clone, Copy)]
-pub struct Bridge {
+pub struct HostCalls {
     pub plugin: ClapPlugin,
     pub sysex: ClapSysEx,
     pub fresh: FreshPlugin,
 }
 
 thread_local! {
-    /// Set on the control thread while the bridge is loaded; plugins are called there only.
-    static BRIDGE: Cell<Option<Bridge>> = const { Cell::new(None) };
+    /// Set on the control thread while `uapmd_host.dll` is loaded; plugins are called there only.
+    static HOST: Cell<Option<HostCalls>> = const { Cell::new(None) };
 }
 
-pub fn connect(bridge: Option<Bridge>) {
-    BRIDGE.set(bridge);
+pub fn connect(host: Option<HostCalls>) {
+    HOST.set(host);
 }
 
 /// The state a new instance of the plugin saves, from an instance made and
@@ -52,16 +52,16 @@ pub(super) fn fresh_state(format: &str, plugin_id: &str) -> Result<Vec<u8>, Stri
             false => Plugin(plugin).save(),
         });
     }
-    let bridge = BRIDGE
+    let host = HOST
         .get()
-        .ok_or("The bridge is not loaded on this thread")?;
+        .ok_or("uapmd_host.dll is not loaded on this thread")?;
     let text = |s: &str| CString::new(s).map_err(|e| e.to_string());
     let (format, plugin_id) = (text(format)?, text(plugin_id)?);
     let mut saved: Saved = None;
     let mut error = [0 as c_char; 256];
     // SAFETY: every pointer outlives the call, made on the control thread.
     let made = unsafe {
-        (bridge.fresh)(
+        (host.fresh)(
             format.as_ptr(),
             plugin_id.as_ptr(),
             save,
@@ -71,7 +71,7 @@ pub(super) fn fresh_state(format: &str, plugin_id: &str) -> Result<Vec<u8>, Stri
         )
     };
     if !made {
-        // SAFETY: the bridge NUL-terminates `error` when it fails.
+        // SAFETY: the host NUL-terminates `error` when it fails.
         return Err(unsafe { CStr::from_ptr(error.as_ptr()) }
             .to_string_lossy()
             .into_owned());
@@ -87,9 +87,8 @@ pub(super) struct Plugin(*const c_void);
 impl Plugin {
     /// The plugin of the track instance `instance`.
     pub(super) fn of(instance: i32) -> Result<Self, String> {
-        BRIDGE
-            .get()
-            .map(|bridge| unsafe { (bridge.plugin)(instance) })
+        HOST.get()
+            .map(|host| unsafe { (host.plugin)(instance) })
             .filter(|plugin| !plugin.is_null())
             .map(Self)
             .ok_or_else(|| render("patch_state_04", &[("instance", instance.to_string())]))
@@ -108,10 +107,10 @@ impl Plugin {
     /// Queues `sysex` for the plugin's next `process()`; the plugin takes it on
     /// its audio thread, after this returns, once it processes.
     pub(super) fn send_sysex(self, sysex: &[u8]) -> Result<(), String> {
-        let bridge = BRIDGE
+        let host = HOST
             .get()
-            .ok_or("The bridge is not loaded on this thread")?;
-        unsafe { (bridge.sysex)(self.0, sysex.as_ptr(), sysex.len()) };
+            .ok_or("uapmd_host.dll is not loaded on this thread")?;
+        unsafe { (host.sysex)(self.0, sysex.as_ptr(), sysex.len()) };
         Ok(())
     }
 

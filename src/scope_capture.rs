@@ -160,7 +160,7 @@ impl Capture {
 }
 
 // Called only by the selected plugin, or the final realtime master tap. Native close waits for
-// processing to finish before Bridge releases this producer. Buffers are planar,
+// processing to finish before UapmdHost releases this producer. Buffers are planar,
 // remain valid for this call, and contain `frames` f32/f64 samples per channel.
 // Format flags: bit 0 selects f64, bit 1 selects the unpitched master mix.
 pub type Callback = unsafe extern "C" fn(

@@ -30,15 +30,15 @@ def main(package):
         elsewhere = base / 'elsewhere'
         elsewhere.mkdir()
         exe = app / 'repl-plugin-player.exe'
-        assert not (app / 'repl_bridge.dll').exists()
+        assert not (app / 'uapmd_host.dll').exists()
         assert not (app / 'locales').exists()
         session(exe, elsewhere, [{'id': 1, 'command': 'close'}], language='ja')
         user = Path(os.environ['LOCALAPPDATA']) / 'repl-plugin-player'
         for lang in ('en', 'ja'):
             assert (user / 'locales' / f'{lang}.toml').is_file()
-        bridge = (Path(__file__).resolve().parents[1] / 'build/out/repl_bridge.dll').read_bytes()
-        caches = list((user / 'native').glob('*/repl_bridge.dll'))
-        assert any(path.read_bytes() == bridge for path in caches), 'Embedded bridge was not extracted intact'
+        host = (Path(__file__).resolve().parents[1] / 'build/out/uapmd_host.dll').read_bytes()
+        caches = list((user / 'native').glob('*/uapmd_host.dll'))
+        assert any(path.read_bytes() == host for path in caches), 'Embedded UAPMD host DLL was not extracted intact'
 
         replies = session(exe, elsewhere, [
             # Test-owned scripts: the embedded lib is reachable, and repl.ui is GUI-only.

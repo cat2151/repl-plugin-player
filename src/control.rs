@@ -1,4 +1,4 @@
-use crate::{bridge::Bridge, catalog_refresh::Refresh, log::Log, resources::Source};
+use crate::{catalog_refresh::Refresh, log::Log, resources::Source, uapmd_host::UapmdHost};
 use serde_json::{json, Value};
 mod refresh;
 mod tasks;
@@ -22,7 +22,7 @@ pub struct RunResult {
 }
 
 pub struct Control {
-    bridge: Bridge,
+    host: UapmdHost,
     pub log: Log,
     pub ready: bool,
     /// Every run's result, oldest first.
@@ -45,7 +45,7 @@ impl Control {
         crate::script_ui::enable(true);
     }
     pub fn retry_surge(&mut self) -> Result<(), String> {
-        self.bridge.call(json!({"command":"scan"}))?;
+        self.host.call(json!({"command":"scan"}))?;
         self.full_scan = true;
         self.refresh = Refresh::Done;
         self.missing_surge = false;
@@ -53,7 +53,7 @@ impl Control {
         Ok(())
     }
     pub fn parameter_safety(&self, instance: i32, parameter: i32) -> Result<Value, String> {
-        self.bridge.call(
+        self.host.call(
             json!({"command":"parameter-safety", "instanceId":instance, "parameterId":parameter}),
         )
         .map_err(|error| crate::i18n::render("ui_target", &[("instance", instance.to_string()), ("parameter", parameter.to_string()), ("error", error)]))
@@ -62,7 +62,7 @@ impl Control {
         self.init_started
     }
     pub fn pump_cli_messages(&self) -> Result<(), String> {
-        let result = self.bridge.call(json!({"command":"cli-pump"}))?;
+        let result = self.host.call(json!({"command":"cli-pump"}))?;
         if result["quit"] == true {
             return Err(crate::i18n::t("m065").into());
         }
@@ -70,31 +70,31 @@ impl Control {
     }
     /// `init` is the cell evaluated once the plugin catalog is scanned.
     pub fn open(mut log: Log, init: &str) -> Result<Self, String> {
-        let dll = crate::resources::bridge()?;
-        let mut bridge = Bridge::load(&dll)?;
+        let dll = crate::resources::uapmd_host()?;
+        let mut host = UapmdHost::load(&dll)?;
         let data = PathBuf::from(std::env::var_os("LOCALAPPDATA").ok_or(crate::i18n::t("m064"))?)
             .join("repl-plugin-player/uapmd");
         std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
         let args =
             json!({"command":"open","data":data,"diagnostics":log.path.with_extension("native")});
         log.event("startup", json!({"api":"AppModel::instantiate / UapmdJSRuntime::ensureApiBootstrapped","arguments":args,"surgeDataHome":std::env::var_os("SURGE_DATA_HOME").map(|s|s.to_string_lossy().into_owned()),"surgeDataHomeError":crate::surge_home::error(),"defaultSurgeData":"C:/ProgramData/Surge XT","templatesExist":PathBuf::from("C:/ProgramData/Surge XT/patches_factory/Templates").is_dir()}))?;
-        let opened = bridge.call(args);
+        let opened = host.call(args);
         log.event("bootstrap", reply_value(&opened))?;
         let opened = opened?;
         let sample_rate = opened["sampleRate"].as_f64().unwrap_or(48_000.0) as u32;
-        bridge.enable_scope(sample_rate)?;
+        host.enable_scope(sample_rate)?;
         if opened["bootstrap"] != "\"function\"" {
             return Err(crate::i18n::t("m046").into());
         }
-        bridge.call(json!({"command":"eval","code":INSTRUMENT.text()?}))?;
-        bridge.call(json!({"command":"eval","code":SCRIPT_API.text()?}))?;
+        host.call(json!({"command":"eval","code":INSTRUMENT.text()?}))?;
+        host.call(json!({"command":"eval","code":SCRIPT_API.text()?}))?;
         let refresh = if opened["catalogFromCache"] == true {
             Refresh::pending()
         } else {
             Refresh::Done
         };
         Ok(Self {
-            bridge,
+            host,
             log,
             ready: false,
             results: Vec::new(),
@@ -113,13 +113,13 @@ impl Control {
     }
     pub fn eval(&mut self, code: &str, reason: &str) -> Result<String, String> {
         self.finish_refresh()?;
-        let result = self.bridge.call(json!({"command":"eval","code":code}));
+        let result = self.host.call(json!({"command":"eval","code":code}));
         self.log.event(
             "evaluation",
             json!({"code":code,"reason":reason,"result":reply_value(&result)}),
         )?;
         let events = self
-            .bridge
+            .host
             .call(json!({"command":"eval","code":"globalThis.__replEvents.splice(0)"}))?;
         let events: Value =
             serde_json::from_str(events["result"].as_str().ok_or(crate::i18n::t("m047"))?)
@@ -135,7 +135,7 @@ impl Control {
             .ok_or_else(|| crate::i18n::t("m049").into())
     }
     pub fn observe(&mut self, window: &str) -> Result<Value, String> {
-        let result = self.bridge.call(json!({"command":"observe"}))?;
+        let result = self.host.call(json!({"command":"observe"}))?;
         self.log
             .event("observation", json!({"window":window,"values":result}))?;
         Ok(result)
@@ -143,7 +143,7 @@ impl Control {
     pub fn read_timeline(&self) -> Result<Value, String> {
         // Public clip data plus private, read-only playback/display metadata.
         let reply = self
-            .bridge
+            .host
             .call(json!({"command":"timeline-view", "code":TIMELINE_READ.text()?}))?;
         let mut snapshot: Value =
             serde_json::from_str(reply["result"].as_str().ok_or(crate::i18n::t("m050"))?)
@@ -152,7 +152,7 @@ impl Control {
         Ok(snapshot)
     }
     pub fn read_notes(&self) -> Result<Vec<u8>, String> {
-        let reply = self.bridge.call(json!({"command":"notes"}))?;
+        let reply = self.host.call(json!({"command":"notes"}))?;
         reply["notes"]
             .as_array()
             .ok_or(crate::i18n::t("m052"))?
@@ -167,10 +167,10 @@ impl Control {
             .collect()
     }
     pub fn scope(&self) -> Option<&crate::scope::Scope> {
-        self.bridge.scope()
+        self.host.scope()
     }
     pub fn poll(&mut self) -> Result<(), String> {
-        let state = self.bridge.call(json!({"command":"poll"}))?;
+        let state = self.host.call(json!({"command":"poll"}))?;
         self.observe_refresh(&state)?;
         if self.ready && !self.stopping {
             self.poll_tasks()?;
@@ -212,7 +212,7 @@ impl Control {
                         ));
                     }
                     Init::MissingPlugin if !self.full_scan => {
-                        self.bridge.call(json!({"command":"scan"}))?;
+                        self.host.call(json!({"command":"scan"}))?;
                         self.full_scan = true;
                         self.refresh = Refresh::Done;
                         self.init_started = false;
@@ -249,7 +249,7 @@ impl Control {
             }
         }
         if self.stopping {
-            let observed = self.bridge.call(json!({"command":"observe"}))?;
+            let observed = self.host.call(json!({"command":"observe"}))?;
             if observed["dispatcherPlaying"] == false {
                 self.stopping = false;
                 self.log.event("engine_stopped", observed)?;
@@ -329,13 +329,13 @@ impl Control {
         instance: i64,
         deadline: Instant,
     ) -> Result<Vec<u8>, String> {
-        self.bridge
+        self.host
             .call(json!({"command":"request-state", "instanceId":instance}))?;
         loop {
             if Instant::now() >= deadline {
                 return Err(crate::i18n::t("m062").into());
             }
-            let status = self.bridge.call(json!({"command":"poll"}))?;
+            let status = self.host.call(json!({"command":"poll"}))?;
             if let Some(error) = status["preparationError"]
                 .as_str()
                 .filter(|s| !s.is_empty())
@@ -343,7 +343,7 @@ impl Control {
                 return Err(error.to_owned());
             }
             if status["stateReady"] == true {
-                let state = self.bridge.call(json!({"command":"state"}))?;
+                let state = self.host.call(json!({"command":"state"}))?;
                 return decode_hex(state["hex"].as_str().ok_or(crate::i18n::t("m057"))?);
             }
             std::thread::sleep(Duration::from_millis(10));
@@ -360,7 +360,7 @@ impl Control {
         }
         let exit = self.run_exit_handlers();
         self.stop("normal exit")?;
-        let result = self.bridge.call(json!({"command":"close"}));
+        let result = self.host.call(json!({"command":"close"}));
         crate::patch_jobs::cleanup();
         self.closed = true;
         if self.gui_mode {

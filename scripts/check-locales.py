@@ -15,7 +15,7 @@ def check(directory=ROOT / 'locales'):
         arguments = lambda text: set(re.findall(r'\{\$(\w+)\}', text))
         assert arguments(value) == arguments(catalogs['ja'][key]), f'placeholder mismatch: {key}'
     used = set()
-    for directory in ('src', 'native', 'snippets/builtin', 'patches'):
+    for directory in ('src', 'uapmd-host', 'snippets/builtin', 'patches'):
         for path in (ROOT / directory).rglob('*'):
             if path.suffix not in ('.rs', '.js', '.hpp', '.cpp', '.py'):
                 continue

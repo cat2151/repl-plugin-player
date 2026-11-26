@@ -20,7 +20,7 @@ headers. The public include directory ensures consumers share one class layout.
 Dependency checkouts and existing repairs are unchanged. Existing caches and
 fresh checkouts regenerate by the same path.
 
-The app's `native/freeze_transport.hpp` polls on its control thread. A pending
+The app's `uapmd-host/freeze_transport.hpp` polls on its control thread. A pending
 freeze automatically pauses transport beyond the complete score's content end,
 preserving the playhead, then uses the normal tail/quiet notification to render.
 Valid loops, live device input, empty scores and ordinary playback without pending

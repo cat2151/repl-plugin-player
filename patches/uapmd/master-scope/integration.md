@@ -22,6 +22,6 @@ The performance comparison uses the external hashed fixture prepared by
 `evolve-fixed-test.py`, keeping the same voice while selecting off/on/on/off.
 Remove this patch and its CMake
 include when upstream exposes a final realtime output observer, then move the
-bridge capture call to that observer and repeat output/performance checks.
+UAPMD host DLL capture call to that observer and repeat output/performance checks.
 
 Author report: not sent; draft in `UPSTREAM_REPORT.md`.

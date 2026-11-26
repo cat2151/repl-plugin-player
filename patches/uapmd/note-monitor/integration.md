@@ -46,7 +46,7 @@ MIDI 1/2、velocity-zero Note On、CC120/123を扱う。複数チャネルの同
 
 参照元は兄弟repo cat-plugin-player の `24775301b6d9f367c88c93583e4c0bf7d91cfb97`。
 `scope_stream.rs` / `scope_boundary.rs` / `scope_drift.rs` / `scope_trigger.rs` と
-その回帰テストを同名で移植した。入力配送・出力取得は本アプリのnative bridgeへ接続する。
+その回帰テストを同名で移植した。入力配送・出力取得は本アプリのUAPMD host DLLへ接続する。
 
 | 参照元の挙動・根拠 | 移植先・検証 |
 |---|---|
@@ -71,7 +71,7 @@ Zero crossや他の周期数の処理も削除した。
 ## 回帰検証
 
 このdirectoryの `note-monitor.js` を E2E 入口（`--e2e note-monitor`）が disk から読んで cell ごとに流す。
-観測は `repl.test.notes()`（bridge の `notes` command と同じ `held_notes`）。
+観測は `repl.test.notes()`（`uapmd_host.dll` の `notes` command と同じ `held_notes`）。
 
 共通周期loopの時刻検証では、同じ入力点にある有界traceを明示的に有効にする。
 各instanceのsample frame、Note On/Offとrender leadをcontrol threadから読み、

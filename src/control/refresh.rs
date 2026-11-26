@@ -10,7 +10,7 @@ impl Control {
         if !self.ready || self.stopping || !self.refresh.should_start(active, Instant::now()) {
             return Ok(());
         }
-        self.bridge.call(json!({"command":"refresh"}))?;
+        self.host.call(json!({"command":"refresh"}))?;
         self.log.event(
             "catalog_refresh_started",
             json!({"api":"AppModel::notifyUiReady / notifyPersistentStorageReady"}),
@@ -35,7 +35,7 @@ impl Control {
             if Instant::now() >= deadline {
                 return Err(crate::i18n::t("catalog_refresh_timeout").into());
             }
-            let state = self.bridge.call(json!({"command":"poll"}))?;
+            let state = self.host.call(json!({"command":"poll"}))?;
             self.observe_refresh(&state)?;
             std::thread::sleep(Duration::from_millis(5));
         }

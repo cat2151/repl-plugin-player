@@ -17,7 +17,7 @@ realtime playback. The upstream nonblocking loader can still produce temporary
 silence if audio at a newly requested position is not resident; this repair does
 not claim to eliminate all cache misses.
 
-The include in `native/CMakeLists.txt` generates only
+The include in `uapmd-host/CMakeLists.txt` generates only
 `FrozenTrackManager.cpp` and `TimelineFacadeAudio.cpp` under
 `target/shim/frozen-loop-playback`. Dependency checkouts and
 other repairs are unchanged. Fresh checkouts and existing build caches take the

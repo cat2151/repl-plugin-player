@@ -48,12 +48,12 @@ include("${REPL_PROJECT_ROOT}/patches/uapmd/evolve-graphs/apply.cmake")
 include("${REPL_PROJECT_ROOT}/patches/uapmd/master-scope/apply.cmake")
 include("${REPL_PROJECT_ROOT}/patches/uapmd/clap-plugin-handle/apply.cmake")
 include("${REPL_PROJECT_ROOT}/patches/uapmd/clap-sysex-input/apply.cmake")
-add_library(repl_bridge SHARED bridge.cpp)
-target_link_libraries(repl_bridge PRIVATE uapmd-app-model remidy-gui ResEmbed)
+add_library(uapmd_host SHARED uapmd_host.cpp)
+target_link_libraries(uapmd_host PRIVATE uapmd-app-model remidy-gui ResEmbed)
 execute_process(COMMAND git -C "${UAPMD_DIR}" rev-parse HEAD
     OUTPUT_VARIABLE UAPMD_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
-target_compile_definitions(repl_bridge PRIVATE REPL_UAPMD_REVISION="${UAPMD_REVISION}")
-set_target_properties(repl_bridge PROPERTIES
+target_compile_definitions(uapmd_host PRIVATE REPL_UAPMD_REVISION="${UAPMD_REVISION}")
+set_target_properties(uapmd_host PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}/out>"
     ARCHIVE_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}/out>")
 

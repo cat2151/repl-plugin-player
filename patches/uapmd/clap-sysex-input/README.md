@@ -35,7 +35,7 @@ stopped), so it is never given to a plugin before `activate()`.
 
 ## Application conditions
 
-- `native/CMakeLists.txt` includes `apply.cmake` after
+- `uapmd-host/CMakeLists.txt` includes `apply.cmake` after
   `clap-note-dialect/CMakeLists.cmake` (it reads that repair's generated file)
   and after `clap-plugin-handle/apply.cmake` (the bridge uses its pointer).
   The UAPMD checkout and the other repairs are untouched.

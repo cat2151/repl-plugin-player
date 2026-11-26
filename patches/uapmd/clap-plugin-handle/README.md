@@ -32,7 +32,7 @@ instance). No plugin is named here; what the pointer is used for lives in Rust.
 
 ## Application conditions
 
-- `native/CMakeLists.txt` includes `apply.cmake` after
+- `uapmd-host/CMakeLists.txt` includes `apply.cmake` after
   `clap-note-dialect/CMakeLists.cmake` (it reads that repair's generated header);
   the UAPMD checkout and the other repairs are untouched.
 - The generated header has `class PluginInstanceCLAP : public PluginInstance {`

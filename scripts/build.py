@@ -3,7 +3,7 @@
 Usage: python scripts/build.py
 
 `cargo build --release` alone builds everything that runs inside the repository, the
-native bridge included (build.rs); this script adds only the embedding (ADR 0029).
+UAPMD host DLL included (build.rs); this script adds only the embedding (ADR 0029).
 """
 
 import shutil

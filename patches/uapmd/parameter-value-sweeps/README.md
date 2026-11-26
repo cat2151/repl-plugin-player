@@ -45,7 +45,7 @@ definition.
 
 ## Application conditions
 
-- `native/CMakeLists.txt` includes `apply.cmake` after
+- `uapmd-host/CMakeLists.txt` includes `apply.cmake` after
   `clap-note-dialect/CMakeLists.cmake` and `headless-clap-host/apply.cmake`; this
   repair consumes clap-note-dialect's output and leaves that repair's files, the
   other repairs and the UAPMD checkout untouched.

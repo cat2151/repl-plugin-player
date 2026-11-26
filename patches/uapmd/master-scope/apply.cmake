@@ -6,7 +6,7 @@ execute_process(COMMAND git -C "${UAPMD_DIR}" rev-parse HEAD
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${master_scope_source}" "${CMAKE_CURRENT_LIST_DIR}/generate.py")
 execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/generate.py"
-    "${master_scope_source}" "${master_scope_output}" "${REPL_PROJECT_ROOT}/native/scope_capture.hpp" "${master_scope_revision}"
+    "${master_scope_source}" "${master_scope_output}" "${REPL_PROJECT_ROOT}/uapmd-host/scope_capture.hpp" "${master_scope_revision}"
     RESULT_VARIABLE master_scope_result ERROR_VARIABLE master_scope_error)
 get_target_property(master_scope_sources uapmd-engine SOURCES)
 list(FIND master_scope_sources "src/sequencer/RealtimeSequencer.cpp" master_scope_position)

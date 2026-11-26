@@ -136,7 +136,7 @@ pub(super) fn into(
 /// Receives the state the host loads into the instance next.
 pub type StateOut = unsafe extern "C" fn(user: *mut c_void, state: *const u8, size: usize);
 
-/// The bridge's `repl_set_patch_into`: [`into`] for an evolve host, called on
+/// `uapmd_host.dll`'s `repl_set_patch_into`: [`into`] for an evolve host, called on
 /// the control thread after it made the instance and before the instance
 /// plays. `prepared` is a file [`Prepared::to_bytes`] wrote; `plugin` is the
 /// instance's `clap_plugin*`, null when it is not CLAP. A state to load goes to

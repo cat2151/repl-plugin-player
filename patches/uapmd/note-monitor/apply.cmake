@@ -25,7 +25,7 @@ string(REPLACE "${note_delivery}" "${note_delivery}\n            repl_note_state
 string(REPLACE "${note_member}" "        repl_notes::InputState repl_note_state_;\n${note_member}" node_source "${node_source}")
 string(REPLACE "${scope_output}" "${scope_output}\n            if (status == 0) repl_capture_scope(instance_id_, process);" node_source "${node_source}")
 string(PREPEND node_source "#include \"${CMAKE_CURRENT_LIST_DIR}/note_monitor.hpp\"\n")
-string(PREPEND node_source "#include \"${REPL_PROJECT_ROOT}/native/scope_capture.hpp\"\n")
+string(PREPEND node_source "#include \"${REPL_PROJECT_ROOT}/uapmd-host/scope_capture.hpp\"\n")
 file(MAKE_DIRECTORY "${REPL_GRAPH_COPY}")
 file(WRITE "${REPL_GRAPH_COPY}/AudioPluginNodeImpl.hpp" "${node_source}")
 get_target_property(graph_sources uapmd-graph SOURCES)

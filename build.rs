@@ -4,16 +4,16 @@ use std::{
     process::Command,
 };
 
-/// Builds `build/out/repl_bridge.dll` with the C/C++ runtime that this Rust target links
-/// (`crt-static` → /MT), so `cargo build` alone builds the native bridge (ADR 0029).
+/// Builds `build/out/uapmd_host.dll` with the C/C++ runtime that this Rust target links
+/// (`crt-static` → /MT), so `cargo build` alone builds the UAPMD host DLL (ADR 0029).
 /// Configures only without a cache or on a runtime change: an explicit configure rewrites
-/// the generated UAPMD patches and relinks the bridge (about 2 min), and `cmake --build`
+/// the generated UAPMD patches and relinks the DLL (about 2 min), and `cmake --build`
 /// reconfigures by itself when a patch's inputs change (`CMAKE_CONFIGURE_DEPENDS`).
 /// The DLL is not watched: this script writes it, so Cargo would rerun the script and
-/// recompile the exe once more after every bridge rebuild.
-fn bridge(root: &Path) {
+/// recompile the exe once more after every DLL rebuild.
+fn uapmd_host(root: &Path) {
     for path in [
-        "native",
+        "uapmd-host",
         "patches/uapmd",
         "../uapmd/source",
         "../uapmd/external",
@@ -37,7 +37,7 @@ fn bridge(root: &Path) {
             root,
             &[
                 "-S",
-                "native",
+                "uapmd-host",
                 "-B",
                 "build",
                 "-G",
@@ -56,7 +56,7 @@ fn bridge(root: &Path) {
             "--config",
             "Release",
             "--target",
-            "repl_bridge",
+            "uapmd_host",
             "--parallel",
             "6",
         ],
@@ -125,7 +125,7 @@ fn extensions() {
 
 fn main() {
     let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    bridge(&root);
+    uapmd_host(&root);
     extensions();
     println!("cargo:rerun-if-changed=locales/ja.toml");
     println!("cargo:rerun-if-changed=locales/en.toml");

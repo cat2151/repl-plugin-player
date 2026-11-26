@@ -1,4 +1,4 @@
-//! The Rust audio-engine DLL the native bridge loads: asynchronous plugin switching
+//! The Rust audio-engine DLL the UAPMD host DLL loads: asynchronous plugin switching
 //! for evolve (requests return at once and are settled by polling, with a generation
 //! counter that turns folded cycles stale), the sample clock and voicing choice.
 pub mod activity;

@@ -12,7 +12,7 @@ rescans from `stateLoad` and again from `onMainThread` therefore blocks the main
 thread for every state load. With Six Sines (2554 parameters) one state load cost
 about 1.5 s, and about 4 s on a new instance.
 
-Instances created by evolve (`native/evolve_api.hpp`) are never shown in a
+Instances created by evolve (`uapmd-host/evolve_api.hpp`) are never shown in a
 track, UI or script, so nobody reads their parameter list or values.
 
 ## Repair
@@ -35,7 +35,7 @@ track, UI or script, so nobody reads their parameter list or values.
 
 ## Application conditions
 
-- `native/CMakeLists.txt` includes `apply.cmake` directly after
+- `uapmd-host/CMakeLists.txt` includes `apply.cmake` directly after
   `clap-note-dialect/CMakeLists.cmake`; this repair consumes that repair's output
   and leaves its contents and the UAPMD checkout untouched.
 - The input contains exactly one host-construction anchor and exactly one
@@ -70,7 +70,7 @@ and `HostClasses.hpp` (the `paramsRescan` signature) before updating the anchors
 ## Removal
 
 Remove the include line, this directory and the `Scope` in
-`native/evolve_api.hpp` when upstream lets a host skip value rescans for
+`uapmd-host/evolve_api.hpp` when upstream lets a host skip value rescans for
 unobserved instances, or no longer walks every parameter on
 `CLAP_PARAM_RESCAN_VALUES`.
 

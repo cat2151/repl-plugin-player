@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <string>
 
-// The app's bridge owns these observers.
+// The app's UAPMD host DLL owns these observers.
 void repl_capture_scope(int, remidy::AudioProcessContext&) noexcept {}
 
 namespace {

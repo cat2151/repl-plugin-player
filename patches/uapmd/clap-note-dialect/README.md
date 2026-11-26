@@ -6,7 +6,7 @@ This repair reuses cat-plugin-player's existing dialect selection implementation
 UAPMD gives each instance on a track its own UMP group (`SequencerTrack::findAvailableGroup`), so an instance created while another is on the track receives group 1. The group selects the note port only when the plugin has that many input note ports; otherwise the event goes to port 0, so a single-port plugin is not silenced.
 
 `apply.py` validates normalized source SHA256s and generates all translation units sharing the changed class header under `target/shim/generated/clap-note-dialect`.
-`native/CMakeLists.txt` includes the repair on every configure; source and generator changes trigger reconfiguration.
+`uapmd-host/CMakeLists.txt` includes the repair on every configure; source and generator changes trigger reconfiguration.
 The UAPMD checkout and existing patches are untouched. A fresh clone matching the baselines uses the same generation; unchanged generated files keep their timestamps on cached builds.
 The generated Parameters translation unit retains the existing parameter-metadata overlay and switches its class-header include to the same generated header as all other CLAP units.
 If upstream changes, generation stops with the source, revision and this README path. Inspect the change for an upstream fix before updating baselines or removing the repair.

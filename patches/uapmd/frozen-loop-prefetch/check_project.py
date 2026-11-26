@@ -24,7 +24,7 @@ def run_child(args):
     report = os.dup(1)  # Native session redirects CRT output.
     sys.path.insert(0, str(ROOT / 'scripts'))
     import native_text
-    dll = c.CDLL(str(ROOT / 'build/out/repl_bridge.dll'))
+    dll = c.CDLL(str(ROOT / 'build/out/uapmd_host.dll'))
     text_callback = native_text.register(dll)
     dll.repl_request.argtypes = [c.c_char_p]
     dll.repl_request.restype = c.c_char_p

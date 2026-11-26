@@ -26,7 +26,7 @@
 - **state を cache する。** 再現は1件 0.1 秒前後で足りる。初回だけ遅い plugin（sforzando で約10秒）があるが、cache が無くても成立する。
 - **player の catalog file を読んで表示パスを解決する。** player の cache 形式に repl が依存する。
 - **元の instrument に試聴の state を読ませ、閉じたら browse 前の state に戻す。** browse 前の state を取る手段（`saveState`）が止まり、戻した結果が元と一致することも保証しにくい。
-- **アプリの bridge に読込用の関数を足す。** 補修無しで済むが、uapmd に既にある `loadState` と同じ役目の API を二重に持ち、上流が直っても残る。
+- **アプリの `uapmd_host.dll` に読込用の関数を足す。** 補修無しで済むが、uapmd に既にある `loadState` と同じ役目の API を二重に持ち、上流が直っても残る。
 
 ## 結果
 

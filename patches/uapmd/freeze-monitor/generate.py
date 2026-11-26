@@ -68,7 +68,7 @@ def generate(checkout, source, output):
         std::vector<PlaybackState*> repl_retired;
         mutable bool repl_retired_cleared{};''')
     text = f'#include "{(root / "patches/uapmd/note-monitor/note_monitor.hpp").as_posix()}"\n' + text
-    text = f'#include "{(root / "native/scope_capture.hpp").as_posix()}"\n' + text
+    text = f'#include "{(root / "uapmd-host/scope_capture.hpp").as_posix()}"\n' + text
     text = re.sub(r'#include "([^"]+)"',
                   lambda m: m[0] if Path(m[1]).is_absolute() else f'#include "{(header.parent / m[1]).as_posix()}"', text)
     umbrella = (includes / 'uapmd-engine.hpp').read_text(encoding='utf-8')

@@ -53,14 +53,14 @@ def windows():
 
 
 def main():
-    # Preserve Python's console handles: the bridge redirects CRT stdout/stderr.
+    # Preserve Python's console handles: the UAPMD host DLL redirects CRT stdout/stderr.
     report = os.dup(1)
     temporary = sys.argv[1]
     data = Path(temporary)
     cache = Path(os.environ['LOCALAPPDATA']) / 'repl-plugin-player/uapmd/plugin-list-cache.json'
     if cache.is_file():
         shutil.copy2(cache, data / cache.name)
-    dll = c.CDLL(str(ROOT / 'build/out/repl_bridge.dll'))
+    dll = c.CDLL(str(ROOT / 'build/out/uapmd_host.dll'))
     import native_text
     text_callback = native_text.register(dll)
     dll.repl_request.argtypes = [c.c_char_p]

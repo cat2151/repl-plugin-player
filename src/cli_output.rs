@@ -1,6 +1,6 @@
 use std::{fs::File, io::Write, os::windows::io::FromRawHandle};
 
-// The native bridge redirects CRT stdout/stderr. Keep a separate OS handle
+// The UAPMD host DLL redirects CRT stdout/stderr. Keep a separate OS handle
 // before opening it so diagnostics cannot swallow or corrupt protocol replies.
 pub fn stdout() -> Result<File, String> {
     unsafe extern "system" {

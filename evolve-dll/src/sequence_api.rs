@@ -1,5 +1,5 @@
 //! The standalone sample-clock sequence API and the voicing choice, connected to
-//! the native bridge.
+//! the UAPMD host DLL.
 #[cfg(test)]
 mod tests;
 

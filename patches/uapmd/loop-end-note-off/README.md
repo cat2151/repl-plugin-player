@@ -15,7 +15,7 @@ Note Offが終端より後にある音も、上流の処理によって終端で
 
 ## 再適用と撤去
 
-依存checkoutを変更しない。`native/CMakeLists.txt` のincludeが正本。
+依存checkoutを変更しない。`uapmd-host/CMakeLists.txt` のincludeが正本。
 `generate.py` が `TimelineFacadeAudio.cpp` のコピーを `target/shim/loop-end-note-off/` に
 生成し、`uapmd-engine` のビルド対象を差し替える。このコピーは
 `frozen-loop-playback` の入力になるので、includeはそれより前に置く。

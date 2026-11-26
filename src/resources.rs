@@ -10,7 +10,7 @@ use std::{
     },
 };
 
-const BRIDGE: &[u8] = include_bytes!("../build/out/repl_bridge.dll");
+const UAPMD_HOST: &[u8] = include_bytes!("../build/out/uapmd_host.dll");
 include!(concat!(env!("OUT_DIR"), "/extension_dlls.rs"));
 static TEMPORARY_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -151,10 +151,10 @@ fn deploy(name: &str, bytes: &[u8]) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-pub fn bridge() -> Result<PathBuf, String> {
+pub fn uapmd_host() -> Result<PathBuf, String> {
     match source_root() {
-        Some(root) => Ok(root.join("build/out/repl_bridge.dll")),
-        None => deploy("repl_bridge.dll", BRIDGE),
+        Some(root) => Ok(root.join("build/out/uapmd_host.dll")),
+        None => deploy("uapmd_host.dll", UAPMD_HOST),
     }
 }
 

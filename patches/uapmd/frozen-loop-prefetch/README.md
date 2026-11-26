@@ -19,7 +19,7 @@ loop can still miss before its first prefetch completes; steady repeated wraps
 retain the head. Offline reads retain their blocking fallback and ignore realtime
 loop state. Files and the project format are unchanged, so no data migration is needed.
 
-`native/CMakeLists.txt` includes this repair after freeze-monitor. Configure generates
+`uapmd-host/CMakeLists.txt` includes this repair after freeze-monitor. Configure generates
 FrozenTrackAudio.cpp/.hpp and FrozenTrackManager.cpp under
 `target/shim/frozen-loop-prefetch`, replacing only those compilation units.
 Dependency checkouts and existing repairs are unchanged. Fresh clones and existing
