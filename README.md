@@ -1,97 +1,89 @@
 # repl-plugin-player
 
-Play audio plugins with a [REPL](https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop)-like UI. It uses [UAPMD](https://github.com/atsushieno/uapmd) and is written in Rust.
+Play audio plugins with a [REPL](https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop)-like UI. Utilizes [UAPMD](https://github.com/atsushieno/uapmd). Written in Rust.
 
-It has peculiar features and is almost exclusively for personal use. Specifications may change tomorrow, potentially rendering existing files unreadable.
+The features are somewhat quirky. It's almost exclusively for personal use. Specifications may change tomorrow, potentially rendering previous files unreadable.
 
 ## Download
 
 [Download Windows version](https://github.com/cat2151/repl-plugin-player/releases/download/v0.1.0/repl-plugin-player-0.1.0-windows-x64.zip)
 
-This is an experimental project, so it might occasionally return 404 errors.
+Since this is an experimental project, it might occasionally return 404 errors.
 
-## Past Challenges and What This App Solves
+## Past Challenges and What This Application Solves
 
 ### Playing Audio Plugins with Scripts
 
-- DAWs are excellent for high-quality music composition and arrangement using audio plugins!
+- DAWs are great for high-quality composition and arrangement with audio plugins!
   - However, to play audio plugins, you need to learn "how to use a DAW."
-    - This is particularly true for mainstream DAWs, which have a high learning curve.
-- Live coding is amazing for making music with programs!
+    - This is especially true for mainstream DAWs, where the learning curve can be steep until you get used to them.
+- Live coding is great for creating music with programs!
   - Browser-based playgrounds also make it easy to get started.
-  - Nevertheless, you still need to learn a specific syntax, which presents a slight hurdle until you get used to it.
-  - Furthermore, I haven't found anything that natively supports large VST3/CLAP audio plugins by default, allowing them to be played immediately after launching with a single binary.
-- Back in the era of Family BASIC and MSX, you could play "do-re-mi" with commands like `PLAY "CDE"`.
+  - Nevertheless, you need to learn a dedicated syntax, which presents a slight hurdle until you're familiar with it.
+  - Furthermore, I haven't found anything that natively supports large VST3/CLAP audio plugins by default and can play them immediately after launching with a single binary.
+- Back in the era of Family Basic and MSX, you could play "do-re-mi" with notations like `PLAY "CDE"`.
   - That's intuitive!
-  - And the `CDE` part could be generated on the fly with a program.
-- I wanted to create a playful experience where, after launching the app, you could type `play("cde")` to play VST3/CLAP audio plugins, and program the performance content itself to play it instantly (without time-consuming builds).
-- In modern times, if you have a desired UX, you can achieve it with live coding.
-- So, I decided to do just that.
+  - And the `CDE` part could even be generated on the fly with a program.
+- I wanted to experience the fun of launching an application, typing `play("cde")`, and hearing VST3/CLAP audio plugins, or programming the performance itself and playing it instantly (without time-consuming builds).
+- Today, if you have a desired UX, you can achieve it through "vibecoding."
+- So, that's what I decided to do.
 
-## Concept, What it Aims For
+## Concept and Goals
 
 - Toy
-  - Play with a clear understanding of its limitations.
+  - Designed for lighthearted fun.
 - For personal use
-  - Frequent breaking changes. Specifications may change tomorrow, potentially rendering existing files unreadable.
+  - Frequent breaking changes will occur. Specifications may change tomorrow, potentially rendering previous files unreadable.
 - Scripting
-  - Just by writing a script,
-    - You can use the plugin hosting library API. No time-consuming builds required.
-    - You can programmatically control VST3/CLAP audio plugins.
+  - Simply by writing scripts,
+    - You can utilize plugin hosting library APIs. No time-consuming builds required.
+      - You can programmatically control VST3/CLAP audio plugins.
 - DLL
-  - You can add functionality by building your own DLLs (probably, under development).
-- Rich sounds
+  - You can add features by building your own DLLs (probably, currently under development).
+- Rich Tones
   - Can play VST3/CLAP audio plugins.
-- Ease of use
-  - Instant sound.
-    - Just choose snippets. Easy!
-  - Guidance.
+- Ease of Use
+  - Instant Sound
+    - Just select snippets. Easy!
+  - Guidance
     - If you're in an environment without audio plugins, it guides you to easily install Surge XT. Easy!
-  - Lightweight.
-    - Just download a standalone .exe from GitHub releases and run it. Easy!
+  - Lightweight
+    - Just download the standalone executable from GitHub releases and run it. Easy!
 - Visualization
   - Minimal, simple visualizer.
 
-## What it Does Not Aim For
+## What It Is Not
 
-- Music programming language
-  - [SuperCollider](https://supercollider.github.io/downloads) / [SonicPi](https://sonic-pi.net/code.html) , [TidalCycles](https://tidalcycles.org/) / [Strudel](https://strudel.cc/#JDogcygiW2JkIDxoaCBvaD5dKjIiKS5iYW5rKCJ0cjkwOSIpLmRlYyguNCk%3D) , [Glicol](https://glicol.org/demo)
-- Maximum performance pursuit.
-- Infinitely rich built-in snippets.
-- Rapid bug fixes.
-- Responding to user requests.
+- Music Programming Language
+  - [SuperCollider](https://supercollider.github.io/downloads) / [SonicPi](https://sonic-pi.net/code.html) , [TidalCycles](https://tidalcycles.org/) / [Strudel](https://strudel.cc/#JDogcygiW2JkIDxoaCBvaD5dKjIiKS5iYW5rKCJ0cjkwOSIpLmRlYy(.4) , [Glicol](https://glicol.org/demo)
+- Extreme Performance Optimization
+- Infinitely Rich Built-in Snippets
+- Rapid Bug Fixes
+- Responding to User Requests
 
 ## Supplementary Notes
-- Supplementary Image/Concept
-  - Play with rich timbres programmatically.
-    - Richer than various browser-based timbres (as it can fully play native VST3/CLAP sounds).
+- Clarifying the Concept
+  - Play with rich tones programmatically
+    - Richer than various browser-based tones (because it can fully play native VST3/CLAP tones).
     - More programmable than MML.
-    - With more script-like syntax and coding content than music programming languages.
-    - With simpler environment setup than music programming languages that use VSCode (just download and run an exe from GitHub).
-    - Perhaps faster iteration than building native applications each time (depending on the use case).
+    - With more script-like syntax and coding content than a music programming language.
+    - With simpler environment setup than music programming languages that use VSCode (just download and run the exe from GitHub).
+    - Potentially faster iteration cycles than repeatedly building native applications (depending on the use case).
     - More programmable than most DAWs. More extensible.
     - Faster startup than DAWs.
-  - Usage Scenarios
-    - With a browser, it plays regardless of the device.
-    - With MML, you can quickly build and enjoy playing music (scores) with less descriptive effort.
-    - With music programming languages, you can express at the waveform level and write diverse content more quickly.
-    - With music programming languages that use VSCode, you can get results faster with more efficient keystroking.
-    - DAWs and native applications might be more feature-rich, higher-performance, and stable.
+  - Distinction in Use
+    - Browsers play sounds regardless of device.
+    - MML allows for quicker creation and enjoyment of music (scores) with less descriptive text.
+    - Music programming languages allow for waveform-level expression and faster, more diverse notation.
+    - Music programming languages that use VSCode allow for more efficient key-typing and faster results.
+    - DAWs and native applications might be more feature-rich, high-performance, and stable.
     - Among DAWs, REAPER might be even more programmable, extensible, feature-rich, high-performance, and stable.
-- No compatibility
-  - Given the powerful UAPMD DAW engine and the scripting/DLL mechanism, various things might be possible, such as building a DAW or a music programming language layer on top of it.
+- No Compatibility
+  - Given the powerful UAPMD DAW engine, scripting, and DLL mechanisms, many things should be possible, such as building a DAW or music programming language layer on top of it.
     - However, this project undergoes frequent breaking changes.
-      - Therefore, in reality, there's a high probability that "even if you build something elaborate, it might become unplayable, cease to function, or crash with an error the next day."
-        - The migration cost would be significant (even though AI might offer possibilities for cost reduction).
-          - So, instead of elaborate builds, let's just play on a small scale.
-
-## For Developers
-
-Build
-
-```
-python scripts/build.py
-```
+      - Therefore, in reality, there's a high probability that "even if you build something elaborate, it might become unplayable, stop working, or crash with an error the next day."
+        - The migration cost would be significant (even though AI might help reduce it).
+          - Thus, it's advisable not to build anything extensive and instead, play around on a small scale.
 
 ## License
 
