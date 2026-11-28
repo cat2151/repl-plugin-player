@@ -36,3 +36,8 @@ page_up = "PageUp"
 page_down = "PageDown"
 # In a repl.ui window of its own.
 close_window = "Escape"
+
+# Keys that run a snippet file, as include(path) does; snippets/builtin/init.js
+# binds them at startup. Keep this table last: a key below it would belong to it.
+[scripts]
+"Ctrl+P" = "builtin/play-loop.js"

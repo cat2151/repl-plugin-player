@@ -187,6 +187,7 @@ pub fn scope(value: &str) -> &str {
         "selection" => t("scope_selection"),
         "cell" => t("scope_cell"),
         "line" => t("scope_line"),
+        crate::keybinds::SCRIPT_SCOPE => t("scope_key"),
         _ => value,
     }
 }

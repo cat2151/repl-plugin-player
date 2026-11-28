@@ -36,6 +36,7 @@ fn rust_case(case: &str) -> bool {
         "state-load",
         "dock",
         "dock-script-ui",
+        "keys",
     ]
     .contains(&case)
 }
@@ -89,13 +90,14 @@ pub fn run(case: &str) -> Result<(), String> {
             "patch-browse" => crate::patch_browse_e2e::run(app, &script),
             "browser-change" => crate::browser_change_e2e::run(app, &script),
             "script-ui" => crate::script_ui::regression::run(app, &script),
-            "dock" | "dock-script-ui" => Ok(()), // Need the engine by value; run below.
+            "dock" | "dock-script-ui" | "keys" => Ok(()), // Need the engine by value; run below.
             _ => Err(format!("Unhandled E2E case: {case}")),
         }
     })();
-    if matches!(case, "dock" | "dock-script-ui") && result.is_ok() {
+    if matches!(case, "dock" | "dock-script-ui" | "keys") && result.is_ok() {
         let regression = match case {
             "dock" => crate::gui::dock_regression,
+            "keys" => crate::gui::keys_regression,
             _ => crate::gui::dock_script_ui_regression,
         };
         let (returned, dock) = regression(app, &script);

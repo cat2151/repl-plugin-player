@@ -9,6 +9,7 @@ use std::collections::HashMap;
 mod file;
 mod float;
 mod harness;
+pub(crate) mod key_regression;
 mod monitor;
 mod owner;
 pub(super) mod persist;

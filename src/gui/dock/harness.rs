@@ -60,6 +60,7 @@ impl Harness {
             |ui| {
                 // The parts of `App::ui` that run the editor's requests.
                 let ctx = ui.ctx().clone();
+                editor.run_key_scripts(&ctx);
                 editor.run_queued(&ctx);
                 editor.dock(ui, editor.snippet_execution.is_pending());
                 editor.snippet_execution.show_overlay(&ctx);

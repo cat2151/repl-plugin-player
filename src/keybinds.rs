@@ -7,6 +7,8 @@ use std::sync::OnceLock;
 mod layout;
 #[cfg(all(windows, test))]
 pub(crate) use layout::layout_character;
+mod scripts;
+pub use scripts::{dispatch, script_request, take_script_presses, SCRIPT_SCOPE};
 
 static SOURCE: Source = Source::new("keybinds.toml", include_str!("../keybinds.toml"));
 static KEYBINDS: OnceLock<Keybinds> = OnceLock::new();
@@ -144,6 +146,20 @@ struct Binding {
 struct Keybinds {
     /// Indexed by `Command as usize`.
     bindings: Vec<Binding>,
+    /// `[scripts]`: a key and the `include` path it runs, in the file's order.
+    scripts: Vec<(Binding, String)>,
+}
+
+impl Keybinds {
+    /// The command whose key is `binding`'s. A script key listens everywhere, so
+    /// it meets every command.
+    fn command_of(&self, binding: &Binding) -> Option<Command> {
+        Command::ALL
+            .into_iter()
+            .zip(&self.bindings)
+            .find(|(_, other)| other.key == binding.key && other.modifiers == binding.modifiers)
+            .map(|(command, _)| command)
+    }
 }
 
 /// Reads the file once; later calls keep the first result and report nothing.
@@ -181,7 +197,20 @@ pub fn extra_modifiers(
     physical_key: Option<Key>,
     modifiers: Modifiers,
 ) -> Option<Modifiers> {
-    let binding = &get().bindings[command as usize];
+    binding_extra(
+        &get().bindings[command as usize],
+        key,
+        physical_key,
+        modifiers,
+    )
+}
+
+fn binding_extra(
+    binding: &Binding,
+    key: Key,
+    physical_key: Option<Key>,
+    modifiers: Modifiers,
+) -> Option<Modifiers> {
     if layout::logical(key, physical_key) != Some(binding.key) {
         return None;
     }
@@ -222,12 +251,17 @@ fn consume_with(input: &mut egui::InputState, command: Command, shifted: bool) -
         !matched
     });
     if pressed {
-        let typed = binding.key.symbol_or_name();
-        input
-            .events
-            .retain(|event| !matches!(event, Event::Text(text) if text == typed));
+        drop_typed(input, binding.key);
     }
     pressed
+}
+
+/// Removes the text that pressing `key` would type.
+fn drop_typed(input: &mut egui::InputState, key: Key) {
+    let typed = key.symbol_or_name();
+    input
+        .events
+        .retain(|event| !matches!(event, Event::Text(text) if text == typed));
 }
 
 fn embedded() -> Keybinds {
@@ -247,7 +281,7 @@ fn parse(text: &str) -> (Keybinds, Vec<String>) {
         Err(error) => return (embedded(), vec![read_error(error)]),
     };
     for name in table.keys() {
-        if !Command::ALL.iter().any(|command| command.name() == name) {
+        if name != scripts::TABLE && !Command::ALL.iter().any(|command| command.name() == name) {
             errors.push(crate::i18n::render(
                 "keybinds_unknown",
                 &[("command", name.clone())],
@@ -294,7 +328,28 @@ fn parse(text: &str) -> (Keybinds, Vec<String>) {
             }
         }
     }
-    (Keybinds { bindings }, errors)
+    let mut keybinds = Keybinds {
+        bindings,
+        scripts: Vec::new(),
+    };
+    keybinds.scripts = scripts::parse(&keybinds, table.get(scripts::TABLE), &mut errors);
+    (keybinds, errors)
+}
+
+/// The press or release of `text`'s key with its modifiers, as egui on Windows
+/// sends it (Ctrl also sets `command`).
+pub(crate) fn key_event(text: &str, pressed: bool) -> Option<Event> {
+    let Binding { key, modifiers, .. } = binding(text)?;
+    Some(Event::Key {
+        key,
+        physical_key: None,
+        pressed,
+        repeat: false,
+        modifiers: Modifiers {
+            command: modifiers.ctrl,
+            ..modifiers
+        },
+    })
 }
 
 /// `Ctrl+Shift+P`, `F1`, `Ctrl++`: modifiers then one egui key name, joined by `+`.

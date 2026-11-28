@@ -136,6 +136,7 @@ fn dispatch(input: &Value) -> Result<Value, String> {
             crate::snippets::Library::default().source(argument(input, "name")?)?
         )),
         api if api.starts_with("ui.") => crate::script_ui::dispatch(api, input),
+        api if api.starts_with("keys.") => crate::keybinds::dispatch(api, input),
         api if api.starts_with("patchBrowser.") => crate::patch_browse::dispatch(api, input),
         "text" => {
             let key = argument(input, "key")?;

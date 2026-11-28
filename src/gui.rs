@@ -11,6 +11,7 @@ use std::{
 
 mod console;
 mod dock;
+pub(crate) use dock::key_regression::run as keys_regression;
 pub(crate) use dock::regression::run as dock_regression;
 pub(crate) use dock::script_regression::run as dock_script_ui_regression;
 mod dialog;
@@ -208,9 +209,32 @@ impl Editor {
         if let Err(error) = &result {
             self.error(crate::i18n::t("stage_script"), error.clone());
         }
-        self.script_editor.executed(request);
+        if request.scope != crate::keybinds::SCRIPT_SCOPE {
+            self.script_editor.executed(request);
+        }
         self.refresh_timeline();
         result
+    }
+    /// Runs the functions `repl.keys.bind` gave the keys pressed in this frame.
+    fn run_key_scripts(&mut self, ctx: &egui::Context) {
+        let names = ctx.input_mut(crate::keybinds::take_script_presses);
+        let ready = self
+            .control
+            .as_ref()
+            .is_some_and(|control| control.ready && !control.stopping)
+            && !self.startup.is_preparing()
+            && !self.snippet_execution.is_pending();
+        if !ready {
+            return;
+        }
+        for name in names {
+            let request = crate::keybinds::script_request(&name);
+            if self.snippet_execution.presents(&request) {
+                self.snippet_execution.queue(request);
+                return;
+            }
+            let _ = self.execute(request);
+        }
     }
 }
 impl eframe::App for Editor {
@@ -220,6 +244,7 @@ impl eframe::App for Editor {
         self.script_editor.tab_to_editor(&ctx);
         self.settings.shortcut(&ctx);
         self.help.shortcut(&ctx, self.script_editor.snippets_open());
+        self.run_key_scripts(&ctx);
         self.run_queued(&ctx);
         self.player_download.update();
         // Present the overlay before synchronous native initialization begins.

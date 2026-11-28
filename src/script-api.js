@@ -157,6 +157,26 @@ repl.power = {setMinProcessorState: function(percent) {
         if (errors.length > 0) throw new Error(errors.join('\n'));
     };
 })();
+// bind(key, fn): pressing key (written as in keybinds.toml) calls fn wherever the focus
+// is, as a run whose result and error the console shows; binding the key again replaces
+// fn. A key that a command of keybinds.toml uses is an error.
+// config(): keybinds.toml as read at startup: each command's key, and scripts ([scripts]).
+(() => {
+    const handlers = new Map();
+    repl.keys = {
+        bind: function(key, fn) {
+            if (typeof fn !== 'function') throw new Error('repl.keys.bind: fn must be a function');
+            handlers.set(__replCall('keys.bind', {key:key}), fn);
+        },
+        config: function() { return __replCall('keys.config', {}); }
+    };
+    // The host calls this with the name keys.bind returned, when that key is pressed.
+    globalThis.__replRunKey = function(name) {
+        const fn = handlers.get(name);
+        if (!fn) throw new Error('repl.keys: ' + name + ' is not bound');
+        return fn();
+    };
+})();
 // The track's volume as a linear gain (1 keeps the level, 0 silences it), as uapmd's track slider sets it.
 // setVolume also takes decibels as a string such as '-3dB'.
 // Both return the volume the track now has, as a linear gain.

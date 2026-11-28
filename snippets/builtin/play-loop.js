@@ -9,5 +9,6 @@
         uapmd.sequencer.getSampleRate() * 60 / uapmd.timeline.getState().tempo * 4);
     repl.timeline.setLoop(0, Math.max(1, Math.ceil(endSamples || emptyTimelineSamples)));
     uapmd.audio.setEngineEnabled(true);
-    uapmd.sequencer.startPlayback();
+    if (uapmd.timeline.getState().isPlaying) uapmd.sequencer.jumpPlayback(0);
+    else uapmd.sequencer.startPlayback();
 }
