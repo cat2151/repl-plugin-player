@@ -3,7 +3,7 @@
 #                    Skips build and publish when the three commits equal those of the published release.
 # workflow_dispatch: always builds. publish=false builds and checks only, keeping the zip as a run artifact;
 #                    publish=true also publishes.
-# See docs/adr/0023-static-crt-release-build.md.
+# See ../cat-plugin-player/docs/adr/0023-static-crt-release-build.md.
 name: Release
 
 on:
@@ -21,8 +21,8 @@ permissions:
   contents: read
 
 env:
-  # The uapmd commit that the local build was checked against (ADR 0021).
-  UAPMD_VERIFIED_SHA: 9f708d3300b4a6f8109eee0fadccf286db8b7a45
+  # The uapmd commit that the local build was checked against (ADR 0031).
+  UAPMD_VERIFIED_SHA: 277aa85468795267d6cf64953af587ea18c7f653
 
 jobs:
   # Fix the sibling commits once, so that the build and the notes use the same sources.

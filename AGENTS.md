@@ -2,6 +2,7 @@
 - AIはREADME.mdとREADME.ja.mdに追記しないこと。理由: README.mdとREADME.ja.mdは人間向けで、機能の挙動はコード・help・ADRが持つ
 - ビルドロック回避を含め、`--target-dir`等で既定以外のtargetディレクトリを作成・使用することを禁止
 - 互換性不要、まだこのアプリはuserが作者一人のプロトタイピング段階である
+- 兄弟repoの crate は手元の checkout を参照する（`path = "../..."`・`[patch]`）。git 参照へ切り替えない。理由: 兄弟repo同士を local で連携させて開発し、落ち着いてからそれぞれ commit する運用である
 - もしrelease build時にビルド対象アプリが起動中のせいでrelease buildが落ちたら、アプリをkillしてrelease buildをしなおすこと
 
 # ビルドエラー時の変更境界

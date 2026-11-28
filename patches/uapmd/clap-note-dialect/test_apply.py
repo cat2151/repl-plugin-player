@@ -51,7 +51,9 @@ assert snapshot(source) == crlf and snapshot(output) == first, "CRLF input was n
 header = (output / "PluginFormatCLAP.hpp").read_text(encoding="utf-8")
 assert "inputNoteDialects" in header and "has_note_ports" in header and "inputNotePort" in header
 events = (output / "PluginInstanceCLAP.Events.cpp").read_text(encoding="utf-8")
-assert events.count("owner->inputNotePort(group)") == 3, "note/CC must map the UMP group to a note port"
+assert events.count("owner->inputNotePort(group)") == 4, "note/CC/tuning must map the UMP group to a note port"
+assert "evt->port_index = group;" not in events, "an event still takes the UMP group as its port"
+assert "addTuningExpression(group, channel, note, offset);" in events, "the note-on's Pitch 7.9 tuning was dropped"
 assert "inputNoteDialects(group)" not in events, "a group past the plugin's note ports drops the event"
 for name in names:
     assert str(output.resolve().as_posix()) in (output / name).read_text(encoding="utf-8")

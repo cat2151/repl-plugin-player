@@ -48,12 +48,12 @@ globalThis.patchTimbre = (() => {
         return apart / scale;
     }
 
-    // Loaded states apply on some plugins' audio thread, so this waits with
-    // the engine running before the note.
-    function sound(track, pluginId, patch) {
+    // Loaded states apply on some plugins' audio thread, so this waits `settle`
+    // ms with the engine running before the note.
+    function sound(track, pluginId, patch, settle = 500) {
         repl.processEvents();
         const {instanceId} = include('builtin/lib/patch.js').use({track, format:'CLAP', pluginId, patch});
-        wait(500);
+        wait(settle);
         return profile(instanceId);
     }
 
@@ -68,20 +68,23 @@ globalThis.patchTimbre = (() => {
         return result;
     }
 
-    function differ(track, pluginId, first, second) {
-        return compare(pluginId, patch => sound(track, pluginId, patch), first, second);
+    function differ(track, pluginId, first, second, settle) {
+        return compare(pluginId, patch => sound(track, pluginId, patch, settle), first, second);
     }
 
     // The track's instrument through the effect `plugin` (its name) with each
     // preset {preset, value}; the note's tail after release is part of the output.
-    function effectDiffer(track, plugin, first, second) {
+    // Through a distortion the level of the instrument's attack varies from note
+    // to note, which a long `held` dilutes; a reverb's presets differ in the tail,
+    // which a long `released` brings out.
+    function effectDiffer(track, plugin, first, second, held = 400, released = 1200) {
         const instrument = include('builtin/lib/plugins.js').instrumentOn(track);
         assert(instrument >= 0, `Track ${track} has no instrument`);
         return compare(plugin, ({preset, value}) => {
             repl.processEvents();
             include('builtin/lib/effect.js').use({format:'CLAP', plugin, preset, value, track});
             wait(500);
-            return profile(instrument, 400, 1200);
+            return profile(instrument, held, released);
         }, first, second);
     }
 
@@ -136,24 +139,27 @@ globalThis.patchTimbre = (() => {
 {
     const instrumentTrack = 0;
     const file = preset => ({preset, value:preset});
-    patchTimbre.effectDiffer(instrumentTrack, 'Surge XT Effects',
-        file('Distortion/Crunchy.srgfx'), file('Distortion/Overdrive.srgfx'));
-    patchTimbre.effectDiffer(instrumentTrack, 'Dragonfly Hall Reverb',
-        {preset:'', value:'Bright Room'}, {preset:'', value:'Great Hall'});
-    patchTimbre.effectDiffer(instrumentTrack, 'TONE3000',
-        {preset:'Factory/Ampeg Bass Drive.t3kpreset', value:'Factory/Ampeg Bass Drive'},
-        {preset:'Factory/Matchless Crunch.t3kpreset', value:'Factory/Matchless Crunch'});
+    [
+        patchTimbre.effectDiffer(instrumentTrack, 'Surge XT Effects',
+            file('Distortion/Crunchy.srgfx'), file('Distortion/Overdrive.srgfx'), 1200),
+        patchTimbre.effectDiffer(instrumentTrack, 'Dragonfly Hall Reverb',
+            {preset:'', value:'Bright Room'}, {preset:'', value:'Great Hall'}, 400, 2400),
+        patchTimbre.effectDiffer(instrumentTrack, 'TONE3000',
+            {preset:'Factory/Ampeg Bass Drive.t3kpreset', value:'Factory/Ampeg Bass Drive'},
+            {preset:'Factory/Matchless Crunch.t3kpreset', value:'Factory/Matchless Crunch'}),
+    ];
 }
 
 // %% Floe on a new track
-// Floe loads its preset into the instance with its own extension, after `use` returns.
+// Floe loads its preset into the instance with its own extension, after `use` returns;
+// a first instance starts sounding about 0.6 s later.
 {
     const job = uapmd.sequencer.addTrack();
     e2e.assert(job.state === 'completed', `addTrack did not add a track: ${JSON.stringify(job)}`);
     const newTrack = uapmd.sequencer.getTrackInfos().length - 1;
     patchTimbre.differ(newTrack, 'com.floe-audio.floe',
         'Celtic Harp Factory Presets/Realistic Celtic Harp.floe-preset',
-        'Ocarina Factory Presets/Real Ocarina.floe-preset');
+        'Ocarina Factory Presets/Real Ocarina.floe-preset', 1500);
 }
 
 // %% Dexed on a new track

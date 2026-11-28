@@ -1,15 +1,17 @@
 # CLAP SysEx input
 
-Validated upstream: `9f708d3300b4a6f8109eee0fadccf286db8b7a45`.
+Validated upstream: `277aa85468795267d6cf64953af587ea18c7f653`.
 
 ## Cause
 
-A CLAP instance's input events are made only by `ump_input_dispatcher.process`
-(`source/remidy/src/clap/PluginInstanceCLAP.cpp`) and by parameter changes.
-`TypedUmpInputDispatcher::process` (`source/remidy/src/UmpInputDispatcher.cpp`)
-handles UTILITY, MIDI1 and MIDI2 messages only, so a UMP SysEx7 message never
-reaches the plugin, and there is no other way to put a `CLAP_EVENT_MIDI_SYSEX`
-into the next `process()`.
+UAPMD converts a UMP SysEx7 message sent to an instance
+(`TypedUmpInputDispatcher::process`, `source/remidy/src/UmpInputDispatcher.cpp`)
+into `CLAP_EVENT_MIDI_SYSEX` (`onSysEx7`,
+`source/remidy/src/clap/PluginInstanceCLAP.Events.cpp`). That path takes an
+instance ID (`SequencerEngine::enqueueUmp`). The bridge sends a voice to a
+`clap_plugin*`, including an instance no track holds (`repl_fresh_plugin`), and
+UAPMD has no way to put a `CLAP_EVENT_MIDI_SYSEX` into the next `process()` of
+a `clap_plugin*`.
 
 ## Repair
 
@@ -67,8 +69,10 @@ UAPMD revision and this document. Compare the generated file with upstream
 
 ## Removal
 
-Remove the include line and this directory when UAPMD can deliver SysEx to a
-CLAP instance (UMP SysEx7 converted to `CLAP_EVENT_MIDI_SYSEX`, or an API that
-queues input events for the next `process()`), and switch the bridge to that.
+Remove the include line and this directory when the bridge sends the voice
+through UAPMD's SysEx7 input (`SequencerEngine::enqueueUmp`) for every instance
+it sends to, and `python scripts/e2e.py patch-timbre` and
+`python scripts/e2e.py evolve-timbre` pass without this repair. The app sends
+no UMP SysEx7, so the two paths never deliver the same message.
 
 Report status: **未報告**; draft: [UPSTREAM_REPORT.md](UPSTREAM_REPORT.md).

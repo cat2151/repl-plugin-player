@@ -7,9 +7,9 @@ import sys
 
 HERE = Path(__file__).resolve().parent
 BASELINES = {
-    "PluginFormatCLAP.hpp": "db8a5833c267cc56c327a224d103a7a8339c634e316f2a71aaa02e3d57e976fa",
-    "PluginInstanceCLAP.cpp": "36fcc7580aab99a90d6a319778ad2d794494ada8453e613866010f1d5d978cbc",
-    "PluginInstanceCLAP.Events.cpp": "cb58643e1077d3f202c202ec46cb2741ef39f46037fd15cea62abf4a774feb26",
+    "PluginFormatCLAP.hpp": "63331386b59150aef0edfe54d52df2c9d52bafb17221ca69192398d2ab19c530",
+    "PluginInstanceCLAP.cpp": "d44c1284db6eb9d5a9200cd9517c44925459f28e42672806098c6671fcc92796",
+    "PluginInstanceCLAP.Events.cpp": "ec853984db72e6a496f2cd07dc84a869fccaf6a10c81ef7b4e084b703013c3f3",
 }
 
 def generate(source, output, metadata=None):
@@ -60,18 +60,26 @@ def generate(source, output, metadata=None):
              "            activated_ = plugin->activate(configuration.sampleRate, 1, configuration.bufferSizeInSamples);")
         name = "PluginInstanceCLAP.Events.cpp"
         for method, call in [("onNoteOn", "note"), ("onNoteOff", "note"), ("onCC", "cc")]:
-            pattern = rf"(    void PluginInstanceCLAP::CLAPUmpInputDispatcher::{method}\([^\n]+\) \{{)\n.*?\n    \}}"
+            head = rf"(    void PluginInstanceCLAP::CLAPUmpInputDispatcher::{method}\([^\n]+\) \{{)\n"
             if method == "onCC":
+                pattern, tail = head + r".*?\n    \}", "\n    }"
                 args = "port, channel, index, data, timestamp()"
             else:
+                # Only the native note event is replaced; what follows it (the note's tuning) is kept.
+                pattern, tail = head + r".*?\n        evt->velocity = \(double\) velocity / UINT16_MAX;", ""
                 args = f"{'true' if method == 'onNoteOn' else 'false'}, port, channel, note, velocity, timestamp()"
             replacement = (rf"\1\n        const auto port = owner->inputNotePort(group);\n"
                            rf"        uh::clap_dialect::{call}([&](size_t size) -> void* {{\n"
                            "            return owner->events_in->tryAllocate(alignof(void*), size);\n"
-                           "        }, owner->inputNoteDialects(port), " + args + ");\n    }")
+                           "        }, owner->inputNoteDialects(port), " + args + ");" + tail)
             texts[name], count = re.subn(pattern, replacement, texts[name], flags=re.S)
             if count != 1:
                 raise ValueError(f"{name}: {method}: expected one method, found {count}")
+        # A note's tuning goes to the port its note went to.
+        once(name, "        evt->port_index = group;\n        evt->channel = channel;\n"
+                   "        evt->expression_id = CLAP_NOTE_EXPRESSION_TUNING;",
+             "        evt->port_index = static_cast<int16_t>(owner->inputNotePort(group));\n"
+             "        evt->channel = channel;\n        evt->expression_id = CLAP_NOTE_EXPRESSION_TUNING;")
         # Policy constants and the group-to-port helper are used in the class declaration.
         texts["PluginFormatCLAP.hpp"] = (f'#include "{(HERE / "note_dialect.h").as_posix()}"\n'
                                          + texts["PluginFormatCLAP.hpp"])

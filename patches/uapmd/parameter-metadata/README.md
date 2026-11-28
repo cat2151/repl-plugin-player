@@ -1,6 +1,6 @@
 # CLAP parameter metadata
 
-UAPMD 9f708d3300b4a6f8109eee0fadccf286db8b7a45 hardcodes public JS
+UAPMD 277aa85468795267d6cf64953af587ea18c7f653 hardcodes public JS
 `isReadonly=false`; its CLAP `PluginParameter` constructor does not preserve
 `CLAP_PARAM_IS_READONLY`. Script controls must not infer writability from
 automatable or readable. CLAP permits live user changes regardless of automatable.

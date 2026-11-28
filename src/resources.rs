@@ -181,9 +181,23 @@ pub fn extension_names() -> Vec<String> {
     names
 }
 
+/// The Cargo profile directory of an exe in `directory`. Test executables sit below it,
+/// in `deps` or in `build/<package>/<hash>/out`, depending on the Cargo version.
+fn profile_directory(directory: &Path) -> &Path {
+    let named = |path: &Path, name: &str| path.file_name().is_some_and(|n| n == name);
+    if named(directory, "deps") {
+        return directory.parent().unwrap_or(directory);
+    }
+    match directory.ancestors().nth(3) {
+        Some(build) if named(directory, "out") && named(build, "build") => {
+            build.parent().unwrap_or(directory)
+        }
+        _ => directory,
+    }
+}
+
 /// In the repository, `<name>.dll` from the Cargo profile directory this exe was built
-/// into (test executables sit one level below it, in `deps`); elsewhere, the embedded
-/// copy.
+/// into; elsewhere, the embedded copy.
 pub fn extension(name: &str) -> Result<PathBuf, String> {
     let file = format!("{name}.dll");
     if source_root().is_none() {
@@ -194,9 +208,25 @@ pub fn extension(name: &str) -> Result<PathBuf, String> {
         return deploy(&file, bytes);
     }
     let directory = executable_directory()?;
-    let profile = match directory.file_name() {
-        Some(name) if name == "deps" => directory.parent().unwrap_or(&directory),
-        _ => &directory,
-    };
-    Ok(profile.join(file))
+    Ok(profile_directory(&directory).join(file))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::profile_directory;
+    use std::path::Path;
+
+    #[test]
+    fn test_executables_find_the_profile_directory() {
+        for exe in [
+            "D:/r/target/release",
+            "D:/r/target/release/deps",
+            "D:/r/target/release/build/repl-plugin-player/0123abcd/out",
+        ] {
+            assert_eq!(
+                profile_directory(Path::new(exe)),
+                Path::new("D:/r/target/release")
+            );
+        }
+    }
 }

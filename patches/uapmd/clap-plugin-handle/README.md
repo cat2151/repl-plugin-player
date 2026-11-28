@@ -1,6 +1,6 @@
 # CLAP plugin handle
 
-Validated upstream: `9f708d3300b4a6f8109eee0fadccf286db8b7a45`.
+Validated upstream: `277aa85468795267d6cf64953af587ea18c7f653`.
 
 ## Cause
 

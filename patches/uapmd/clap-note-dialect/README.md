@@ -1,9 +1,10 @@
 # CLAP input note dialect repair
 
-UAPMD `9f708d3300b4a6f8109eee0fadccf286db8b7a45` sends every note as a native CLAP Note event.
+UAPMD `277aa85468795267d6cf64953af587ea18c7f653` sends every note as a native CLAP Note event.
 sforzando 2.1.2.4 accepts MIDI on input port 0, so an SFZ state can restore correctly while playback remains silent.
 This repair reuses cat-plugin-player's existing dialect selection implementation: collect supported port dialects before activation, prefer native CLAP notes when supported, otherwise send MIDI, once per event. CC uses MIDI-capable ports.
 UAPMD gives each instance on a track its own UMP group (`SequencerTrack::findAvailableGroup`), so an instance created while another is on the track receives group 1. The group selects the note port only when the plugin has that many input note ports; otherwise the event goes to port 0, so a single-port plugin is not silenced.
+Only the note event itself is replaced: the note-on's Pitch 7.9 tuning that follows it upstream is kept, and every tuning expression (note-on and per-note pitch bend) goes to the same port as its note.
 
 `apply.py` validates normalized source SHA256s and generates all translation units sharing the changed class header under `target/shim/generated/clap-note-dialect`.
 `uapmd-host/CMakeLists.txt` includes the repair on every configure; source and generator changes trigger reconfiguration.
