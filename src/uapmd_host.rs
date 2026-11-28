@@ -79,6 +79,7 @@ impl UapmdHost {
 }
 impl Drop for UapmdHost {
     fn drop(&mut self) {
+        crate::recording::close();
         let _ = self.call(json!({"command":"close"}));
         crate::dll_wiring::disconnect();
     }

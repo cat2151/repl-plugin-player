@@ -15,6 +15,7 @@
 #include "plugin_windows.hpp"
 #include "parameter_safety.hpp"
 #include "timeline_api.hpp"
+#include "transcription_api.hpp"
 #include "timeline_view.hpp"
 #include "piano_roll_api.hpp"
 #include "project_api.hpp"
@@ -76,6 +77,7 @@ static const char* control_api(const char* request);
 static bool session_open();
 static const char* sequence_api(const char* request);
 static const char* evolve_api(const char* request);
+static const char* transcription_api(const char* request);
 extern "C" const char* repl_localized(const char* key) {
     static thread_local std::string value;
     value = key; // Standalone native harnesses register the same catalog callback.
@@ -126,6 +128,7 @@ extern "C" const char* repl_script_api(const char* request) {
     if (auto result = evolve_api(request)) return result;
     if (auto result = sequence_api(request)) return result;
     if (auto result = timeline_api(request, session_open())) return result;
+    if (auto result = transcription_api(request)) return result;
     if (auto result = control_api(request)) return result;
     if (auto result = piano_roll_api(request, session_open())) return result;
     if (auto result = project_api(request, session_open())) return result;
@@ -158,6 +161,7 @@ class ControlLoop final : public remidy::EventLoop {
 };
 struct Session {
     TimelineView timeline_view;
+    PitchTranscription transcription;
     ControlLoop loop;
     remidy::EventLoop* previous{};
     bool model_created{};
@@ -284,6 +288,29 @@ std::unique_ptr<Session> session;
 std::string reply;
 }
 static bool session_open() { return session != nullptr; }
+
+static const char* transcription_api(const char* request) {
+    static thread_local std::string reply;
+    try {
+        const auto args = choc::json::parse(request);
+        const auto api = args["api"].get<std::string>();
+        if (!api.starts_with("transcription.")) return nullptr;
+        if (!session) throw std::runtime_error("No session");
+        auto& engine = *uapmd_app::AppModel::instance().sequencer().engine();
+        auto& transcription = session->transcription;
+        choc::value::Value value;
+        if (api == "transcription.start") value = transcription.start(engine.document().view());
+        else if (api == "transcription.poll") value = transcription.poll();
+        else if (api == "transcription.write")
+            transcription.write(engine, args["sourceTrackId"].get<std::string>(), args["trackId"].get<std::string>());
+        else if (api == "transcription.clear") transcription.clear();
+        else throw std::runtime_error("Unknown transcription API");
+        reply = choc::json::toString(choc::value::createObject("", "ok", true, "value", value));
+    } catch (const std::exception& error) {
+        reply = choc::json::toString(choc::value::createObject("", "ok", false, "error", error.what()));
+    }
+    return reply.c_str();
+}
 
 // The groups of `evolve.open`, on empty tracks that only evolve plays. evolve checks the rest.
 static std::vector<Evolve::Group> evolve_groups(const choc::value::ValueView& selected, uapmd::SequencerEngine& engine) {

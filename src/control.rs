@@ -149,6 +149,9 @@ impl Control {
             serde_json::from_str(reply["result"].as_str().ok_or(crate::i18n::t("m050"))?)
                 .map_err(|error| error.to_string())?;
         snapshot["view"] = reply["view"].clone();
+        if let Some(progress) = crate::recording::preview(&snapshot) {
+            snapshot["recordingProgress"] = progress;
+        }
         Ok(snapshot)
     }
     pub fn read_notes(&self) -> Result<Vec<u8>, String> {

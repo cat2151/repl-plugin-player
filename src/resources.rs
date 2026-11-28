@@ -169,8 +169,7 @@ pub fn extension_names() -> Vec<String> {
     let Some(root) = source_root() else {
         return EXTENSIONS
             .iter()
-            // The audio engine is deployed with DLL resources but has no pane.
-            .filter(|(name, _)| *name != "evolve")
+            .filter(|(name, _)| !matches!(*name, "evolve" | "recording"))
             .map(|(name, _)| (*name).to_owned())
             .collect();
     };

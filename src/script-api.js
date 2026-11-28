@@ -92,7 +92,65 @@ repl.audio = {
     // Auto gain for these live pad instances. An empty list turns it off.
     setPadAutoGain: function(instances) { return __replCall('audio.setPadAutoGain', {instances}); }
 };
-// UAPMD's self-contained archive, including MIDI and plugin states.
+(() => {
+    const task = 'microphone recording';
+    let latest = null;
+    let pending = null;
+    function clear() {
+        pending = null;
+        repl.tasks.cancel(task);
+    }
+    repl.recording = {
+        start() {
+            if (pending) throw new Error('A microphone recording is already in progress');
+            const startSeconds = uapmd.timeline.getState().playheadSamples / uapmd.sequencer.getSampleRate();
+            const {filepath: takePath} = __replCall('recording.start', {});
+            pending = {startSeconds, takePath};
+            let filepath, jobId;
+            repl.tasks.every(task, 25, () => {
+                try {
+                    if (!jobId) {
+                        const take = __replCall('recording.poll', {});
+                        if (!take) return;
+                        if (!take.filepath) { clear(); return; }
+                        pending = {...take, startSeconds};
+                        filepath = take.filepath;
+                        jobId = uapmd.sequencer.addTrack().jobId;
+                    }
+                    const job = uapmd.mutations.getJob(jobId);
+                    if (job.state === 'pending') return;
+                    uapmd.mutations.clearJob(jobId);
+                    if (job.state !== 'completed') throw new Error(job.error || 'Could not add a recording track');
+                    const {trackId} = job.result;
+                    try {
+                        __replCall('timeline.addAudioClip', {trackId, filepath,
+                            positionSamples: Math.round(startSeconds * uapmd.sequencer.getSampleRate())});
+                        latest = {trackId, filepath};
+                    } catch (error) {
+                        uapmd.sequencer.removeTrack(trackId);
+                        throw error;
+                    }
+                    clear();
+                } catch (error) {
+                    clear();
+                    if (filepath) throw new Error(String(error) + '\n' + filepath);
+                    throw error;
+                }
+            });
+        },
+        latest() { return latest; },
+        pending() { return pending; },
+        showMonitor() { __replCall('ui.recordingMonitor.show', {}); },
+        stop() { if (pending) __replCall('recording.stop', {}); },
+        cancel() {
+            latest = null;
+            if (!pending) return;
+            __replCall('recording.cancel', {});
+            clear();
+        }
+    };
+})();
+// UAPMD archive with MIDI and plugin states. Recordings reference external WAVs.
 repl.project = {
     directory: function() { return __replCall('projectsDirectory', {}); },
     saveArchive: function(filepath) { return __replCall('project.saveArchive', {filepath:filepath}); },
@@ -108,6 +166,7 @@ repl.project = {
         const previousNode = previousTrack
             && previousTrack.nodes.find(node => node.instanceId === previousId);
         const path = __replCall('project.load', {filepath:filepath});
+        repl.recording.cancel();
         delete globalThis.loopParts;
         // Instances are recreated, but document track/node identities survive a load.
         const tracks = uapmd.sequencer.getTrackInfos();

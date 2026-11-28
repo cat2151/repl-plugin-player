@@ -21,6 +21,7 @@ mod panes;
 mod patch;
 mod performance;
 mod player_download;
+mod recording_monitor;
 mod settings;
 mod snippet_execution;
 mod startup;
@@ -296,6 +297,7 @@ impl eframe::App for Editor {
         }
         let preparing = self.startup.is_preparing() || self.snippet_execution.is_pending();
         self.dock(ui, preparing);
+        recording_monitor::show(&ctx);
         self.startup.show_overlay(&ctx);
         self.snippet_execution.show_overlay(&ctx);
         self.settings.show(&ctx, &mut self.extensions);

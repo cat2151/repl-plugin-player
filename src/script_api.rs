@@ -103,6 +103,7 @@ fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
 
 fn dispatch(input: &Value) -> Result<Value, String> {
     match argument(input, "api")? {
+        api if api.starts_with("recording.") => crate::recording::dispatch(api),
         api if api.starts_with("patchJob.") => crate::patch_jobs::dispatch(api, input),
         "patchCatalog" => {
             crate::patch_catalog::list(argument(input, "role")?, argument(input, "kind")?)

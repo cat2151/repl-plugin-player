@@ -50,7 +50,20 @@ include("${REPL_PROJECT_ROOT}/patches/uapmd/evolve-graphs/apply.cmake")
 include("${REPL_PROJECT_ROOT}/patches/uapmd/master-scope/apply.cmake")
 include("${REPL_PROJECT_ROOT}/patches/uapmd/clap-plugin-handle/apply.cmake")
 include("${REPL_PROJECT_ROOT}/patches/uapmd/clap-sysex-input/apply.cmake")
-add_library(uapmd_host SHARED uapmd_host.cpp)
+# Share the estimators between the pitch overlay and UAPMD's MIDI 2.0 transcription.
+set(UAPMD_MIR_DIR "${UAPMD_DIR}/source/uapmd-mir/src")
+set(UAPMD_PITCH_DIR "${UAPMD_MIR_DIR}/pitch-detection")
+add_library(uapmd_host SHARED
+    uapmd_host.cpp
+    pitch_api.cpp
+    "${UAPMD_MIR_DIR}/PitchTranscription.cpp"
+    "${UAPMD_MIR_DIR}/NoteClipWriter.cpp"
+    "${UAPMD_PITCH_DIR}/autocorrelation.cpp"
+    "${UAPMD_PITCH_DIR}/parabolic_interpolation.cpp"
+    "${UAPMD_PITCH_DIR}/HmmStub.cpp"
+    "${CPM_PACKAGE_pitch_detection_SOURCE_DIR}/src/mpm.cpp"
+    "${CPM_PACKAGE_pitch_detection_SOURCE_DIR}/src/yin.cpp")
+target_include_directories(uapmd_host PRIVATE "${UAPMD_MIR_DIR}" "${UAPMD_PITCH_DIR}" "${CPM_PACKAGE_pocketfft_SOURCE_DIR}")
 target_link_libraries(uapmd_host PRIVATE uapmd-app-model remidy-gui ResEmbed)
 execute_process(COMMAND git -C "${UAPMD_DIR}" rev-parse HEAD
     OUTPUT_VARIABLE UAPMD_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)

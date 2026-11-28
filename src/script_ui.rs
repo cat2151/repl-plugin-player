@@ -39,6 +39,7 @@ pub struct Dialog {
 #[derive(Default)]
 struct Registry {
     enabled: bool,
+    recording_monitor: bool,
     revision: u64,
     windows: BTreeMap<String, Window>,
     dialogs: VecDeque<Dialog>,
@@ -49,6 +50,10 @@ pub fn enable(enabled: bool) {
     surface::clear();
     REGISTRY.with_borrow_mut(|registry| {
         registry.enabled = enabled;
+        if registry.recording_monitor {
+            crate::recording::close_monitor();
+        }
+        registry.recording_monitor = false;
         registry.windows.clear();
         registry.dialogs.clear();
     });
@@ -120,6 +125,13 @@ pub fn dispatch(api: &str, input: &Value) -> Result<Value, String> {
             return Err(t("ui_gui_only").into());
         }
         match api {
+            "ui.recordingMonitor.show" => {
+                if !registry.recording_monitor {
+                    crate::recording::open_monitor()?;
+                }
+                registry.recording_monitor = true;
+                Ok(Value::Null)
+            }
             "ui.show" => {
                 let mut window = definition(&input["definition"])?;
                 if registry.windows.len() >= 32 && !registry.windows.contains_key(&window.id) {
@@ -156,6 +168,15 @@ pub fn dispatch(api: &str, input: &Value) -> Result<Value, String> {
             _ => Err(t("ui_type").into()),
         }
     })
+}
+
+pub fn recording_monitor_open() -> bool {
+    REGISTRY.with_borrow(|registry| registry.recording_monitor)
+}
+
+pub fn close_recording_monitor() {
+    REGISTRY.with_borrow_mut(|registry| registry.recording_monitor = false);
+    crate::recording::close_monitor();
 }
 
 /// Every registered window, copied so that no borrow is held while entering JS.

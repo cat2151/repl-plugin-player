@@ -11,6 +11,25 @@ fn snapshot() -> Value {
 }
 
 #[test]
+fn recorded_audio_uses_clip_path_offset_and_tempo_changes() {
+    let mut data = snapshot();
+    data["tracks"][1]["clips"] = json!([{
+        "clipType": "audio", "filepath": "X:/recordings/take.wav", "positionSamples": 24000,
+        "durationSamples": 96000, "sourceOffsetSamples": 12000
+    }]);
+    data["view"]["tempos"] = json!([{"seconds": 0.0, "bpm": 120}, {"seconds": 1.0, "bpm": 60}]);
+    let view = project(&data);
+    let clip = &view.tracks[0].clips[0];
+    let audio = clip.audio.as_ref().unwrap();
+    assert_eq!(audio.path, std::path::Path::new("X:/recordings/take.wav"));
+    assert_eq!((clip.start, clip.end), (1.0, 3.5));
+    assert_eq!(audio.source_seconds(1.0), 0.25);
+    assert_eq!(audio.source_seconds(2.0), 0.75);
+    assert_eq!(audio.source_seconds(3.0), 1.75);
+    assert_eq!(audio.source_seconds(3.5), 2.25);
+}
+
+#[test]
 fn live_sequence_projects_one_pass_without_creating_document_clips() {
     let mut data = snapshot();
     data["sequence"] = json!({"track":0.0,"steps":[[48.0,52.0],[50,53]],"beats":4,"gate":1});

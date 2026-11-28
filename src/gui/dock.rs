@@ -377,10 +377,13 @@ impl Editor {
             .filter(|control| control.ready)
             .and_then(|control| control.read_notes().ok())
             .unwrap_or_default();
-        let projected = self
-            .timeline
-            .as_ref()
-            .map(crate::timeline::projection::project);
+        let projected = self.timeline.as_ref().map(|snapshot| {
+            if let Some(progress) = crate::recording::preview(snapshot) {
+                crate::timeline::projection::project_with_recording(snapshot, &progress)
+            } else {
+                crate::timeline::projection::project(snapshot)
+            }
+        });
         let ctx = ui.ctx().clone();
         let windows = crate::script_ui::snapshot();
         self.script_ui.retain(&windows);

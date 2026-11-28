@@ -29,6 +29,7 @@ mod patch_state;
 mod piano_roll_e2e;
 mod player_download;
 mod preparation;
+mod recording;
 mod resources;
 mod scope;
 mod scope_boundary;

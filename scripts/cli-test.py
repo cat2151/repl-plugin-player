@@ -144,8 +144,10 @@ def builtins():
     # E2E patch-browse and browser-change cover those flows with a stand-in player.
     waits_for_person = {'try-patch-browse', 'try-change-patch', 'try-change-effect',
                         'easy-change-patch', 'easy-change-effect'}
+    needs_microphone = {'start-recording', 'stop-recording'}
+    gui_only = {'show-recording-monitor'}
     names = sorted(path.stem for path in (ROOT / 'snippets/builtin').glob('*.js')
-                   if path.stem not in waits_for_person)
+                   if path.stem not in waits_for_person | needs_microphone | gui_only)
     assert names
     session = Session(seconds=600)
     failed = False

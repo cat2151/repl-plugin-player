@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 # The pane and audio-engine DLLs this repository holds; build.rs embeds these. Extensions
 # cloned into `extensions/` from other repositories are not embedded.
-BUNDLED = ["builtin", "evolve"]
+BUNDLED = ["builtin", "evolve", "recording"]
 EMBEDDED = ROOT / "build/out/extensions"
 
 

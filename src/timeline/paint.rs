@@ -1,10 +1,21 @@
 use super::projection::{Clip, Track, View};
+use super::{audio, RECORDING_COLOR};
 use eframe::egui::{self, Align2, Color32, FontId, Rect, Sense, Stroke, StrokeKind};
 
 const KEYS: f32 = 44.0;
 const SEMITONE: f32 = 10.0;
 const HEADER: f32 = 26.0;
 const RULER: f32 = 24.0;
+const AUDIO_HEIGHT: f32 = 44.0;
+const AUDIO_COLOR: Color32 = Color32::from_rgb(48, 170, 169);
+
+fn track_height(track: &Track) -> f32 {
+    if track.audio_only() {
+        AUDIO_HEIGHT
+    } else {
+        (track.high - track.low + 1) as f32 * SEMITONE
+    }
+}
 
 pub fn pitch_name(pitch: u8) -> String {
     format!(
@@ -20,6 +31,11 @@ pub fn show(ui: &mut egui::Ui, view: &View) {
     let fit = ((ui.available_width() - KEYS - 12.0).max(40.0) / view.end as f32).clamp(2.0, 160.0);
     ui.horizontal(|ui| {
         ui.heading(crate::i18n::t("m002"));
+        if view.recording {
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(15.0, 18.0), Sense::hover());
+            ui.painter()
+                .circle_filled(rect.center(), 5.0, RECORDING_COLOR);
+        }
         if ui
             .small_button("−")
             .on_hover_text(crate::i18n::t("timeline_zoom_out"))
@@ -50,12 +66,13 @@ pub fn show(ui: &mut egui::Ui, view: &View) {
         }
     });
     let scale = zoom.unwrap_or(fit);
+    let waveforms = audio::Cache::for_view(ui, view);
     let width = (KEYS + view.end as f32 * scale).max(ui.available_width() - 12.0);
     let height = RULER
         + view
             .tracks
             .iter()
-            .map(|t| HEADER + (t.high - t.low + 1) as f32 * SEMITONE + 8.0)
+            .map(|track| HEADER + track_height(track) + 8.0)
             .sum::<f32>();
     egui::ScrollArea::both()
         .id_salt("piano_rolls")
@@ -73,18 +90,50 @@ pub fn show(ui: &mut egui::Ui, view: &View) {
             let plot = painter.with_clip_rect(plot_clip);
             let x = |beat: f64| rect.left() + KEYS + beat as f32 * scale;
             let mut top = rect.top() + RULER;
+            let reveal_id = id.with("recording_revealed");
+            let reveal = view.latest_recording.as_ref().filter(|(_, path)| {
+                ui.data(|data| data.get_temp::<String>(reveal_id))
+                    .as_deref()
+                    != Some(path)
+            });
             for track in &view.tracks {
-                let h = (track.high - track.low + 1) as f32 * SEMITONE;
                 let roll = Rect::from_min_size(
                     egui::pos2(x(0.0), top + HEADER),
-                    egui::vec2(width - KEYS, h),
+                    egui::vec2(width - KEYS, track_height(track)),
                 );
-                draw_track(&plot, track, roll, &x, &response);
+                draw_track(
+                    &plot,
+                    track,
+                    roll,
+                    &x,
+                    &response,
+                    &mut waveforms.lock().unwrap(),
+                );
                 let keys = Rect::from_min_max(
                     egui::pos2(pinned_left, roll.top()),
                     egui::pos2(pinned_left + KEYS, roll.bottom()),
                 );
-                draw_keys(&painter, track, keys);
+                if !track.audio_only() {
+                    draw_keys(&painter, track, keys);
+                }
+                if let Some((_, path)) = reveal.filter(|(track_id, _)| *track_id == track.id) {
+                    if let Some(clip) = track.clips.iter().find(|clip| clip.audio.is_some()) {
+                        let start = x(clip.start);
+                        let preview = Rect::from_min_max(
+                            egui::pos2(start - KEYS, (top - RULER).max(rect.top())),
+                            egui::pos2(
+                                (start + 32.0).min(x(clip.end)).max(start + 1.0),
+                                roll.bottom(),
+                            ),
+                        );
+                        ui.scroll_to_rect_animation(
+                            preview,
+                            None,
+                            egui::style::ScrollAnimation::none(),
+                        );
+                        ui.data_mut(|data| data.insert_temp(reveal_id, path.clone()));
+                    }
+                }
                 let header = Rect::from_min_max(
                     egui::pos2(pinned_left, top),
                     egui::pos2(rect.right(), top + HEADER),
@@ -209,6 +258,8 @@ fn label_color(background: Color32, text: Color32, gain: f32, fading_out: bool) 
 fn color(clip: &Clip) -> Color32 {
     if clip.muted {
         Color32::from_gray(110)
+    } else if clip.audio.is_some() {
+        AUDIO_COLOR
     } else {
         Color32::from_rgb(78, 156, 222)
     }
@@ -220,10 +271,18 @@ fn draw_track(
     rect: Rect,
     x: &impl Fn(f64) -> f32,
     response: &egui::Response,
+    waveforms: &mut audio::Cache,
 ) {
     if !rect.intersects(painter.clip_rect()) {
         return;
     }
+    if !track.audio_only() {
+        draw_piano_rows(painter, track, rect);
+    }
+    draw_clips(painter, track, rect, x, response, waveforms);
+}
+
+fn draw_piano_rows(painter: &egui::Painter, track: &Track, rect: Rect) {
     for pitch in track.low..=track.high {
         let y = rect.top() + (track.high - pitch) as f32 * SEMITONE;
         let row = Rect::from_min_size(
@@ -247,6 +306,16 @@ fn draw_track(
             );
         }
     }
+}
+
+fn draw_clips(
+    painter: &egui::Painter,
+    track: &Track,
+    rect: Rect,
+    x: &impl Fn(f64) -> f32,
+    response: &egui::Response,
+    waveforms: &mut audio::Cache,
+) {
     let mut hover = None;
     for clip in &track.clips {
         let window = Rect::from_min_max(
@@ -254,6 +323,10 @@ fn draw_track(
             egui::pos2(x(clip.end), rect.bottom()),
         );
         let tint = color(clip);
+        if let Some(audio) = &clip.audio {
+            audio::draw(painter, window, tint, clip, audio, waveforms);
+            continue;
+        }
         painter.rect_stroke(
             window,
             2.0,

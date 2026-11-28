@@ -1,0 +1,13 @@
+[package]
+name = "repl-recording"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "recording"
+crate-type = ["cdylib"]
+
+[dependencies]
+cpal = "0.17.3"
+hound = "3.5.1"
+serde_json = "1"

@@ -1,5 +1,6 @@
 use super::notes::notes_at;
 use serde_json::Value;
+use std::path::PathBuf;
 
 pub struct Note {
     pub pitch: u8,
@@ -15,7 +16,35 @@ pub struct Clip {
     pub start: f64,
     pub end: f64,
     pub muted: bool,
+    pub audio: Option<Audio>,
     pub notes: Vec<Note>,
+}
+
+pub struct Audio {
+    pub path: PathBuf,
+    pub live_frames: Option<u32>,
+    points: Vec<(f64, f64)>, // timeline beat, source seconds
+}
+
+impl Audio {
+    pub fn source_seconds(&self, beat: f64) -> f64 {
+        let index = self
+            .points
+            .partition_point(|(position, _)| *position <= beat)
+            .clamp(1, self.points.len() - 1);
+        let (left, from) = self.points[index - 1];
+        let (right, to) = self.points[index];
+        if right <= left {
+            return from;
+        }
+        from + (to - from) * ((beat - left) / (right - left)).clamp(0.0, 1.0)
+    }
+}
+
+impl Track {
+    pub(crate) fn audio_only(&self) -> bool {
+        !self.clips.is_empty() && self.clips.iter().all(|clip| clip.audio.is_some())
+    }
 }
 
 /// The sound an evolve slot holds on this track; `gain` is linear, 0 when silent.
@@ -48,6 +77,8 @@ pub struct View {
     pub end: f64,
     pub playhead: f64,
     pub playing: bool,
+    pub recording: bool,
+    pub latest_recording: Option<(String, String)>,
     pub loop_start: Option<f64>,
     pub loop_end: Option<f64>,
     pub signatures: Vec<Signature>,
@@ -108,6 +139,22 @@ impl Clock {
     fn beat(&self, seconds: f64) -> f64 {
         Self::convert(&self.segments, seconds)
     }
+
+    fn audio(&self, path: PathBuf, start: f64, end: f64, offset: f64) -> Audio {
+        let mut points = vec![(self.beat(start), offset)];
+        points.extend(
+            self.segments
+                .iter()
+                .filter(|(seconds, _, _)| start < *seconds && *seconds < end)
+                .map(|(seconds, beat, _)| (*beat, offset + seconds - start)),
+        );
+        points.push((self.beat(end), offset + end - start));
+        Audio {
+            path,
+            points,
+            live_frames: None,
+        }
+    }
 }
 
 fn project_notes(
@@ -160,6 +207,10 @@ fn sounding(slots: &Value, track: &Value) -> Option<Sounding> {
 }
 
 pub fn project(snapshot: &Value) -> View {
+    project_with_recording(snapshot, &snapshot["recordingProgress"])
+}
+
+pub fn project_with_recording(snapshot: &Value, progress: &Value) -> View {
     let metadata = &snapshot["view"];
     let state = &snapshot["state"];
     let sr = number(&snapshot["sampleRate"], 48000.0).max(1.0);
@@ -177,8 +228,9 @@ pub fn project(snapshot: &Value) -> View {
         for clip in array(&track["clips"]) {
             let position = number(&clip["positionSamples"], 0.0);
             let offset = number(&clip["sourceOffsetSamples"], 0.0);
+            let duration = number(&clip["durationSamples"], 0.0);
             let start = clock.beat(position / sr);
-            let end = clock.beat((position + number(&clip["durationSamples"], 0.0)) / sr);
+            let end = clock.beat((position + duration) / sr);
             let events = array(&info["clips"])
                 .iter()
                 .find(|c| c["clipId"] == clip["clipId"])
@@ -198,6 +250,14 @@ pub fn project(snapshot: &Value) -> View {
                 start,
                 end,
                 muted: clip["muted"] == true,
+                audio: (clip["clipType"] == "audio").then(|| {
+                    clock.audio(
+                        clip["filepath"].as_str().unwrap_or_default().into(),
+                        position / sr,
+                        (position + duration) / sr,
+                        offset / sr,
+                    )
+                }),
                 notes: project_notes(events, start, end, |sample| {
                     clock.beat((position + sample as f64 - offset) / sr)
                 }),
@@ -221,6 +281,7 @@ pub fn project(snapshot: &Value) -> View {
                 start: 0.0,
                 end: beats * steps.len() as f64,
                 muted: false,
+                audio: None,
                 notes: steps
                     .iter()
                     .enumerate()
@@ -297,7 +358,50 @@ pub fn project(snapshot: &Value) -> View {
             denominator,
         });
     }
+    let pending = &snapshot["pendingRecording"];
+    let recording =
+        pending.is_object() && pending["filepath"].is_null() && progress["running"] == true;
+    let mut latest_recording = snapshot["latestRecording"]["trackId"]
+        .as_str()
+        .zip(snapshot["latestRecording"]["filepath"].as_str())
+        .map(|(track, path)| (track.to_owned(), path.to_owned()));
+    if let Some(start) = pending["startSeconds"].as_f64() {
+        let progress = if pending["filepath"].is_string() {
+            pending
+        } else {
+            progress
+        };
+        if let Some(path) = progress["filepath"].as_str() {
+            let frames = progress["frames"].as_u64().unwrap_or_default() as u32;
+            let rate = number(&progress["sampleRate"], 0.0).max(1.0);
+            let finish = start + f64::from(frames) / rate;
+            let mut audio = clock.audio(path.into(), start, finish, 0.0);
+            audio.live_frames = Some(frames);
+            let id = path.to_owned();
+            end = end.max(clock.beat(finish));
+            latest_recording = Some((id.clone(), path.to_owned()));
+            tracks.push(Track {
+                id,
+                index: array(&snapshot["tracks"]).len(),
+                plugins: Vec::new(),
+                plugins_serial: false,
+                sounding: None,
+                clips: vec![Clip {
+                    label: String::new(),
+                    start: clock.beat(start),
+                    end: clock.beat(finish),
+                    muted: false,
+                    audio: Some(audio),
+                    notes: Vec::new(),
+                }],
+                low: 0,
+                high: 0,
+            });
+        }
+    }
     View {
+        recording,
+        latest_recording,
         tracks,
         end: end.max(4.0),
         playing: state["isPlaying"] == true,

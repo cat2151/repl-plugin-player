@@ -3,6 +3,8 @@
 (() => ({
     state: uapmd.timeline.getState(),
     sampleRate: uapmd.sequencer.getSampleRate(),
+    latestRecording: repl.recording.latest(),
+    pendingRecording: repl.recording.pending(),
     scopeTarget: repl.scope.target(),
     sequence: repl.sequence.view || null,
     evolve: (() => {
