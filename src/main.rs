@@ -16,6 +16,7 @@ mod gui;
 mod host;
 mod i18n;
 mod install;
+mod keybinds;
 mod log;
 mod min_processor_state;
 mod patch_browse;

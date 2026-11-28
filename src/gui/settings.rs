@@ -1,9 +1,9 @@
 //! The settings overlay: chooses the easy style for the next startup, registers the
 //! external editor, opens `config.toml` in it, chooses whether the layout is the
 //! auto-saved one, and turns extensions on or off for the next startup. Opened and closed
-//! by `Ctrl+,`.
+//! by the `settings` key of `keybinds.toml`.
 use crate::external_editor;
-use eframe::egui::{self, Key, Modifiers};
+use eframe::egui::{self, Key};
 use std::path::PathBuf;
 
 mod extensions;
@@ -71,17 +71,10 @@ impl Settings {
         self.focus_input = self.open;
     }
 
-    /// Consumes `Ctrl+,` before any text editor sees it, so the comma is never typed.
+    /// Consumed before any text editor sees it, so its character is never typed.
     pub fn shortcut(&mut self, ctx: &egui::Context) {
-        let pressed = ctx.input_mut(|input| {
-            let pressed = input.consume_key(Modifiers::CTRL, Key::Comma);
-            if pressed {
-                input
-                    .events
-                    .retain(|event| !matches!(event, egui::Event::Text(text) if text == ","));
-            }
-            pressed
-        });
+        let pressed = ctx
+            .input_mut(|input| crate::keybinds::consume(input, crate::keybinds::Command::Settings));
         if pressed {
             self.toggle();
         }

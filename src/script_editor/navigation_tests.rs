@@ -2,6 +2,7 @@ use super::{
     tests::{cursor, frame, page_key},
     *,
 };
+use egui::{Event, Modifiers};
 
 const CELL_KEYS: Modifiers = Modifiers {
     ctrl: true,
@@ -154,4 +155,50 @@ fn cell_navigation_scrolls_to_the_destination() {
     }
     assert_eq!((editor.primary, editor.secondary), (expected, expected));
     assert!(offset > 1000.0, "destination must be revealed: {offset}");
+}
+
+#[cfg(windows)]
+#[test]
+fn active_jis_or_us_layout_handles_physical_fallback_in_the_editor() {
+    let expected = match crate::keybinds::layout_character(Key::OpenBracket) {
+        Some('@') => [None, Some(false), Some(true)], // JIS 106/109
+        Some('[') => [Some(false), Some(true), None], // US 101/104
+        _ => return, // This regression covers the two layouts above.
+    };
+    for (physical_key, next) in [Key::OpenBracket, Key::CloseBracket, Key::Backslash]
+        .into_iter()
+        .zip(expected)
+    {
+        let ctx = egui::Context::default();
+        let mut editor = ScriptEditor::default();
+        let mut code = "// %% first\na();\n// %% middle\nb();\n// %% last\nc();".to_owned();
+        let before = code.clone();
+        let middle = code.find("// %% middle").unwrap();
+        let last = code.find("// %% last").unwrap();
+        frame(&ctx, &mut editor, &mut code, vec![], true);
+        cursor(&ctx, middle, middle);
+        // This is exactly egui-winit's event when the logical Ctrl+Alt
+        // character is unrecognized: key falls back to the US position.
+        let events = vec![Event::Key {
+            key: physical_key,
+            physical_key: Some(physical_key),
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers {
+                ctrl: true,
+                alt: true,
+                command: true,
+                ..Modifiers::NONE
+            },
+        }];
+        assert!(frame(&ctx, &mut editor, &mut code, events, true).is_none());
+        let expected = match next {
+            Some(false) => 0,
+            Some(true) => last,
+            None => middle,
+        };
+        let state = egui::TextEdit::load_state(&ctx, egui::Id::unique("script_text")).unwrap();
+        assert_eq!(state.cursor.char_range().unwrap().primary.index.0, expected);
+        assert_eq!(code, before);
+    }
 }

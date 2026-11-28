@@ -1,7 +1,7 @@
 //! Fold only the layout: the TextEdit buffer, character offsets and undo history
 //! always contain the complete script.
 use crate::execution;
-use eframe::egui::{self, text::CCursor, text::CCursorRange, text::Galley, Event, Key, Modifiers};
+use eframe::egui::{self, text::CCursor, text::CCursorRange, text::Galley, Event, Key};
 use std::{collections::BTreeSet, ops::Range, sync::Arc};
 
 #[derive(Default)]
@@ -101,7 +101,7 @@ impl Folding {
         let primary = range.primary.index.0;
         let secondary = range.secondary.index.0;
         let current = cells(text);
-        if ui.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::Period)) {
+        if ui.input_mut(|i| crate::keybinds::consume(i, crate::keybinds::Command::Fold)) {
             if let Some(cell) = current.iter().rev().find(|cell| cell.start <= primary) {
                 self.toggle(ui.ctx(), id, cell);
             }

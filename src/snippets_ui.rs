@@ -1,5 +1,6 @@
 use crate::{
     execution::{self, Scope},
+    keybinds::{self, Command},
     snippets::{Library, Snippet},
 };
 use eframe::egui;
@@ -64,9 +65,7 @@ impl SnippetsPanel {
         caret: usize,
         ready: bool,
     ) -> Option<Snippet> {
-        let shortcut = ui.input_mut(|input| {
-            input.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::P)
-        });
+        let shortcut = ui.input_mut(|input| keybinds::consume(input, Command::Snippets));
         let filter_id = egui::Id::unique("snippet_filter");
         if ui.button(crate::i18n::t("m022")).clicked() || shortcut {
             if !self.open {
@@ -79,10 +78,10 @@ impl SnippetsPanel {
         if !self.error.is_empty() && !self.open {
             ui.colored_label(ui.visuals().error_fg_color, &self.error);
         }
-        if self.open && Self::take_escape(ui.ctx()) {
+        if self.open && Self::take_close(ui.ctx()) {
             self.open = false;
         }
-        if self.open && Self::take_slash(ui.ctx()) {
+        if self.open && Self::take_filter_key(ui.ctx()) {
             ui.memory_mut(|memory| memory.request_focus(filter_id));
         }
         let mut chosen = None;
@@ -142,17 +141,17 @@ impl SnippetsPanel {
         chosen
     }
 
-    /// Arrow and page keys in the focused filter move the preview through matching
-    /// rows; Enter inserts and runs it. Consumed before the filter's TextEdit
+    /// The up/down and page keys in the focused filter move the preview through
+    /// matching rows; the run key inserts and runs it. Consumed before the filter's TextEdit
     /// would move its cursor or drop focus.
     fn keyboard(&mut self, ctx: &egui::Context, ready: bool) -> Option<Snippet> {
         let (up, down, page_up, page_down, enter) = ctx.input_mut(|input| {
             (
-                input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
-                input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
-                input.consume_key(egui::Modifiers::NONE, egui::Key::PageUp),
-                input.consume_key(egui::Modifiers::NONE, egui::Key::PageDown),
-                input.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
+                keybinds::consume(input, Command::SnippetUp),
+                keybinds::consume(input, Command::SnippetDown),
+                keybinds::consume(input, Command::SnippetPageUp),
+                keybinds::consume(input, Command::SnippetPageDown),
+                keybinds::consume(input, Command::SnippetRun),
             )
         });
         self.update_preview();
@@ -180,28 +179,22 @@ impl SnippetsPanel {
         (enter && ready && !snippet.code.trim().is_empty()).then(|| snippet.clone())
     }
 
-    /// Consumes `Escape` unless a modal (help, settings) is on top; that modal closes first.
-    fn take_escape(ctx: &egui::Context) -> bool {
+    /// Consumes the close key unless a modal (help, settings) is on top; that modal closes first.
+    fn take_close(ctx: &egui::Context) -> bool {
         ctx.memory(|memory| memory.top_modal_layer()).is_none()
-            && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+            && ctx.input_mut(|input| keybinds::consume(input, Command::SnippetClose))
     }
 
-    /// Consumes a typed `/` unless another text field (not the code editor)
-    /// has focus, where `/` is ordinary text.
-    fn take_slash(ctx: &egui::Context) -> bool {
+    /// Consumes the filter key unless another text field (not the code editor)
+    /// has focus, where that key is ordinary text.
+    fn take_filter_key(ctx: &egui::Context) -> bool {
         let typing = ctx.memory(|memory| memory.focused()).is_some_and(|id| {
             id != egui::Id::unique("script_text") && egui::TextEdit::load_state(ctx, id).is_some()
         });
         if typing {
             return false;
         }
-        ctx.input_mut(|input| {
-            let before = input.events.len();
-            input
-                .events
-                .retain(|event| !matches!(event, egui::Event::Text(text) if text == "/"));
-            input.events.len() != before
-        })
+        ctx.input_mut(|input| keybinds::consume(input, Command::SnippetFilter))
     }
 
     fn footer(&mut self, ui: &mut egui::Ui, code: &str, caret: usize) {

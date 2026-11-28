@@ -45,8 +45,10 @@ impl Layout {
 
 impl Panes<'_> {
     pub(super) fn surface(&mut self, ui: &mut egui::Ui, id: &str) {
-        if self.in_window && ui.input(|input| input.focused && input.key_pressed(egui::Key::Escape))
-        {
+        let close = |input: &mut egui::InputState| {
+            input.focused && crate::keybinds::consume(input, crate::keybinds::Command::CloseWindow)
+        };
+        if self.in_window && ui.input_mut(close) {
             surface::close(id);
             return;
         }

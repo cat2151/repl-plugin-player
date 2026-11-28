@@ -1,5 +1,5 @@
 use super::*;
-use egui::{text::CCursorRange, Event, RawInput};
+use egui::{text::CCursorRange, Event, Modifiers, RawInput};
 
 pub(super) fn frame(
     ctx: &egui::Context,

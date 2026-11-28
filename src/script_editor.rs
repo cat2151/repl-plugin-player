@@ -1,5 +1,8 @@
-use crate::execution::{self, Request, Scope};
-use eframe::egui::{self, text::CCursor, Color32, Key, Modifiers};
+use crate::{
+    execution::{self, Request, Scope},
+    keybinds::{self, Command},
+};
+use eframe::egui::{self, text::CCursor, Color32, Key};
 use std::time::{Duration, Instant};
 
 mod cell_navigation;
@@ -139,9 +142,9 @@ impl ScriptEditor {
         // Also consume them while preparing/stopping, without executing anything.
         let shortcut = if ui.memory(|m| m.has_focus(id)) {
             ui.input_mut(|input| {
-                if input.consume_key(Modifiers::CTRL, Key::Enter) {
+                if keybinds::consume(input, Command::RunCell) {
                     Some(Scope::Cell)
-                } else if input.consume_key(Modifiers::SHIFT, Key::Enter) {
+                } else if keybinds::consume(input, Command::RunLine) {
                     Some(Scope::Line)
                 } else {
                     None
@@ -170,7 +173,13 @@ impl ScriptEditor {
                 ui.memory_mut(|memory| memory.request_focus(id));
             }
         });
-        ui.small(crate::i18n::t("m015"));
+        ui.small(crate::i18n::render(
+            "m015",
+            &[
+                ("run_line", keybinds::text(Command::RunLine).into()),
+                ("run_cell", keybinds::text(Command::RunCell).into()),
+            ],
+        ));
         let size = ui.available_size();
         egui::ScrollArea::both()
             .id_salt("script_scroll")
@@ -271,7 +280,7 @@ fn page_navigation(ui: &mut egui::Ui, id: egui::Id, available_height: f32) {
     let rows = ((height / row_height).floor() as usize)
         .saturating_sub(1)
         .max(1);
-    // egui 0.37 has no PageUp/PageDown handling in TextEdit. Expand in place
+    // egui 0.37 has no page handling in TextEdit. Expand the page keys into arrows in place
     // so its native cursor, selection, scrolling and event ordering still apply.
     ui.input_mut(|input| {
         input.events = std::mem::take(&mut input.events)
@@ -279,31 +288,29 @@ fn page_navigation(ui: &mut egui::Ui, id: egui::Id, available_height: f32) {
             .flat_map(|event| {
                 if let egui::Event::Key {
                     key,
+                    physical_key,
                     pressed: true,
                     modifiers,
                     repeat,
-                    ..
                 } = &event
                 {
-                    if !modifiers.ctrl && !modifiers.alt && !modifiers.command && !modifiers.mac_cmd
-                    {
-                        let arrow = match key {
-                            Key::PageUp => Some(Key::ArrowUp),
-                            Key::PageDown => Some(Key::ArrowDown),
-                            _ => None,
-                        };
-                        if let Some(key) = arrow {
-                            return vec![
-                                egui::Event::Key {
-                                    key,
-                                    physical_key: None,
-                                    pressed: true,
-                                    repeat: *repeat,
-                                    modifiers: *modifiers,
-                                };
-                                rows
-                            ];
-                        }
+                    let page = |command| {
+                        keybinds::extra_modifiers(command, *key, *physical_key, *modifiers)
+                    };
+                    let arrow = (page(Command::PageUp).map(|extra| (Key::ArrowUp, extra)))
+                        .or_else(|| page(Command::PageDown).map(|extra| (Key::ArrowDown, extra)));
+                    // Shift added to the page key extends the selection, as Shift+arrow does.
+                    if let Some((key, modifiers)) = arrow {
+                        return vec![
+                            egui::Event::Key {
+                                key,
+                                physical_key: None,
+                                pressed: true,
+                                repeat: *repeat,
+                                modifiers,
+                            };
+                            rows
+                        ];
                     }
                 }
                 vec![event]

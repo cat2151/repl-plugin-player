@@ -2,8 +2,9 @@
 
 Runs the release executable with LOCALAPPDATA pointing at a temporary directory
 whose status.json registers a dummy editor (a .cmd that writes its argument to a
-file). Keyboard only: Ctrl+, opens the overlay with the path field focused, Tab
-moves to the "open config.toml" button and Space presses it. Then checks that the
+file). Ctrl+, opens the overlay, then UI Automation (through the accesskit tree)
+invokes the "open config.toml" button: Tab never walks focus inside a modal
+(src/script_editor/tab_focus.rs), so the keyboard cannot reach it. Then checks that the
 editor received the full path of config.toml, that config.toml was created from
 the template, and kills the process tree. The user's own files are never touched.
 """
@@ -14,16 +15,46 @@ import os
 import subprocess
 import tempfile
 import time
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EXE = ROOT / 'target' / 'release' / 'repl-plugin-player.exe'
 TITLE = 'REPL Plugin Player'
 user32 = ctypes.windll.user32
-VK_CONTROL, VK_TAB, VK_SPACE, VK_OEM_COMMA = 0x11, 0x09, 0x20, 0xBC
+VK_CONTROL, VK_OEM_COMMA = 0x11, 0xBC
 KEYEVENTF_KEYUP = 0x2
-# Path field -> Save -> close -> open config.toml.
-TABS_TO_OPEN_CONFIG = 3
+# Windows PowerShell 5.1, because pwsh lacks System.Windows.Automation.
+INVOKE_BUTTON = r'''
+param([int]$ProcessId, [string[]]$Names)
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+$A = [System.Windows.Automation.AutomationElement]
+$byName = @($Names | ForEach-Object {
+  New-Object System.Windows.Automation.PropertyCondition($A::NameProperty, $_) })
+$cond = New-Object System.Windows.Automation.AndCondition(
+  (New-Object System.Windows.Automation.PropertyCondition($A::ProcessIdProperty, $ProcessId)),
+  (New-Object System.Windows.Automation.OrCondition($byName)))
+for ($i = 0; $i -lt 30; $i++) {
+  $e = $A::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+  if ($e) { $e.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); exit 0 }
+  Start-Sleep -Milliseconds 200
+}
+exit 1
+'''
+
+
+def button_names():
+    """The button's label in every locale, since the app follows the system's."""
+    return [tomllib.loads(path.read_text(encoding='utf-8'))['settings_open_config']
+            for path in sorted((ROOT / 'locales').glob('*.toml'))]
+
+
+def invoke_button(pid, names):
+    script = f'& {{ {INVOKE_BUTTON} }} -ProcessId {pid} -Names ' + ','.join(
+        "'" + name.replace("'", "''") + "'" for name in names)
+    result = subprocess.run(['powershell.exe', '-NoProfile', '-Command', script],
+                            capture_output=True)
+    assert result.returncode == 0, f'no button named {names} in the accessibility tree'
 
 
 def find_window(pid):
@@ -78,9 +109,7 @@ def main():
             time.sleep(0.5)
             assert user32.GetForegroundWindow() == hwnd, 'window is not in the foreground'
             tap(VK_CONTROL, VK_OEM_COMMA)
-            for _ in range(TABS_TO_OPEN_CONFIG):
-                tap(VK_TAB)
-            tap(VK_SPACE)
+            invoke_button(process.pid, button_names())
             for _ in range(100):
                 if received.exists() and received.read_text(encoding='utf-8').endswith('\n'):
                     break

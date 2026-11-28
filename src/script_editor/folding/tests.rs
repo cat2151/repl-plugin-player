@@ -3,6 +3,7 @@ use crate::script_editor::{
     tests::{cursor, frame, page_key},
     ScriptEditor,
 };
+use eframe::egui::Modifiers;
 
 #[test]
 fn editing_neighbor_preserves_fold_and_navigation_reveals_hidden_body() {

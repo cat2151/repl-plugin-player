@@ -29,10 +29,11 @@ const TITLE: &str = "REPL Plugin Player";
 
 pub fn run() -> Result<(), String> {
     let config_path = config::path();
-    let (config, config_errors) = match &config_path {
+    let (config, mut config_errors) = match &config_path {
         Ok(path) => config::read(path),
         Err(error) => (config::Config::default(), vec![error.clone()]),
     };
+    config_errors.extend(crate::keybinds::load());
     let settings = settings::Settings::new(crate::status::path(), config_path);
     let auto = settings.layout_auto;
     let extensions = settings.extensions();

@@ -69,3 +69,18 @@ fn tab_in_the_snippets_filter_stays_there() {
     assert_eq!(editor.snippets().filter, "a");
     assert_eq!(code, "let a = 1;\n");
 }
+
+#[test]
+fn shift_tab_outside_the_editor_also_returns_to_it() {
+    let ctx = egui::Context::default();
+    let mut editor = crate::script_editor::ScriptEditor::default();
+    let mut code = "let a = 1;\n".to_string();
+    let script = egui::Id::unique("script_text");
+    app_frame(&ctx, &mut editor, &mut code, vec![]);
+    ctx.memory_mut(|memory| memory.surrender_focus(script));
+    let shift_tab = key(egui::Key::Tab, egui::Modifiers::SHIFT);
+    app_frame(&ctx, &mut editor, &mut code, vec![shift_tab]);
+    app_frame(&ctx, &mut editor, &mut code, vec![]);
+    assert_eq!(focused(&ctx), Some(script));
+    assert_eq!(code, "let a = 1;\n");
+}

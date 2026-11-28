@@ -2,7 +2,7 @@
 //! the code pane with the script editor, and the overlay last.
 use super::*;
 use crate::script_editor::ScriptEditor;
-use egui::{epaint::Shape, Event, Pos2, Rect};
+use egui::{epaint::Shape, Event, Modifiers, Pos2, Rect};
 
 const SCREEN: egui::Vec2 = egui::vec2(1250.0, 800.0);
 

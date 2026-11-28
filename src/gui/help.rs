@@ -1,33 +1,86 @@
-//! The keybind overlay: toggled by `F1`, closed by `F1` or `Escape`.
-//! The Snippets window has its own page.
-use eframe::egui::{self, Color32, Key, Modifiers};
+//! The keybind overlay: toggled by the `help` key of `keybinds.toml`, also closed by
+//! `Escape`. The Snippets window has its own page.
+use crate::keybinds::Command;
+use eframe::egui::{self, Color32};
 
 const RUN: Color32 = Color32::from_rgb(110, 200, 120);
 const MOVE: Color32 = Color32::from_rgb(110, 170, 240);
 const SNIPPETS: Color32 = Color32::from_rgb(230, 170, 90);
 const SCREEN: Color32 = Color32::from_rgb(200, 140, 230);
 
-type Page = &'static [(Color32, &'static str, &'static str)];
+/// A key from `keybinds.toml`, or a pair of them shown as `A / B`.
+#[derive(Debug, PartialEq)]
+enum Keys {
+    Bound(Command),
+    Pair(Command, Command),
+}
+
+impl Keys {
+    fn text(&self) -> String {
+        match self {
+            Self::Bound(command) => crate::keybinds::text(*command).into(),
+            Self::Pair(first, second) => format!(
+                "{} / {}",
+                crate::keybinds::text(*first),
+                crate::keybinds::text(*second)
+            ),
+        }
+    }
+}
+
+type Page = &'static [(Color32, Keys, &'static str)];
 
 /// Keys share their group's color; the words beside them come from the locale.
 const EDITOR: Page = &[
-    (RUN, "Ctrl+Enter", "help_run_cell"),
-    (RUN, "Shift+Enter", "help_run_line"),
-    (MOVE, "Ctrl+Alt+[", "help_previous_cell"),
-    (MOVE, "Ctrl+Alt+]", "help_next_cell"),
-    (MOVE, "PageUp / PageDown", "help_page"),
-    (MOVE, "Ctrl+.", "help_fold"),
-    (SNIPPETS, "Ctrl+Shift+P", "help_snippets"),
-    (SCREEN, "Ctrl+,", "help_settings"),
-    (SCREEN, "F1", "help_help"),
+    (RUN, Keys::Bound(Command::RunCell), "help_run_cell"),
+    (RUN, Keys::Bound(Command::RunLine), "help_run_line"),
+    (
+        MOVE,
+        Keys::Bound(Command::PreviousCell),
+        "help_previous_cell",
+    ),
+    (MOVE, Keys::Bound(Command::NextCell), "help_next_cell"),
+    (
+        MOVE,
+        Keys::Pair(Command::PageUp, Command::PageDown),
+        "help_page",
+    ),
+    (MOVE, Keys::Bound(Command::Fold), "help_fold"),
+    (MOVE, Keys::Bound(Command::FocusEditor), "help_focus_editor"),
+    (
+        SCREEN,
+        Keys::Bound(Command::CloseWindow),
+        "help_close_window",
+    ),
+    (SNIPPETS, Keys::Bound(Command::Snippets), "help_snippets"),
+    (SCREEN, Keys::Bound(Command::Settings), "help_settings"),
+    (SCREEN, Keys::Bound(Command::Help), "help_help"),
 ];
 
 /// Shown instead of `EDITOR` while the Snippets window is open.
 const SNIPPET_WINDOW: Page = &[
-    (SNIPPETS, "/", "help_snippet_filter"),
-    (MOVE, "↑ / ↓", "help_snippet_select"),
-    (RUN, "Enter", "help_snippet_run"),
-    (SCREEN, "F1", "help_help"),
+    (
+        SNIPPETS,
+        Keys::Bound(Command::SnippetFilter),
+        "help_snippet_filter",
+    ),
+    (
+        MOVE,
+        Keys::Pair(Command::SnippetUp, Command::SnippetDown),
+        "help_snippet_select",
+    ),
+    (
+        MOVE,
+        Keys::Pair(Command::SnippetPageUp, Command::SnippetPageDown),
+        "help_page",
+    ),
+    (RUN, Keys::Bound(Command::SnippetRun), "help_snippet_run"),
+    (
+        SCREEN,
+        Keys::Bound(Command::SnippetClose),
+        "help_snippet_close",
+    ),
+    (SCREEN, Keys::Bound(Command::Help), "help_help"),
 ];
 
 #[derive(Default)]
@@ -36,9 +89,9 @@ pub(super) struct Help {
 }
 
 impl Help {
-    /// The page is chosen when F1 opens it, from the window that has the user's attention.
+    /// The page is chosen when the key opens it, from the window that has the user's attention.
     pub fn shortcut(&mut self, ctx: &egui::Context, snippets_open: bool) {
-        if ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::F1)) {
+        if ctx.input_mut(|input| crate::keybinds::consume(input, crate::keybinds::Command::Help)) {
             self.open = match self.open {
                 Some(_) => None,
                 None if snippets_open => Some(SNIPPET_WINDOW),
@@ -57,7 +110,7 @@ impl Help {
                 .spacing([24.0, 6.0])
                 .show(ui, |ui| {
                     for (color, keys, word) in page {
-                        ui.label(egui::RichText::new(*keys).monospace().color(*color));
+                        ui.label(egui::RichText::new(keys.text()).monospace().color(*color));
                         ui.label(crate::i18n::t(word));
                         ui.end_row();
                     }
@@ -72,7 +125,7 @@ impl Help {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use egui::{Event, Pos2, Rect};
+    use egui::{Event, Key, Modifiers, Pos2, Rect};
 
     fn frame(ctx: &egui::Context, help: &mut Help, key: Option<Key>, snippets_open: bool) {
         let events = key

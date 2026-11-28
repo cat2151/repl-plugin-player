@@ -295,7 +295,7 @@ fn assert_slash_focuses_filter(
     code: &mut String,
 ) {
     let original = code.clone();
-    editor_frame(ctx, editor, code, vec![Event::Text("/".into())]);
+    editor_frame(ctx, editor, code, slash());
     editor_frame(ctx, editor, code, vec![]);
     let focused = ctx.memory(|memory| memory.focused());
     let filter = egui::Id::unique("snippet_filter");
@@ -328,7 +328,7 @@ fn slash_is_text_inside_snippets_filter() {
         &mut code,
         vec![Event::Text("a/b".into())],
     );
-    editor_frame(&ctx, &mut editor, &mut code, vec![Event::Text("/".into())]);
+    editor_frame(&ctx, &mut editor, &mut code, slash());
     assert_eq!(editor.snippets().filter, "a/b/");
     assert_eq!(code, original);
 }
@@ -342,7 +342,7 @@ fn slash_is_text_inside_snippet_name() {
     editor_frame(&ctx, &mut editor, &mut code, vec![]);
     assert!(ctx.memory(|memory| memory.has_focus(name)));
     let original = code.clone();
-    editor_frame(&ctx, &mut editor, &mut code, vec![Event::Text("/".into())]);
+    editor_frame(&ctx, &mut editor, &mut code, slash());
     editor_frame(&ctx, &mut editor, &mut code, vec![]);
     assert_eq!(editor.snippets().name, "/");
     assert!(editor.snippets().filter.is_empty());
@@ -355,6 +355,14 @@ mod escape;
 
 #[path = "snippets_ui_tab_tests.rs"]
 mod tab;
+
+/// What the window receives when `/` is typed: the key, then its text.
+fn slash() -> Vec<Event> {
+    vec![
+        key(egui::Key::Slash, egui::Modifiers::NONE),
+        Event::Text("/".into()),
+    ]
+}
 
 fn key(key: egui::Key, modifiers: egui::Modifiers) -> Event {
     Event::Key {
@@ -403,7 +411,7 @@ fn slash_goes_to_code_while_snippets_closed() {
     editor_frame(&ctx, &mut editor, &mut code, vec![]);
     ctx.memory_mut(|memory| memory.request_focus(script));
     editor_frame(&ctx, &mut editor, &mut code, vec![]);
-    editor_frame(&ctx, &mut editor, &mut code, vec![Event::Text("/".into())]);
+    editor_frame(&ctx, &mut editor, &mut code, slash());
     assert!(!editor.snippets().open);
     assert_eq!(code, "/");
 }

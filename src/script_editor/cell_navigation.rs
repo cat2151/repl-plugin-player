@@ -1,11 +1,11 @@
-use crate::execution;
+use crate::{
+    execution,
+    keybinds::{self, Command},
+};
 use eframe::egui::{
     self,
     text::{CCursor, CCursorRange},
-    Event,
 };
-
-mod key_mapping;
 
 // VS Code Jupyter codewatcher.ts at 0a68e24f4305c3248a47f7c7abb87c13f1e5c3c7:
 // gotoNextCell/gotoPreviousCell use selection.start; advanceToRange collapses
@@ -35,37 +35,21 @@ pub(super) fn handle(ui: &mut egui::Ui, id: egui::Id, text: &str) -> Option<usiz
         return None;
     }
     let mut state = egui::TextEdit::load_state(ui.ctx(), id)?;
-    let mut range = state.cursor.char_range()?;
-    let mut target = None;
-    ui.input_mut(|input| {
-        input.events.retain(|event| {
-            if let Event::Key {
-                key,
-                physical_key,
-                modifiers,
-                pressed: true,
-                ..
-            } = event
-            {
-                if modifiers.ctrl && modifiers.alt && !modifiers.shift && !modifiers.mac_cmd {
-                    let next = match key_mapping::direction(*key, *physical_key) {
-                        Some(next) => next,
-                        None => return true,
-                    };
-                    let start = range.primary.index.0.min(range.secondary.index.0);
-                    if let Some(position) = adjacent(text, start, next) {
-                        range = CCursorRange::one(CCursor::new(position));
-                        target = Some(position);
-                    }
-                    return false;
-                }
-            }
-            true
-        });
-    });
-    if target.is_some() {
-        state.cursor.set_char_range(Some(range));
-        state.store(ui.ctx(), id);
-    }
-    target
+    let range = state.cursor.char_range()?;
+    let next = ui.input_mut(|input| {
+        if keybinds::consume(input, Command::NextCell) {
+            Some(true)
+        } else if keybinds::consume(input, Command::PreviousCell) {
+            Some(false)
+        } else {
+            None
+        }
+    })?;
+    let start = range.primary.index.0.min(range.secondary.index.0);
+    let target = adjacent(text, start, next)?;
+    state
+        .cursor
+        .set_char_range(Some(CCursorRange::one(CCursor::new(target))));
+    state.store(ui.ctx(), id);
+    Some(target)
 }

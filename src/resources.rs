@@ -54,6 +54,11 @@ impl Source {
         }
     }
 
+    /// The copy built into the exe, whether or not a source tree is present.
+    pub fn embedded(&self) -> &'static str {
+        self.embedded
+    }
+
     /// A present source tree is authoritative, so a missing file is an error.
     pub fn text(&self) -> Result<&str, String> {
         self.text

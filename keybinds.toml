@@ -1,0 +1,38 @@
+# The key of each command. An exe inside this repository reads this file at
+# startup, so a change needs only a restart, not a build.
+#
+# Join Ctrl / Shift / Alt and an egui key name with "+", e.g. "Ctrl+Shift+P".
+# Key names: Enter, Escape, Tab, F1..F12, PageUp, ArrowUp, A..Z, 0..9, and
+# symbols such as "[" "," "." "/" "+" (written as "Ctrl++").
+# Modifiers must match exactly: "Ctrl+Enter" does not fire on Ctrl+Shift+Enter.
+# A key may be shared only by commands that never listen at the same time: the
+# snippet_ ones listen while the Snippets window is open, the editor ones while
+# the editor has focus, focus_editor while it does not, close_window in a
+# repl.ui window, and snippets / settings / help everywhere.
+
+run_cell = "Ctrl+Enter"
+run_line = "Shift+Enter"
+previous_cell = "Ctrl+Alt+["
+next_cell = "Ctrl+Alt+]"
+fold = "Ctrl+."
+snippets = "Ctrl+Shift+P"
+settings = "Ctrl+,"
+help = "F1"
+
+# In the Snippets window. The arrow, page and run keys act while the filter has focus.
+snippet_filter = "/"
+snippet_up = "ArrowUp"
+snippet_down = "ArrowDown"
+snippet_page_up = "PageUp"
+snippet_page_down = "PageDown"
+snippet_run = "Enter"
+snippet_close = "Escape"
+
+# In the main window while the editor does not have focus: back to the editor.
+# Shift with it works too; Tab never walks focus between widgets.
+focus_editor = "Tab"
+# In the editor; Shift with them extends the selection.
+page_up = "PageUp"
+page_down = "PageDown"
+# In a repl.ui window of its own.
+close_window = "Escape"
